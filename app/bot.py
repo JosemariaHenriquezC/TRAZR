@@ -1,0 +1,125 @@
+"""
+Capa de Telegram (python-telegram-bot v21, long polling).
+
+Solo traduce entre Telegram y BotService: no tiene lógica de negocio.
+Las llamadas a la hoja son bloqueantes, por eso se ejecutan en un hilo
+aparte (asyncio.to_thread) para no congelar el bot.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ParseMode
+from telegram.error import Forbidden, TelegramError
+from telegram.ext import (Application, CallbackQueryHandler, ContextTypes, MessageHandler,
+                          filters)
+
+from .config import ConfigError, load_settings
+from .service import BotService, Outgoing, User
+from .storage import StorageError, build_repository
+
+log = logging.getLogger(__name__)
+
+
+def _user(update: Update) -> User:
+    u = update.effective_user
+    name = (u.full_name or u.username or str(u.id)) if u else "desconocido"
+    return User(id=update.effective_chat.id, name=name)
+
+
+async def _send(context: ContextTypes.DEFAULT_TYPE, messages: list[Outgoing]) -> None:
+    for m in messages:
+        markup = None
+        if m.buttons:
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton(t, callback_data=d) for t, d in m.buttons]])
+        try:
+            await context.bot.send_message(chat_id=m.chat_id, text=m.text, parse_mode=ParseMode.HTML,
+                                           reply_markup=markup, disable_web_page_preview=True)
+        except Forbidden:
+            log.warning("El chat %s bloqueó al bot o nunca lo inició; no se pudo avisar.", m.chat_id)
+        except TelegramError as exc:
+            log.error("No se pudo enviar a %s: %s", m.chat_id, exc)
+
+
+async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    service: BotService = context.application.bot_data["service"]
+    user = _user(update)
+    text = update.effective_message.text or ""
+    await context.bot.send_chat_action(update.effective_chat.id, "typing")
+    out = await asyncio.to_thread(service.handle_message, user, text)
+    await _send(context, out)
+
+
+async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_text(
+        "Por ahora solo entiendo mensajes de texto. Escribí tu pedido, por ejemplo: 2 yerba, 3 azúcar.")
+
+
+async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    service: BotService = context.application.bot_data["service"]
+    query = update.callback_query
+    await query.answer()
+    out = await asyncio.to_thread(service.handle_callback, _user(update), query.data or "")
+    # Si se aprobó/rechazó, se quitan los botones del mensaje para no repetir la acción.
+    if out and out[0].text.startswith(("✅", "❌")):
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except TelegramError:
+            pass
+    await _send(context, out)
+
+
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.exception("Error no controlado", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_chat:
+        try:
+            await context.bot.send_message(update.effective_chat.id,
+                                           "Ups, algo falló de mi lado. Probá de nuevo en un momento.")
+        except TelegramError:
+            pass
+
+
+async def post_init(app: Application) -> None:
+    await app.bot.set_my_commands([
+        BotCommand("start", "Empezar"), BotCommand("catalogo", "Productos y precios"),
+        BotCommand("mispedidos", "Mis últimos pedidos"), BotCommand("ayuda", "Ayuda y comandos"),
+        BotCommand("miid", "Ver mi ID de Telegram"),
+    ])
+    me = await app.bot.get_me()
+    log.info("Bot @%s en marcha. Escribile en https://t.me/%s", me.username, me.username)
+
+
+def main() -> None:
+    logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    try:
+        settings = load_settings(require_telegram=True)
+    except ConfigError as exc:
+        raise SystemExit(f"Error de configuración: {exc}")
+
+    repo = build_repository(settings)
+    # Verificación temprana: si las hojas no son accesibles, se avisa al arrancar.
+    try:
+        n = len(repo.list_products())
+        repo.list_orders()
+        log.info("Hojas OK (%s): %d productos en stock.", settings.storage_backend, n)
+    except StorageError as exc:
+        raise SystemExit(f"No pude acceder a las hojas: {exc}")
+    if not settings.admin_chat_ids:
+        log.warning("ADMIN_CHAT_IDS vacío: nadie es administrador. Escribile /miid al bot y "
+                    "poné ese número en el .env.")
+
+    app = Application.builder().token(settings.telegram_token).post_init(post_init).build()
+    app.bot_data["service"] = BotService(repo, settings)
+    app.add_handler(MessageHandler(filters.TEXT, on_text))
+    app.add_handler(CallbackQueryHandler(on_button))
+    app.add_handler(MessageHandler(~filters.TEXT & ~filters.StatusUpdate.ALL, on_other))
+    app.add_error_handler(on_error)
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == "__main__":
+    main()
