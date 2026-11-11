@@ -5,3 +5,4 @@ openpyxl==3.1.5
 python-dotenv==1.2.3
 tzdata>=2024.1        # zonas horarias en Windows
 pytest>=8             # solo para correr los tests
+google-genai
