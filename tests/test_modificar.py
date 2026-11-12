@@ -44,6 +44,8 @@ def test_modificar_solo_la_direccion(svc, repo):
     o = repo.get_order(oid)
     assert o.address == "Belgrano 300, Tafí Viejo" and o.status == ESTADO_CONFIRMADO
     assert stock(repo, "COC1") == 48  # el stock no se toca
+    assert "¿Qué dirección dejo guardada" in plain(out[-1].text)  # y pregunta cuál guardar
+    assert repo.get_customer("telegram", str(CLIENT.id)).address == CLIENT_ADDRESS
 
 
 def test_cambio_que_deja_el_pedido_en_revision(svc, repo):

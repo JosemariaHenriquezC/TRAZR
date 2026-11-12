@@ -23,6 +23,8 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
   identifican por `canal` + `externo_id`.
 - Ningún pedido se registra sin dirección de envío ni sin confirmación del cliente.
   El envío siempre está incluido, sin costo.
+- La dirección guardada solo cambia si el cliente lo elige: tras un pedido a otra dirección,
+  el bot pregunta cuál dejar (🏠 la de siempre / 📍 la nueva). La primera se guarda sola.
 - Tienda ficticia de ejemplo: «Trazr» (valores por defecto en `config.TRAZR`).
 - Nunca commitear `.env`, `credentials.json` ni la base (`data/`).
 - Los tests no deben llamar a APIs reales (`Settings.ai` viene apagado por defecto;

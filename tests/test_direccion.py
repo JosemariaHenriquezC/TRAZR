@@ -91,9 +91,71 @@ def test_cambiar_direccion_desde_el_resumen(svc, repo):
     assert "mandame la nueva dirección" in plain(out[0].text)
     out = svc.handle_message(CLIENT, "Belgrano 300, Tafí Viejo")
     assert "Dirección: Belgrano 300, Tafí Viejo" in plain(out[0].text)
-    svc.handle_callback(CLIENT, button(out, "cf:"))
+    # Mientras tanto, la dirección guardada NO cambia
+    assert repo.get_customer("telegram", str(CLIENT.id)).address == CLIENT_ADDRESS
+
+    out = svc.handle_callback(CLIENT, button(out, "cf:"))
     assert repo.list_orders()[-1].address == "Belgrano 300, Tafí Viejo"
+    # Después del pedido, pregunta cuál dejar guardada
+    q = out[-1]
+    assert "¿Qué dirección dejo guardada" in plain(q.text) and CLIENT_ADDRESS in plain(q.text)
+    assert [t for t, _ in q.buttons] == ["🏠 La de siempre", "📍 La nueva"]
+    out = svc.handle_callback(CLIENT, button(out, "dn:"))
+    assert "tus próximos pedidos van a Belgrano 300, Tafí Viejo" in plain(out[0].text)
     assert repo.get_customer("telegram", str(CLIENT.id)).address == "Belgrano 300, Tafí Viejo"
+
+
+def _pedido_a_otra_direccion(svc):
+    svc.handle_message(CLIENT, "2 coca")
+    svc.handle_message(CLIENT, "/direccion Belgrano 300, Tafí Viejo")
+    return svc.handle_message(CLIENT, "si")
+
+
+def test_elegir_la_de_siempre(svc, repo):
+    out = _pedido_a_otra_direccion(svc)
+    out = svc.handle_callback(CLIENT, button(out, "dk:"))
+    assert "sigo usando" in plain(out[0].text)
+    assert repo.get_customer("telegram", str(CLIENT.id)).address == CLIENT_ADDRESS
+    assert f"Dirección: {CLIENT_ADDRESS}" in plain(svc.handle_message(CLIENT, "1 fanta")[0].text)
+
+
+def test_responder_escribiendo_cual_direccion(svc, repo):
+    _pedido_a_otra_direccion(svc)
+    assert "próximos pedidos van a Belgrano" in plain(svc.handle_message(CLIENT, "la nueva")[0].text)
+    # Ahora la guardada es Belgrano; un pedido a la dirección anterior vuelve a preguntar
+    svc.handle_message(CLIENT, "1 sprite")
+    svc.handle_message(CLIENT, f"/direccion {CLIENT_ADDRESS}")
+    svc.handle_message(CLIENT, "si")
+    assert "sigo usando" in plain(svc.handle_message(CLIENT, "la de siempre")[0].text)
+    assert repo.get_customer("telegram", str(CLIENT.id)).address == "Belgrano 300, Tafí Viejo"
+
+
+def test_si_ignora_la_pregunta_queda_la_de_siempre(svc, repo):
+    _pedido_a_otra_direccion(svc)
+    out = svc.handle_message(CLIENT, "1 fanta")  # no contesta: manda otro pedido
+    assert "Revisá tu pedido" in plain(out[0].text) and f"Dirección: {CLIENT_ADDRESS}" in plain(out[0].text)
+    assert repo.get_customer("telegram", str(CLIENT.id)).address == CLIENT_ADDRESS
+
+
+def test_misma_direccion_no_pregunta(svc, repo):
+    out = pedir(svc, CLIENT, "2 coca")
+    assert len(out) == 1 and not any("¿Qué dirección" in m.text for m in out)
+
+
+def test_primera_direccion_se_guarda_sola(svc, repo):
+    svc.handle_message(NUEVO, "2 coca")
+    svc.handle_message(NUEVO, DIR)
+    out = svc.handle_message(NUEVO, "si")
+    assert not any("¿Qué dirección" in plain(m.text) for m in out)
+    assert repo.get_customer("telegram", str(NUEVO.id)).address == DIR
+
+
+def test_botones_de_la_pregunta_viejos_no_sirven(svc, repo):
+    out = _pedido_a_otra_direccion(svc)
+    viejo = button(out, "dn:")
+    svc.handle_message(CLIENT, "la de siempre")
+    assert "ya no está vigente" in plain(svc.handle_callback(CLIENT, viejo)[0].text)
+    assert repo.get_customer("telegram", str(CLIENT.id)).address == CLIENT_ADDRESS
 
 
 def test_direccion_con_comando_durante_el_resumen(svc, repo):

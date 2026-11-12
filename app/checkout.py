@@ -15,6 +15,11 @@ borrador a partir del pedido, el cliente lo cambia y confirma; entonces se
 devuelve el stock del pedido viejo, se evalúa el nuevo y se descuenta lo
 que corresponde, todo en un paso.
 
+Dirección guardada: la primera que da el cliente se guarda sola. Si después un
+pedido (o una modificación) va a otra dirección, NO se pisa la guardada: una vez
+registrado el pedido, el bot pregunta cuál dejar para la próxima
+[🏠 La de siempre] [📍 La nueva].
+
 Todo esto es independiente del canal: los botones son (texto, dato) genéricos
 y siempre hay una alternativa escrita («sí», /confirmar, /cancelar).
 """
@@ -39,6 +44,7 @@ log = logging.getLogger(__name__)
 
 WAIT_CONFIRM = "confirmacion"
 WAIT_ADDRESS = "direccion"
+WAIT_SAVE = "guardar_direccion"   # pedido hecho a otra dirección: ¿cuál queda guardada?
 PENDING_TTL = timedelta(hours=24)
 MIN_ADDRESS_LEN = 8
 MAX_ADDRESS_LEN = 200
@@ -99,7 +105,9 @@ class CheckoutMixin:
     def _key(self, user):
         return user.channel, str(user.id)
 
-    def _get_draft(self, user) -> Draft | None:
+    def _get_draft(self, user, include_save_question: bool = False) -> Draft | None:
+        """Borrador del cliente. La pregunta «¿qué dirección guardo?» no es un pedido:
+        solo se devuelve si se pide explícitamente."""
         found = self.repo.get_pending_order(*self._key(user))
         if found is None:
             return None
@@ -111,7 +119,10 @@ class CheckoutMixin:
         if created_at is None or self.now() - created_at > PENDING_TTL:
             self.repo.clear_pending_order(*self._key(user))
             return None
-        return Draft.decode(raw)
+        draft = Draft.decode(raw)
+        if draft.waiting == WAIT_SAVE and not include_save_question:
+            return None
+        return draft
 
     def _save_draft(self, user, draft: Draft) -> None:
         draft.token = secrets.token_hex(3)  # cada versión del resumen tiene sus propios botones
@@ -225,16 +236,22 @@ class CheckoutMixin:
             return [Outgoing(user.id, problem)]
         return self._set_address(user, draft, address)
 
-    def _set_address(self, user, draft: Draft, address: str) -> list:
-        """Guarda la dirección (también como la habitual del cliente) y muestra el resumen."""
-        try:
+    def _save_address_if_first(self, user, address: str) -> None:
+        """La primera dirección del cliente se guarda sola; después, solo si él lo elige."""
+        customer = self.repo.get_customer(*self._key(user))
+        if customer is None or not customer.address:
             self._save_address(user, address)
+
+    def _set_address(self, user, draft: Draft, address: str) -> list:
+        """Pone la dirección en el borrador y muestra el resumen."""
+        try:
+            self._save_address_if_first(user, address)
             draft.address, draft.waiting = address, WAIT_CONFIRM
             if draft.items is None:  # borrador viejo (solo texto): se interpreta ahora
                 self._clear_draft(user)
                 return self.start_order(user, draft.text, self._interpret(draft.text))
             self._save_draft(user, draft)
-            note = f"📍 Listo, va a <b>{esc(address)}</b> (la guardé para tus próximos pedidos)."
+            note = f"📍 Listo, este pedido va a <b>{esc(address)}</b>."
             return self._summary(user, draft, note=note)
         except StorageError as exc:
             return self._storage_failure(user, exc, "guardar la dirección")
@@ -318,12 +335,14 @@ class CheckoutMixin:
 
         tail = f"\n\n✏️ Si necesitás cambiar algo, avisame en los próximos {self.s.rules.modify_minutes} minutos."
         if order.status == ESTADO_CONFIRMADO:
-            return [Outgoing(user.id, self.format_order(order, "✅ <b>¡Pedido confirmado!</b>") + tail)]
-        out = [Outgoing(user.id, self.format_order(order, "🟡 <b>Recibimos tu pedido</b>")
-                        + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva."
-                        + tail)]
-        return out + self._notify_review(order, f"🔔 <b>Pedido derivado a revisión</b>\nCliente: "
-                                                f"<b>{esc(user.name)}</b> (<code>{user.id}</code>)")
+            out = [Outgoing(user.id, self.format_order(order, "✅ <b>¡Pedido confirmado!</b>") + tail)]
+        else:
+            out = [Outgoing(user.id, self.format_order(order, "🟡 <b>Recibimos tu pedido</b>")
+                            + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva."
+                            + tail)]
+            out += self._notify_review(order, f"🔔 <b>Pedido derivado a revisión</b>\nCliente: "
+                                              f"<b>{esc(user.name)}</b> (<code>{user.id}</code>)")
+        return out + self._ask_which_address(user, order.address)
 
     def _notify_review(self, order: Order, header: str) -> list:
         if not self.s.admin_chat_ids:
@@ -379,7 +398,6 @@ class CheckoutMixin:
         try:
             if address:
                 draft.address = address
-                self._save_address(user, address)
             self._save_draft(user, draft)
             return self._summary(user, draft, intro,
                                  note="" if (items or address) else
@@ -442,10 +460,62 @@ class CheckoutMixin:
             out = [Outgoing(user.id, self.format_order(order, "✏️ <b>¡Pedido modificado y confirmado!</b>"))]
             if self.s.admin_chat_ids:
                 out += self._admins(self.format_order(order, f"✏️ <b>Pedido modificado por el cliente</b>\n{who}"))
-            return out
-        out = [Outgoing(user.id, self.format_order(order, "✏️ <b>Modificamos tu pedido</b>")
-                        + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva.")]
-        return out + self._notify_review(order, f"✏️🔔 <b>Pedido modificado, en revisión</b>\n{who}")
+        else:
+            out = [Outgoing(user.id, self.format_order(order, "✏️ <b>Modificamos tu pedido</b>")
+                            + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva.")]
+            out += self._notify_review(order, f"✏️🔔 <b>Pedido modificado, en revisión</b>\n{who}")
+        return out + self._ask_which_address(user, order.address)
+
+    # ------------------------------------------------- ¿qué dirección guardo?
+    def _ask_which_address(self, user, used: str) -> list:
+        """Si el pedido fue a otra dirección que la guardada, pregunta cuál dejar para la próxima."""
+        try:
+            customer = self.repo.get_customer(*self._key(user))
+            if customer is None or not customer.address:
+                self._save_address(user, used)
+                return []
+            if customer.address.strip().lower() == used.strip().lower():
+                return []
+            question = Draft(text="", items=[], address=used, waiting=WAIT_SAVE)
+            self._save_draft(user, question)
+        except StorageError as exc:  # el pedido ya está hecho: esto no puede romperlo
+            log.warning("No pude preguntar qué dirección guardar: %s", exc)
+            return []
+        t = question.token
+        return [Outgoing(user.id, "🏠 ¿Qué dirección dejo guardada para tus próximos pedidos?\n"
+                                  f"• La de siempre: <b>{esc(customer.address)}</b>\n"
+                                  f"• La nueva: <b>{esc(used)}</b>",
+                         [("🏠 La de siempre", f"dk:{t}"), ("📍 La nueva", f"dn:{t}")])]
+
+    def choose_address(self, user, keep_old: bool, token: str | None = None) -> list:
+        try:
+            question = self._get_draft(user, include_save_question=True)
+            if question is None or question.waiting != WAIT_SAVE or (token and token != question.token):
+                return [Outgoing(user.id, "Esa pregunta ya no está vigente. Si querés cambiar tu dirección "
+                                          "guardada, usá /direccion nueva dirección.")]
+            self._clear_draft(user)
+            if keep_old:
+                customer = self.repo.get_customer(*self._key(user))
+                return [Outgoing(user.id, f"🏠 Dale, sigo usando <b>{esc(customer.address)}</b> para tus "
+                                          "próximos pedidos.")]
+            self._save_address(user, question.address)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "guardar la dirección")
+        return [Outgoing(user.id, f"📍 Listo, tus próximos pedidos van a <b>{esc(question.address)}</b>.")]
+
+    def answer_which_address(self, user, text: str, question: Draft) -> list:
+        """Respuesta escrita a «¿qué dirección dejo guardada?». Si no es una respuesta
+        clara, se deja la de siempre y el mensaje se atiende como cualquier otro."""
+        words = set(_norm(text).split())
+        if words & {"nueva", "ultima", "esta", "guardala", "cambiala"}:
+            return self.choose_address(user, keep_old=False)
+        if words & {"siempre", "anterior", "vieja", "misma", "otra"} or _norm(text) in NO:
+            return self.choose_address(user, keep_old=True)
+        try:
+            self._clear_draft(user)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "leer tu mensaje")
+        return self.converse(user, text, None)
 
     # ---------------------------------------------------------- conversación
     def _interpret(self, text: str, catalog: list[Product] | None = None, use_ai: bool = True):

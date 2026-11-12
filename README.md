@@ -70,9 +70,14 @@ nuevo y descuenta lo que corresponde; el pedido conserva su ID. Si el cambio lo 
 los parámetros, vuelve a revisión y el admin recibe los botones. Fuera de término, el bot le
 avisa al admin para que lo resuelva a mano.
 
-Otros detalles: la dirección nueva queda guardada para los próximos pedidos; cada pedido guarda
-su **copia** de la dirección; un borrador sin confirmar vence a las 24 h; `/direccion` muestra
-o cambia la dirección guardada.
+**Dirección guardada:** la primera que da el cliente se guarda sola. Si después un pedido (o
+una modificación) va a otra dirección, la guardada **no** cambia: una vez registrado el pedido,
+el bot pregunta cuál dejar para la próxima, con los botones **🏠 La de siempre** · **📍 La nueva**
+(también se puede contestar escribiendo «la nueva» o «la de siempre»; si el cliente no contesta,
+queda la de siempre). `/direccion nueva dirección` la cambia directamente.
+
+Otros detalles: cada pedido guarda su **copia** de la dirección; un borrador sin confirmar
+vence a las 24 h.
 
 ## 4. Cómo conversa el bot (Gemini)
 
@@ -175,7 +180,7 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 | 1 | Cliente nuevo | `2 coca y 1 sprite` | 📍 *¿A qué dirección te lo enviamos? El envío está incluido, sin costo.* No se registra nada. |
 | 1b | Cliente nuevo | `Av. Sarmiento 450, Yerba Buena` | 🧾 *Revisá tu pedido* con precios, envío incluido, la dirección y Total $ 9.400,00, y los botones ✅ 📍 ❌. Todavía no se registra. |
 | 1c | Cliente nuevo | ✅ Confirmar (o `sí`) | ✅ *¡Pedido confirmado!* COC1 50→48. |
-| 2 | Cliente | `2 coca` → 📍 Cambiar dirección → `Belgrano 300, Tafí Viejo` → `sí` | El resumen se actualiza con la dirección nueva y el pedido sale a esa dirección. |
+| 2 | Cliente | `2 coca` → 📍 Cambiar dirección → `Belgrano 300, Tafí Viejo` → `sí` | El resumen se actualiza con la dirección nueva y el pedido sale a esa dirección. Después: *¿Qué dirección dejo guardada para tus próximos pedidos?* [🏠 La de siempre] [📍 La nueva]. |
 | 2b | Cliente | `/modificar` → `3 coca, 1 sprite` → `sí` | ✏️ *¡Pedido modificado y confirmado!* Mismo ID, stock reajustado. El admin recibe el aviso. |
 | 3 | Cliente | `mandame 10 cervezas` → `sí` | El resumen avisa que va a quedar en revisión. Al confirmar: 🟡 en revisión; al admin le llega `Stock insuficiente: Cerveza Rubia 1L (pedido 10, disponible 5)` con botones. CER1 sigue en 5. |
 | 3b | Admin | `/sumar CER1 10` y ✅ Aprobar | Cliente: *¡Tu pedido fue confirmado!* Total $ 28.000,00. CER1 15→5. |

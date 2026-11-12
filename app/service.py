@@ -123,12 +123,14 @@ class BotService(CheckoutMixin):
         if text.startswith("/"):
             return self._handle_command(user, text)
         try:
-            draft = self._get_draft(user)
+            draft = self._get_draft(user, include_save_question=True)
         except StorageError as exc:
             return self._storage_failure(user, exc, "leer un pedido pendiente")
         if draft is not None and draft.waiting == "direccion":
             # Le pedimos la dirección: este mensaje es la dirección.
             out = self.receive_address(user, text, draft)
+        elif draft is not None and draft.waiting == "guardar_direccion":
+            out = self.answer_which_address(user, text, draft)
         else:
             out = self.converse(user, text, draft)
         self._remember(user, text, out)
@@ -159,11 +161,14 @@ class BotService(CheckoutMixin):
                          + ", ".join(f"{l.qty} x {l.name}" for l in o.lines) for o in mine)
 
     def handle_callback(self, user: User, data: str) -> list[Outgoing]:
-        """Botones. Cliente: 'cf:<token>' confirmar, 'cd:' cambiar dirección, 'cx:' cancelar.
+        """Botones. Cliente: 'cf:<token>' confirmar, 'cd:' cambiar dirección, 'cx:' cancelar,
+        'dk:'/'dn:' dejar guardada la dirección de siempre / la nueva.
         Admin: 'ap:<ID>' aprobar, 'rj:<ID>' rechazar."""
         action, _, arg = data.partition(":")
         client = {"cf": (self.confirm_draft, "Confirmar"), "cd": (self.ask_new_address, "Cambiar dirección"),
-                  "cx": (self.cancel_draft, "Cancelar")}
+                  "cx": (self.cancel_draft, "Cancelar"),
+                  "dk": (lambda u, t: self.choose_address(u, True, t), "La de siempre"),
+                  "dn": (lambda u, t: self.choose_address(u, False, t), "La nueva")}
         if action in client:
             fn, label = client[action]
             out = fn(user, arg)
