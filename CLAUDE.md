@@ -8,14 +8,15 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - `app/bot.py` — capa de Telegram, sin lógica de negocio
 - `app/service.py` — `BotService`: lógica central, independiente del canal
 - `app/parser.py` — intérprete por reglas (respaldo)
-- `app/ai_parser.py` — intérprete con Gemini; misma firma que `parse_order`
+- `app/ai_parser.py` — Gemini: `parse_order` (intérprete) y `conversar` (intención + respuesta humana)
 - `app/rules.py` — regla "dentro de los parámetros"
 - `app/storage/` — interfaz `Repository` (`base.py`) e implementación SQLite (`sqlite.py`)
 - `scripts/init_db.py` — crea la base y carga el catálogo (`--ejemplo` o `--csv`)
 
 ## Reglas del proyecto
 - Catálogo solo de bebidas.
-- La IA solo interpreta texto. Precios, stock y estados salen de la base y de rules.py.
+- Gemini interpreta y redacta, pero NUNCA pone números: precios, stock, totales y estados
+  salen de la base y de rules.py (`respuesta_segura` descarta textos con plata o "confirmado").
 - `service.py` no debe depender de Telegram: va a sumarse WhatsApp. Los clientes se
   identifican por `canal` + `externo_id`.
 - Ningún pedido se registra sin dirección de envío. El envío siempre está incluido, sin costo.

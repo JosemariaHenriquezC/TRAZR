@@ -1,4 +1,5 @@
 """Fase 2: dirección obligatoria y envío siempre incluido (sin costo)."""
+import json
 from datetime import datetime, timedelta
 
 from app.models import ESTADO_CONFIRMADO, ESTADO_REVISION
@@ -16,7 +17,8 @@ def test_cliente_sin_direccion_retiene_el_pedido_y_la_pide(svc, repo):
     assert "envío está incluido, sin costo" in plain(out[0].text)
     # Nada se registra ni se descuenta todavía
     assert repo.list_orders() == [] and repo.get_product("COC1").stock == 50
-    assert repo.get_pending_order("telegram", str(NUEVO.id))[0] == "2 coca y 1 sprite"
+    pend = json.loads(repo.get_pending_order("telegram", str(NUEVO.id))[0])
+    assert pend["texto"] == "2 coca y 1 sprite" and pend["items"] == [["COC1", 2], ["SPR1", 1]]
 
     # El siguiente mensaje es la dirección: se guarda y se procesa el pedido retenido
     out = svc.handle_message(NUEVO, DIR)
@@ -45,6 +47,7 @@ def test_direccion_invalida_se_vuelve_a_pedir(svc, repo):
     for bad in ("ok", "1234567890"):
         out = svc.handle_message(NUEVO, bad)
         assert "parece incompleta" in plain(out[0].text)
+    assert "primero necesito la dirección" in plain(svc.handle_message(NUEVO, "¿cuánto tarda en llegar?")[0].text)
     assert repo.list_orders() == [] and repo.get_pending_order("telegram", str(NUEVO.id))
     out = svc.handle_message(NUEVO, DIR)
     assert "¡Pedido confirmado!" in plain(out[1].text)
@@ -92,10 +95,16 @@ def test_pendiente_vencido_se_descarta(svc, repo):
     # Pasadas 24 h, el mensaje se trata como pedido nuevo (y se vuelve a pedir la dirección)
     out = svc.handle_message(NUEVO, "1 sprite")
     assert "¿A qué dirección" in plain(out[0].text)
-    assert repo.get_pending_order("telegram", str(NUEVO.id))[0] == "1 sprite"
+    assert json.loads(repo.get_pending_order("telegram", str(NUEVO.id))[0])["texto"] == "1 sprite"
 
 
 def test_clientes_de_distintos_canales_no_se_mezclan(svc, repo):
     svc.handle_message(NUEVO, "/direccion " + DIR)
     wa = User(NUEVO.id, "Mismo número en WhatsApp", channel="whatsapp")
     assert "¿A qué dirección" in plain(svc.handle_message(wa, "1 coca")[0].text)
+
+
+def test_pendiente_en_formato_viejo_sigue_funcionando(svc, repo):
+    repo.set_pending_order("telegram", str(NUEVO.id), "2 coca", svc.stamp())  # solo texto
+    out = svc.handle_message(NUEVO, DIR)
+    assert "¡Pedido confirmado!" in plain(out[1].text) and repo.get_product("COC1").stock == 48

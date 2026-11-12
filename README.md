@@ -17,7 +17,7 @@ TFI de Administración de Recursos — UTN-FRT, comisión 4K1.
 | **Python 3.10+** | Ecosistema maduro para bots; fácil de leer y modificar. |
 | **python-telegram-bot 21** | Librería recomendada por Telegram, asíncrona, con botones inline. Usa *long polling*: no hace falta dominio ni abrir puertos. |
 | **SQLite** | Toda la información (catálogo, clientes, pedidos) en un solo archivo, sin servidor ni credenciales. Transacciones reales: un pedido se registra completo o no se registra. La propia base impide stock negativo y pedidos sin dirección. Viene incluida en Python. |
-| **Gemini como intérprete** (fase 1) | Entiende jerga y abreviaturas. Solo interpreta texto: precios, stock y estados salen de la base y de `rules.py`. Si falla, interpreta el parser por reglas. Necesita `GEMINI_API_KEY` en el `.env`; al arrancar, el bot avisa si Gemini quedó apagado. |
+| **Gemini conversacional** | Entiende jerga y el contexto de la charla («agregale una más», «con gas»), distingue pedidos, consultas y pedidos de cambio, y redacta las respuestas con tono humano. **Límite:** precios, stock, totales y estados los pone el bot desde la base; si Gemini escribe un precio o da un pedido por confirmado, su texto se descarta. Si Gemini falla, el bot sigue con el parser por reglas y sus mensajes de siempre. Necesita `GEMINI_API_KEY`; al arrancar, el bot avisa si quedó apagado. |
 | **Parser por reglas** (respaldo) | Funciona sin claves ni costo. Tolera tildes, plurales, errores de tipeo, «x 3», «media docena», números en palabra. |
 
 ## 2. Regla «dentro de los parámetros»
@@ -59,7 +59,21 @@ comando usar (`/sumar`, `/precio`) y no aprueba.
 
 > La confirmación de dirección con botones (Sí / Cambiar) es la fase 3.
 
-## 4. Base de datos
+## 4. Cómo conversa el bot (Gemini)
+
+Con cada mensaje, Gemini recibe: el catálogo (código, nombre, alias, categoría y si hay o
+no stock, **sin precios**), los datos del negocio del `.env` (`NEGOCIO_*`), los últimos
+pedidos del cliente y la conversación de las últimas 12 horas (tabla `mensajes`). Devuelve
+la intención y un texto corto:
+
+| Intención | Qué hace el bot |
+|---|---|
+| pedido | Valida los productos y cantidades y sigue el flujo normal; el texto de Gemini va arriba del detalle. |
+| consulta | Muestra el texto de Gemini + precio y disponibilidad **tomados de la base**. |
+| cambio_pedido | Responde y le avisa al admin con el mensaje y el último pedido del cliente. |
+| charla | Responde el texto de Gemini (saludos, preguntas para aclarar, horarios, etc.). |
+
+## 5. Base de datos
 
 Un archivo SQLite (`DATABASE_PATH`, por defecto `data/trazr.db`) que el bot crea
 solo. Para verlo o editarlo a mano: [DB Browser for SQLite](https://sqlitebrowser.org/).
@@ -70,7 +84,8 @@ solo. Para verlo o editarlo a mano: [DB Browser for SQLite](https://sqlitebrowse
 | `clientes` | `canal` + `externo_id` (únicos; ej. `telegram` + ID del chat), `nombre`, `direccion`, `creado`, `actualizado` |
 | `pedidos` | `pedido_id` (PK, ej. `P261112-A3F1`), `fecha`, `canal`, `cliente_id`, `cliente_nombre`, `mensaje_original`, `direccion_envio` (obligatoria), `costo_envio`, `total`, `estado` (`CONFIRMADO` / `EN REVISION` / `RECHAZADO`), `motivo`, `actualizado`, `revisado_por` |
 | `pedido_items` | renglones de cada pedido: `sku`, `producto`, `cantidad`, `precio_unitario`, `subtotal` |
-| `pedidos_pendientes` | pedido retenido esperando la dirección del cliente (uno por cliente) |
+| `pedidos_pendientes` | pedido retenido (ya interpretado) esperando la dirección del cliente |
+| `mensajes` | historial reciente de cada chat (memoria de Gemini; se guardan los últimos 50) |
 
 ### Cargar el catálogo
 
@@ -84,7 +99,7 @@ El CSV lleva el encabezado `SKU,Producto,Categoria,Alias,Stock,Precio,Vigente_ha
 actualiza. Nunca se borra nada. Los ejemplos incluyen uno con precio vencido
 (`FER1`) y uno sin stock (`VIN1`) para probar las revisiones.
 
-## 5. Puesta en marcha
+## 6. Puesta en marcha
 
 ### Paso 0: probar sin Telegram
 
@@ -118,7 +133,7 @@ python -m app.bot
 El bot funciona **mientras el proceso esté corriendo**. Para 24/7 necesitás una PC
 siempre prendida o un servidor. Hacé copia del archivo `data/trazr.db` con regularidad.
 
-## 6. Comandos
+## 7. Comandos
 
 **Clientes:** escribir el pedido en texto libre · `/catalogo` · `/direccion [nueva]` ·
 `/cancelar` · `/mispedidos` · `/miid` · `/ayuda`
@@ -136,7 +151,7 @@ siempre prendida o un servidor. Hacé copia del archivo `data/trazr.db` con regu
 | `/aprobar ID` o botón ✅ | Aprueba: verifica, descuenta stock y avisa al cliente |
 | `/rechazar ID [motivo]` o botón ❌ | Rechaza y avisa al cliente con el motivo |
 
-## 7. Prueba de punta a punta
+## 8. Prueba de punta a punta
 
 Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pytest -q`).
 
@@ -154,13 +169,13 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 | 8 | Cliente | `2,5 coca` / `-3 sprite` | *la cantidad debe ser un número entero entre 1 y 1000*. |
 | 9 | Cliente | `/setstock COC1 0` | ⛔ *Ese comando es solo para el administrador.* |
 
-## 8. Estructura del código
+## 9. Estructura del código
 
 ```
 app/
   bot.py          capa de Telegram (handlers, botones, arranque); sin lógica de negocio
   service.py      BotService: pedidos, dirección, revisión, comandos (independiente del canal)
-  ai_parser.py    intérprete con Gemini (misma firma que parser.parse_order)
+  ai_parser.py    Gemini: intérprete (parse_order) y conversación (conversar)
   parser.py       intérprete por reglas (respaldo)
   rules.py        regla «dentro de los parámetros»
   config.py       variables de entorno y reglas configurables
@@ -176,7 +191,7 @@ scripts/
 tests/            pruebas de punta a punta, dirección, base de datos e IA (sin APIs reales)
 ```
 
-## 9. Suposiciones
+## 10. Suposiciones
 
 1. El catálogo es **solo de bebidas**.
 2. El envío está siempre incluido en el precio: no se cobra aparte.

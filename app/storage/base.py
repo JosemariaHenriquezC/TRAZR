@@ -58,6 +58,15 @@ class Repository(ABC):
     @abstractmethod
     def clear_pending_order(self, channel: str, external_id: str) -> None: ...
 
+    # ---- conversación (memoria para Gemini) ----
+    @abstractmethod
+    def add_message(self, channel: str, external_id: str, role: str, text: str, stamp: str) -> None:
+        """Guarda un mensaje. role = "cliente" | "bot"."""
+
+    @abstractmethod
+    def recent_messages(self, channel: str, external_id: str, limit: int = 10) -> list[tuple[str, str, str]]:
+        """Últimos mensajes del chat, del más viejo al más nuevo: [(rol, texto, fecha)]."""
+
     # ---- pedidos ----
     @abstractmethod
     def add_order(self, order: Order) -> None: ...

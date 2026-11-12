@@ -79,6 +79,26 @@ class Rules:
 
 
 @dataclass
+class Business:
+    """Datos del negocio que Gemini puede usar para responder consultas.
+    Lo que quede vacío, Gemini responde que lo consulta con el equipo."""
+    name: str = ""
+    delivery_hours: str = ""     # días y horarios de entrega
+    delivery_zone: str = ""      # zona de reparto
+    min_order: str = ""          # pedido mínimo (texto libre)
+    payment: str = ""            # formas de pago
+    extra: str = ""              # cualquier otra info útil
+
+    def as_text(self) -> str:
+        rows = [("Nombre", self.name), ("Días y horarios de entrega", self.delivery_hours),
+                ("Zona de reparto", self.delivery_zone), ("Pedido mínimo", self.min_order),
+                ("Formas de pago", self.payment), ("Otros datos", self.extra)]
+        out = [f"- {k}: {v}" for k, v in rows if v]
+        out.append("- Envío: siempre incluido, sin costo.")
+        return "\n".join(out)
+
+
+@dataclass
 class Settings:
     telegram_token: str
     admin_chat_ids: set[int]
@@ -91,6 +111,7 @@ class Settings:
     # Intérprete con Gemini. Apagado por defecto: load_settings() lo lee del .env.
     # (Así los tests, que arman Settings a mano, nunca llaman a la API real.)
     ai: AIConfig = field(default_factory=lambda: AIConfig(enabled=False))
+    business: Business = field(default_factory=Business)
 
 
 def load_settings(require_telegram: bool = True, env_file: str | None = None) -> Settings:
@@ -135,6 +156,14 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         timezone=os.getenv("TIMEZONE", "UTC").strip() or "UTC",
         rules=rules,
         ai=load_ai_config(),
+        business=Business(
+            name=os.getenv("NEGOCIO_NOMBRE", "").strip(),
+            delivery_hours=os.getenv("NEGOCIO_HORARIOS", "").strip(),
+            delivery_zone=os.getenv("NEGOCIO_ZONA", "").strip(),
+            min_order=os.getenv("NEGOCIO_PEDIDO_MINIMO", "").strip(),
+            payment=os.getenv("NEGOCIO_PAGOS", "").strip(),
+            extra=os.getenv("NEGOCIO_INFO", "").strip(),
+        ),
     )
 
     return settings

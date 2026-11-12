@@ -23,7 +23,9 @@ Flujo de un pedido:
 from __future__ import annotations
 
 import html
+import json
 import logging
+import re
 import secrets
 import threading
 from dataclasses import dataclass, field
@@ -33,7 +35,8 @@ from zoneinfo import ZoneInfo
 from .config import Settings
 from .models import (COSTO_ENVIO, ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION,
                      Customer, Order, OrderLine, ParsedItem, Product)
-from .ai_parser import parse_order
+from . import parser as rules_parser
+from .ai_parser import conversar, items_a_parsed, parse_order
 from .rules import evaluate
 from .storage.base import Repository, StorageError, to_date, to_number
 
@@ -42,6 +45,9 @@ log = logging.getLogger(__name__)
 # Un pedido retenido esperando la dirección se descarta pasado este tiempo
 # (si el cliente vuelve días después, su mensaje es un pedido nuevo, no una dirección).
 PENDING_TTL = timedelta(hours=24)
+# Cuánta conversación previa ve Gemini.
+HISTORY_WINDOW = timedelta(hours=12)
+HISTORY_MESSAGES = 10
 MIN_ADDRESS_LEN = 8
 MAX_ADDRESS_LEN = 200
 
@@ -62,6 +68,14 @@ class User:
 
 def esc(value) -> str:
     return html.escape(str(value), quote=False)
+
+
+def to_plain(text: str) -> str:
+    return html.unescape(re.sub(r"<[^>]+>", "", text))
+
+
+NO_ORDER_MSG = ("No encontré un pedido en tu mensaje 🤔. Escribí productos y cantidades, "
+                "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Mirá /catalogo.")
 
 
 class BotService:
@@ -143,8 +157,88 @@ class BotService:
             return self._storage_failure(user, exc, "leer un pedido pendiente")
         if pending is not None:
             # Hay un pedido retenido esperando la dirección: este mensaje es la dirección.
-            return self.receive_address(user, text, pending)
-        return self.process_order(user, text)
+            out = self.receive_address(user, text, pending)
+        else:
+            out = self.converse(user, text)
+        self._remember(user, text, out)
+        return out
+
+    # ------------------------------------------------------- conversación
+    def _remember(self, user: User, text: str, out: list[Outgoing]) -> None:
+        """Guarda el mensaje y lo que se le respondió (memoria para Gemini)."""
+        try:
+            stamp = self.stamp()
+            self.repo.add_message(user.channel, str(user.id), "cliente", text, stamp)
+            reply = "\n\n".join(to_plain(m.text) for m in out if m.chat_id == user.id)
+            if reply:
+                self.repo.add_message(user.channel, str(user.id), "bot", reply, stamp)
+        except StorageError as exc:
+            log.warning("No pude guardar el historial del chat: %s", exc)
+
+    def _history(self, user: User) -> list[tuple[str, str]]:
+        since = (self.now() - HISTORY_WINDOW).strftime("%Y-%m-%d %H:%M:%S")
+        return [(rol, t) for rol, t, fecha in
+                self.repo.recent_messages(user.channel, str(user.id), HISTORY_MESSAGES) if fecha >= since]
+
+    def _orders_summary(self, user: User) -> str:
+        """Últimos pedidos del cliente para Gemini (sin precios ni totales)."""
+        mine = [o for o in self.repo.list_orders()
+                if o.customer_id == user.id and o.channel == user.channel][-3:]
+        return "\n".join(f"- {o.order_id} ({o.created_at}): {o.status}; "
+                         + ", ".join(f"{l.qty} x {l.name}" for l in o.lines) for o in mine)
+
+    def converse(self, user: User, text: str) -> list[Outgoing]:
+        """Gemini entiende el mensaje en contexto y redacta; los datos los pone el bot."""
+        if self.ai_client is None and not self.s.ai.usable:
+            return self.process_order(user, text)
+        try:
+            catalog = [p for p in self.repo.list_products() if p.active]
+            history = self._history(user)
+            orders = self._orders_summary(user)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "leer el catálogo para un pedido")
+        reply = conversar(text, catalog, historial=history, pedidos=orders,
+                          negocio=self.s.business.as_text(), nombre_negocio=self.s.business.name,
+                          max_qty=self.s.rules.max_qty_per_item, config=self.s.ai, client=self.ai_client)
+        rules = self.s.rules
+        if reply is None:
+            # Gemini no respondió: se interpreta por reglas, sin volver a llamarlo.
+            items = rules_parser.parse_order(text, catalog, rules.match_threshold, rules.max_qty_per_item)
+            return self.process_order(user, text, items=items)
+
+        if reply.intencion == "pedido":
+            items = items_a_parsed(reply.items, catalog, rules.match_threshold, rules.max_qty_per_item)
+            if not items:
+                items = rules_parser.parse_order(text, catalog, rules.match_threshold, rules.max_qty_per_item)
+            return self.process_order(user, text, items=items, intro=reply.respuesta)
+
+        if reply.intencion == "consulta":
+            by_sku = {p.sku: p for p in catalog}
+            today = self.today()
+            facts = []
+            for sku in reply.consulta_skus:
+                p = by_sku[sku]
+                price = self.money(p.price) if p.price_is_valid(today) else "precio a confirmar"
+                avail = "✅ disponible" if p.stock > 0 else "❌ sin stock por ahora"
+                facts.append(f"• {esc(p.name)} — {price} {avail}")
+            if facts:
+                head = esc(reply.respuesta) if reply.respuesta else "Esto es lo que tengo:"
+                return [Outgoing(user.id, head + "\n\n" + "\n".join(facts)
+                                 + "\n\n🚚 Envío incluido, sin costo.")]
+            return [Outgoing(user.id, esc(reply.respuesta) if reply.respuesta else
+                             "Buena pregunta 🤔 Lo consulto con el equipo y te aviso.")]
+
+        if reply.intencion == "cambio_pedido":
+            out = [Outgoing(user.id, esc(reply.respuesta) if reply.respuesta else
+                            "Dale, le paso tu pedido al equipo para que lo ajuste y te avisamos 🙌")]
+            if self.s.admin_chat_ids:
+                last = orders.splitlines()[-1][2:] if orders else "(sin pedidos previos)"
+                out += self._admins(f"✏️ <b>{esc(user.name)}</b> (<code>{user.id}</code>) pide un cambio "
+                                    f"en su pedido:\n«{esc(text)}»\n\nÚltimo pedido: {esc(last)}")
+            return out
+
+        # charla: saludo, agradecimiento, pregunta para desambiguar, etc.
+        return [Outgoing(user.id, esc(reply.respuesta) if reply.respuesta else NO_ORDER_MSG)]
 
     def handle_callback(self, user: User, data: str) -> list[Outgoing]:
         """Botones inline: 'ap:<ID>' aprobar, 'rj:<ID>' rechazar."""
@@ -300,6 +394,9 @@ class BotService:
 
     @staticmethod
     def _address_problem(address: str) -> str | None:
+        if "?" in address:  # es una pregunta, no una dirección
+            return ("Para terminar tu pedido primero necesito la dirección de envío: calle, número y "
+                    "localidad. Después te respondo lo que quieras 🙌\n(o /cancelar para descartar el pedido)")
         if len(address) < MIN_ADDRESS_LEN or not any(ch.isalpha() for ch in address):
             return ("Esa dirección parece incompleta 🤔. Mandame calle, número y localidad, por ejemplo:\n"
                     "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n(o /cancelar para descartar el pedido)")
@@ -324,7 +421,32 @@ class BotService:
             return self._storage_failure(user, exc, "guardar la dirección")
         out = [Outgoing(user.id, f"📍 Guardé tu dirección: <b>{esc(address)}</b>\n"
                                  "(podés cambiarla cuando quieras con /direccion)")]
-        return out + self.process_order(user, pending_text)
+        text, items = self._decode_pending(pending_text)
+        return out + self.process_order(user, text, items=items)
+
+    @staticmethod
+    def _encode_pending(text: str, pairs: list[tuple[Product, int]], unknown: list[str]) -> str:
+        """Se guarda lo YA interpretado: al volver, no depende de releer la conversación."""
+        return json.dumps({"texto": text, "items": [[p.sku, q] for p, q in pairs],
+                           "desconocidos": unknown}, ensure_ascii=False)
+
+    def _decode_pending(self, raw: str) -> tuple[str, list[ParsedItem] | None]:
+        try:
+            data = json.loads(raw)
+            text, pairs, unknown = data["texto"], data["items"], data.get("desconocidos", [])
+        except (ValueError, KeyError, TypeError):
+            return raw, None  # formato viejo: solo el texto, se vuelve a interpretar
+        try:
+            by_sku = {p.sku.upper(): p for p in self.repo.list_products() if p.active}
+        except StorageError:
+            return text, None
+        items = []
+        for sku, qty in pairs:
+            p = by_sku.get(str(sku).upper())
+            items.append(ParsedItem(raw=f"{qty} {p.name}", qty=int(qty), product=p) if p else
+                         ParsedItem(raw=str(sku), error="no_existe", unknown_name=str(sku)))
+        items += [ParsedItem(raw=n, error="no_existe", unknown_name=n) for n in unknown]
+        return text, items
 
     # ---- admin: stock ----
     def cmd_stock(self, user, args):
@@ -484,19 +606,22 @@ class BotService:
                 msgs.append(f"«{esc(it.raw)}»: la cantidad debe ser un número entero entre 1 y {max_q}.")
         return msgs
 
-    def process_order(self, user: User, text: str) -> list[Outgoing]:
+    def process_order(self, user: User, text: str, items: list[ParsedItem] | None = None,
+                      intro: str = "") -> list[Outgoing]:
+        """Registra un pedido. `items` ya interpretados (si no, se interpretan acá);
+        `intro` es el acuse redactado por Gemini que va arriba del detalle."""
         # Etapa 1: interpretar el mensaje. Va FUERA del candado: Gemini puede
         # tardar unos segundos y mientras tanto otros clientes pueden pedir.
-        try:
-            catalog = [p for p in self.repo.list_products() if p.active]
-        except StorageError as exc:
-            return self._storage_failure(user, exc, "leer el catálogo para un pedido")
-        items = parse_order(text, catalog, self.s.rules.match_threshold, self.s.rules.max_qty_per_item,
-                            config=self.s.ai, client=self.ai_client)
+        if items is None:
+            try:
+                catalog = [p for p in self.repo.list_products() if p.active]
+            except StorageError as exc:
+                return self._storage_failure(user, exc, "leer el catálogo para un pedido")
+            items = parse_order(text, catalog, self.s.rules.match_threshold, self.s.rules.max_qty_per_item,
+                                config=self.s.ai, client=self.ai_client)
         if not items:
-            return [Outgoing(user.id,
-                             "No encontré un pedido en tu mensaje 🤔. Escribí productos y cantidades, "
-                             "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Mirá /catalogo.")]
+            return [Outgoing(user.id, NO_ORDER_MSG)]
+        pre = f"{esc(intro)}\n\n" if intro else ""
         problems = self._clarifications(items)
         if problems:
             return [Outgoing(user.id, "No pude registrar el pedido todavía:\n• " + "\n• ".join(problems)
@@ -523,8 +648,9 @@ class BotService:
             try:
                 customer = self.repo.get_customer(user.channel, str(user.id))
                 if customer is None or not customer.address:
-                    self.repo.set_pending_order(user.channel, str(user.id), text, self.stamp())
-                    return [Outgoing(user.id,
+                    self.repo.set_pending_order(user.channel, str(user.id),
+                                                self._encode_pending(text, pairs, unknown), self.stamp())
+                    return [Outgoing(user.id, pre +
                                      "📍 ¡Casi listo! ¿A qué dirección te lo enviamos? "
                                      "<b>El envío está incluido, sin costo.</b>\n"
                                      "Respondé con calle, número y localidad, por ejemplo:\n"
@@ -554,8 +680,8 @@ class BotService:
 
         # Etapa 5: avisos.
         if order.status == ESTADO_CONFIRMADO:
-            return [Outgoing(user.id, self.format_order(order, "✅ <b>¡Pedido confirmado!</b>"))]
-        client_msg = self.format_order(order, "🟡 <b>Recibimos tu pedido</b>") + \
+            return [Outgoing(user.id, pre + self.format_order(order, "✅ <b>¡Pedido confirmado!</b>"))]
+        client_msg = pre + self.format_order(order, "🟡 <b>Recibimos tu pedido</b>") + \
             "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva."
         admin_msg = self.format_order(order, f"🔔 <b>Pedido derivado a revisión</b>\nCliente: "
                                              f"<b>{esc(user.name)}</b> (<code>{user.id}</code>)")

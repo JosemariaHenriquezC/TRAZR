@@ -82,6 +82,17 @@ CREATE TABLE IF NOT EXISTS pedido_items (
     PRIMARY KEY (pedido_id, renglon)
 );
 
+-- Historial del chat: le da contexto a Gemini ("agregale una más", "no, mejor 3").
+CREATE TABLE IF NOT EXISTS mensajes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    canal       TEXT NOT NULL,
+    externo_id  TEXT NOT NULL,
+    rol         TEXT NOT NULL CHECK (rol IN ('cliente', 'bot')),
+    texto       TEXT NOT NULL,
+    fecha       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_mensajes_chat ON mensajes (canal, externo_id, id);
+
 -- Pedido ya interpretado que espera la dirección del cliente (uno por cliente).
 CREATE TABLE IF NOT EXISTS pedidos_pendientes (
     canal       TEXT NOT NULL,
@@ -254,6 +265,22 @@ class SQLiteRepository(Repository):
         with self._tx() as c:
             c.execute("DELETE FROM pedidos_pendientes WHERE canal = ? AND externo_id = ?",
                       (channel, str(external_id)))
+
+    # --------------------------------------------------------- conversación
+    MAX_MESSAGES_PER_CHAT = 50  # se guarda solo lo reciente
+
+    def add_message(self, channel: str, external_id: str, role: str, text: str, stamp: str) -> None:
+        with self._tx() as c:
+            c.execute("INSERT INTO mensajes (canal, externo_id, rol, texto, fecha) VALUES (?, ?, ?, ?, ?)",
+                      (channel, str(external_id), role, text[:2000], stamp))
+            c.execute("DELETE FROM mensajes WHERE canal = ? AND externo_id = ? AND id NOT IN "
+                      "(SELECT id FROM mensajes WHERE canal = ? AND externo_id = ? ORDER BY id DESC LIMIT ?)",
+                      (channel, str(external_id), channel, str(external_id), self.MAX_MESSAGES_PER_CHAT))
+
+    def recent_messages(self, channel: str, external_id: str, limit: int = 10) -> list[tuple[str, str, str]]:
+        rows = self._query("SELECT rol, texto, fecha FROM mensajes WHERE canal = ? AND externo_id = ? "
+                           "ORDER BY id DESC LIMIT ?", (channel, str(external_id), limit))
+        return [(r["rol"], r["texto"], r["fecha"]) for r in reversed(rows)]
 
     # -------------------------------------------------------------- pedidos
     @staticmethod
