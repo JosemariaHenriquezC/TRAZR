@@ -66,7 +66,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     out = await asyncio.to_thread(service.handle_callback, _user(update), query.data or "")
     # Se quitan los botones para que no se toquen dos veces: siempre en los del cliente
     # (confirmar, cambiar dirección, cancelar) y en los del admin si se resolvió.
-    client_button = (query.data or "").split(":")[0] in {"cf", "cd", "cx", "dk", "dn"}
+    client_button = (query.data or "").split(":")[0] in {"cf", "cd", "cx", "aj", "dk", "dn"}
     if client_button or (out and out[0].text.startswith(("✅", "❌"))):
         try:
             await query.edit_message_reply_markup(reply_markup=None)

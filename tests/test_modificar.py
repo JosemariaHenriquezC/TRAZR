@@ -48,26 +48,41 @@ def test_modificar_solo_la_direccion(svc, repo):
     assert repo.get_customer("telegram", str(CLIENT.id)).address == CLIENT_ADDRESS
 
 
-def test_cambio_que_deja_el_pedido_en_revision(svc, repo):
+def test_al_modificar_cuenta_lo_que_el_pedido_ya_tenia(svc, repo):
     pedir(svc, CLIENT, "2 cerveza")
     oid = repo.list_orders()[-1].order_id
     assert stock(repo, "CER1") == 3
     svc.handle_message(CLIENT, "/modificar")
-    svc.handle_message(CLIENT, "8 cerveza")  # hay 5 en total contando las 2 devueltas
+    out = svc.handle_message(CLIENT, "5 cerveza")  # 3 libres + 2 suyas = 5: alcanza
+    assert "Así quedaría tu pedido" in plain(out[0].text)
+    out = svc.handle_message(CLIENT, "8 cerveza")
+    assert "pediste 8, me quedan 5" in plain(out[0].text)
+    svc.handle_message(CLIENT, "si")   # ajusta a 5
     out = svc.handle_message(CLIENT, "si")
-    o = repo.get_order(oid)
-    assert o.status == ESTADO_REVISION and stock(repo, "CER1") == 5  # devolvió las 2 y no descontó
-    admin = next(m for m in out if m.chat_id == ADMIN.id)
-    assert "Pedido modificado, en revisión" in plain(admin.text) and admin.buttons
+    assert "¡Pedido modificado y confirmado!" in plain(out[0].text)
+    assert [(l.sku, l.qty) for l in repo.get_order(oid).lines] == [("CER1", 5)] and stock(repo, "CER1") == 0
 
 
 def test_pedido_en_revision_que_al_modificar_entra(svc, repo):
-    pedir(svc, CLIENT, "10 cerveza")
+    pedir(svc, CLIENT, "1 fernet")
+    oid = repo.list_orders()[-1].order_id
+    assert repo.get_order(oid).status == ESTADO_REVISION
+    svc.handle_message(ADMIN, "/precio FER1 13000")
+    svc.handle_message(CLIENT, "/modificar")
+    svc.handle_message(CLIENT, "2 fernet")
+    svc.handle_message(CLIENT, "si")
+    assert repo.get_order(oid).status == ESTADO_CONFIRMADO and stock(repo, "FER1") == 8
+
+
+def test_cambio_que_deja_el_pedido_en_revision(svc, repo):
+    pedir(svc, CLIENT, "2 coca")
     oid = repo.list_orders()[-1].order_id
     svc.handle_message(CLIENT, "/modificar")
-    svc.handle_message(CLIENT, "4 cerveza")
-    svc.handle_message(CLIENT, "si")
-    assert repo.get_order(oid).status == ESTADO_CONFIRMADO and stock(repo, "CER1") == 1
+    svc.handle_message(CLIENT, "2 coca y 1 fernet")  # fernet con precio vencido
+    out = svc.handle_message(CLIENT, "si")
+    assert repo.get_order(oid).status == ESTADO_REVISION and stock(repo, "COC1") == 50  # devolvió las 2
+    admin = next(m for m in out if m.chat_id == ADMIN.id)
+    assert "Pedido modificado, en revisión" in plain(admin.text) and admin.buttons
 
 
 def test_descartar_cambios_deja_el_pedido_igual(svc, repo):
@@ -86,7 +101,7 @@ def test_sin_cambios(svc, repo):
 
 
 def test_fuera_de_termino_o_rechazado_no_se_modifica(svc, repo, settings):
-    pedir(svc, CLIENT, "2 vino")
+    pedir(svc, CLIENT, "1 fernet")
     oid = repo.list_orders()[-1].order_id
     svc.handle_message(ADMIN, f"/rechazar {oid}")
     assert repo.get_order(oid).status == ESTADO_RECHAZADO
@@ -101,7 +116,7 @@ def test_fuera_de_termino_o_rechazado_no_se_modifica(svc, repo, settings):
 
 
 def test_si_el_admin_lo_rechaza_mientras_tanto(svc, repo):
-    pedir(svc, CLIENT, "10 cerveza")
+    pedir(svc, CLIENT, "1 fernet")
     oid = repo.list_orders()[-1].order_id
     svc.handle_message(CLIENT, "/modificar")
     svc.handle_message(CLIENT, "4 cerveza")

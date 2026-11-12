@@ -59,10 +59,39 @@ def test_botones_viejos_no_sirven(svc, repo):
 
 
 def test_resumen_avisa_si_va_a_quedar_en_revision(svc, repo):
-    txt = plain(svc.handle_message(CLIENT, "10 cerveza")[0].text)
-    assert "Si lo confirmás, queda en revisión" in txt and "Stock insuficiente: Cerveza Rubia 1L" in txt
     txt = plain(svc.handle_message(CLIENT, "1 fernet")[0].text)
     assert "Fernet 750ml — precio a confirmar" in txt
+    assert "Si lo confirmás, queda en revisión" in txt and "Precio no vigente: Fernet 750ml" in txt
+
+
+def test_falta_de_stock_se_avisa_antes_de_pedir_la_direccion(svc, repo):
+    out = svc.handle_message(NUEVO, "8 cerveza")
+    assert "pediste 8, me quedan 5" in plain(out[0].text)
+    out = svc.handle_callback(NUEVO, button(out, "aj:"))
+    assert "lo ajusté a lo que hay" in plain(out[0].text) and "¿A qué dirección" in plain(out[0].text)
+    out = svc.handle_message(NUEVO, DIR)
+    assert "5 × Cerveza Rubia 1L" in plain(out[0].text) and "Revisá tu pedido" in plain(out[0].text)
+
+
+def test_si_se_vende_el_stock_antes_de_confirmar(svc, repo):
+    out = svc.handle_message(CLIENT, "4 cerveza")
+    assert "Revisá tu pedido" in plain(out[0].text)
+    repo.set_stock("CER1", 2, "s")  # otro cliente se lleva cerveza
+    out = svc.handle_callback(CLIENT, button(out, "cf:"))
+    txt = plain(out[0].text)
+    assert "justo se vendió parte del stock" in txt and "pediste 4, me quedan 2" in txt
+    assert repo.list_orders() == []
+    svc.handle_message(CLIENT, "si")       # ajusta a 2
+    svc.handle_message(CLIENT, "si")       # confirma
+    assert [(l.sku, l.qty) for l in repo.list_orders()[-1].lines] == [("CER1", 2)]
+    assert repo.get_product("CER1").stock == 0
+
+
+def test_pedir_otra_cosa_en_vez_de_ajustar(svc, repo):
+    svc.handle_message(CLIENT, "10 cerveza")
+    out = svc.handle_message(CLIENT, "3 cerveza y 2 coca")  # lista nueva
+    assert "Revisá tu pedido" in plain(out[0].text) and "3 × Cerveza Rubia 1L" in plain(out[0].text)
+    assert "descarté" in plain(svc.handle_message(CLIENT, "no")[0].text)
 
 
 # ------------------------------------------------------------- dirección
@@ -181,7 +210,7 @@ def test_direccion_invalida_se_vuelve_a_pedir(svc, repo):
 
 
 def test_pedido_en_revision_tambien_lleva_direccion(svc, repo):
-    svc.handle_message(NUEVO, "10 cerveza")
+    svc.handle_message(NUEVO, "1 fernet")
     svc.handle_message(NUEVO, DIR)
     out = svc.handle_message(NUEVO, "si")
     o = repo.list_orders()[-1]

@@ -21,6 +21,10 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
   salen de la base y de rules.py (`respuesta_segura` descarta textos con plata o "confirmado").
 - `service.py` no debe depender de Telegram: va a sumarse WhatsApp. Los clientes se
   identifican por `canal` + `externo_id`.
+- Stock: se verifica al armar el borrador y otra vez al confirmar. Si no alcanza, el cliente
+  NO puede confirmar: el bot le dice la cantidad exacta que queda y ofrece ajustar
+  (🔧 / «sí»). Al modificar, lo que el pedido ya tenía cuenta como disponible.
+  La revisión del admin queda solo para precio vencido y total máximo.
 - Ningún pedido se registra sin dirección de envío ni sin confirmación del cliente.
   El envío siempre está incluido, sin costo.
 - La dirección guardada solo cambia si el cliente lo elige: tras un pedido a otra dirección,
@@ -43,23 +47,7 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 
 ## Próxima sesión — empezar por acá
 
-### A. Stock antes de armar el pedido (hacer PRIMERO, antes de la fase 4)
-Hoy el resumen solo avisa «si confirmás queda en revisión por stock insuficiente».
-Lo que se quiere:
-- Verificar el stock al armar el borrador (`checkout.start_order` / `_summary`), ANTES
-  de mostrar el resumen, y de nuevo al confirmar (otro cliente pudo llevárselo).
-- Si un producto no alcanza, el bot se lo dice al cliente y NO le deja confirmar ese
-  pedido: le ofrece lo que hay (ej. «de cerveza me quedan 5, ¿te mando 5?»), sacarlo,
-  o reemplazarlo. Producto con stock 0 = no se puede pedir.
-- Gemini puede redactar la charla, pero las cantidades disponibles las pone el bot
-  (regla: Gemini nunca escribe números).
-- Decidir con el usuario:
-  1. ¿Mostrar la cantidad exacta que queda o solo «no alcanza / me quedan pocas»?
-  2. Con esto, «EN REVISION por stock insuficiente» deja de existir. ¿Revisión queda solo
-     para precio vencido y total máximo? (afecta `rules.evaluate`, tests y el README)
-  3. ¿Aplica igual al modificar un pedido hecho? (se supone que sí)
-
-### B. Fase 4: web de administración
+### Fase 4: web de administración
 - Interpretación a confirmar con el usuario: «todo lo de confirmar el pedido va a la
   web» = la gestión del admin (pedidos en revisión, aprobar/rechazar, ver pedidos) pasa
   a la web. El cliente sigue confirmando su pedido en el chat.

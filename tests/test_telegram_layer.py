@@ -28,7 +28,7 @@ def make_update(user, text=None, data=None):
 def test_mensaje_y_botones(svc: BotService, repo):
     # 1) El cliente pide: le llega el resumen con botones (uno por fila)
     ctx = make_context(svc)
-    asyncio.run(tg.on_text(make_update(CLIENT, "10 cerveza"), ctx))
+    asyncio.run(tg.on_text(make_update(CLIENT, "1 fernet"), ctx))
     call = ctx.bot.send_message.call_args_list[0].kwargs
     assert call["chat_id"] == CLIENT.id and call["parse_mode"] == "HTML"
     rows = call["reply_markup"].inline_keyboard

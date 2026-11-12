@@ -37,34 +37,46 @@ def test_pedido_confirmado(svc, repo):
     assert [(l.sku, l.qty, l.unit_price) for l in o.lines] == [("COC1", 2, 3200), ("AGU1", 3, 1100)]
 
 
-# 2) Faltante de stock → en revisión → admin repone y aprueba
-def test_faltante_revision_y_aprobacion(svc, repo):
-    out = pedir(svc, CLIENT, "mandame 10 cervezas")
-    client_msg, admin_msg = out[0], out[1]
-    assert client_msg.chat_id == CLIENT.id and "en revisión" in plain(client_msg.text)
-    assert admin_msg.chat_id == ADMIN.id and "Stock insuficiente: Cerveza Rubia 1L (pedido 10, disponible 5)" in plain(admin_msg.text)
+# 2) Falta stock → el cliente NO puede confirmar: se le dice cuánto queda y se ajusta
+def test_faltante_no_se_puede_pedir_y_se_ajusta(svc, repo):
+    out = svc.handle_message(CLIENT, "mandame 10 cervezas y 2 coca")
+    txt = plain(out[0].text)
+    assert "No me alcanza el stock" in txt and "Cerveza Rubia 1L: pediste 10, me quedan 5." in txt
+    assert "5 × Cerveza Rubia 1L" in txt and "2 × Coca-Cola 2.25L" in txt  # cómo quedaría
+    assert [t for t, _ in out[0].buttons] == ["🔧 Ajustar a lo que hay", "❌ Cancelar"]  # sin «Confirmar»
+    assert repo.list_orders() == [] and stock(repo, "CER1") == 5
+
+    out = svc.handle_message(CLIENT, "/confirmar")  # con faltante, confirmar = aceptar el ajuste
+    assert "lo ajusté a lo que hay" in plain(out[0].text) and "Revisá tu pedido" in plain(out[0].text)
+    assert repo.list_orders() == []
+    svc.handle_message(CLIENT, "si")  # ahora sí confirma
+    o = last_order(repo)
+    assert o.status == ESTADO_CONFIRMADO and [(l.sku, l.qty) for l in o.lines] == [("CER1", 5), ("COC1", 2)]
+    assert stock(repo, "CER1") == 0
+    # Sin stock, ni siquiera se ofrece: no se puede pedir
+    txt = plain(svc.handle_message(CLIENT, "1 cerveza")[0].text)
+    assert "Cerveza Rubia 1L: pediste 1, no me queda." in txt and "No me queda nada de lo que pediste" in txt
+
+
+# 2b) Admin: pedido en revisión (precio) que al aprobar ya no tiene stock
+def test_aprobar_revisa_stock_y_precio(svc, repo):
+    out = pedir(svc, CLIENT, "1 fernet")
+    admin_msg = out[1]
+    assert admin_msg.chat_id == ADMIN.id and "Precio no vigente: Fernet 750ml" in plain(admin_msg.text)
     order_id = last_order(repo).order_id
     assert admin_msg.buttons == [("✅ Aprobar", f"ap:{order_id}"), ("❌ Rechazar", f"rj:{order_id}")]
-    assert last_order(repo).status == ESTADO_REVISION
-    assert stock(repo, "CER1") == 5  # NO se descuenta mientras está en revisión
+    assert last_order(repo).status == ESTADO_REVISION and stock(repo, "FER1") == 10
 
-    # Aprobar sin stock → bloqueado con instrucción
+    svc.handle_message(ADMIN, "/setstock FER1 0")
+    svc.handle_message(ADMIN, "/precio FER1 13000")
     out = svc.handle_message(ADMIN, f"/aprobar {order_id}")
-    assert "No puedo aprobar todavía" in plain(out[0].text) and "/sumar CER1" in plain(out[0].text)
-
-    # Admin repone stock y aprueba con el botón
-    out = svc.handle_message(ADMIN, "/sumar CER1 10")
-    assert "ahora: 15" in plain(out[0].text)
+    assert "No puedo aprobar todavía" in plain(out[0].text) and "/sumar FER1" in plain(out[0].text)
+    svc.handle_message(ADMIN, "/sumar FER1 4")
     out = svc.handle_callback(ADMIN, f"ap:{order_id}")
     assert plain(out[0].text).startswith("✅ Pedido") and out[1].chat_id == CLIENT.id
-    assert "¡Tu pedido fue confirmado!" in plain(out[1].text) and "Total: $ 28.000,00" in plain(out[1].text)
-    assert stock(repo, "CER1") == 5
-    o = last_order(repo)
-    assert o.status == ESTADO_CONFIRMADO and o.reviewed_by.startswith("Admin") and "Stock insuficiente" in o.reason
-
-    # No se puede aprobar dos veces
-    out = svc.handle_callback(ADMIN, f"ap:{order_id}")
-    assert "ya está" in plain(out[0].text) and stock(repo, "CER1") == 5
+    assert "¡Tu pedido fue confirmado!" in plain(out[1].text) and "Total: $ 13.000,00" in plain(out[1].text)
+    assert stock(repo, "FER1") == 3 and last_order(repo).reviewed_by.startswith("Admin")
+    assert "ya está" in plain(svc.handle_callback(ADMIN, f"ap:{order_id}")[0].text)
 
 
 # 3) Precio vencido → revisión → admin actualiza precio y aprueba con el precio nuevo
@@ -81,7 +93,7 @@ def test_precio_no_vigente(svc, repo):
 
 # 4) Rechazo con motivo
 def test_rechazo(svc, repo):
-    pedir(svc, CLIENT, "2 vino")
+    pedir(svc, CLIENT, "1 fernet")
     oid = last_order(repo).order_id
     out = svc.handle_message(ADMIN, f"/rechazar {oid} Sin stock hasta el lunes")
     assert out[1].chat_id == CLIENT.id and "Sin stock hasta el lunes" in plain(out[1].text)

@@ -1,13 +1,17 @@
 """
 Fase 3: borrador del pedido, confirmación, dirección y modificación.
 
-Flujo de un pedido nuevo:
+Flujo de un pedido nuevo (_next_step decide el paso siguiente):
   mensaje → se interpreta → BORRADOR (no se registra nada ni se toca el stock)
-    ├─ sin dirección guardada → se pide la dirección (esperando "direccion")
-    └─ con dirección → resumen con precios, total y dirección + botones
+    1. ¿Alcanza el stock? Si no, se le dice al cliente cuánto queda de cada cosa y
+       NO puede confirmar: se le ofrece [🔧 Ajustar a lo que hay] o pedir otra cosa
+       (esperando "stock"). Un producto sin stock no se puede pedir.
+    2. ¿Tiene dirección? Si no, se le pide (esperando "direccion").
+    3. Resumen con precios, total y dirección + botones
          [✅ Confirmar] [📍 Cambiar dirección] [❌ Cancelar]
-  El cliente confirma (botón, «sí», /confirmar) → recién ahí se evalúa la regla
-  y se registra CONFIRMADO o EN REVISION.
+  El cliente confirma (botón, «sí», /confirmar) → se vuelve a mirar el stock (otro
+  cliente pudo llevárselo) y recién ahí se evalúa la regla y se registra
+  CONFIRMADO o EN REVISION (revisión: solo precio vencido o total máximo).
 
 Modificar un pedido ya hecho (productos y/o dirección): mientras no esté
 rechazado y dentro de Rules.modify_minutes desde que se hizo. Se arma un
@@ -44,6 +48,7 @@ log = logging.getLogger(__name__)
 
 WAIT_CONFIRM = "confirmacion"
 WAIT_ADDRESS = "direccion"
+WAIT_STOCK = "stock"              # no alcanza el stock: se espera que ajuste o cambie el pedido
 WAIT_SAVE = "guardar_direccion"   # pedido hecho a otra dirección: ¿cuál queda guardada?
 PENDING_TTL = timedelta(hours=24)
 MIN_ADDRESS_LEN = 8
@@ -98,6 +103,10 @@ class Draft:
         return cls(**known)
 
 
+class _SoldOut(Exception):
+    """Interno: al confirmar una modificación ya no alcanza el stock."""
+
+
 class CheckoutMixin:
     """Métodos de BotService para borradores, confirmación y modificación."""
 
@@ -137,7 +146,10 @@ class CheckoutMixin:
         names = {p.sku: p.name for p in self.repo.list_products()}
         items = ", ".join(f"{q} x {names.get(s, s)} ({s})" for s, q in (draft.items or []))
         kind = f"modificación del pedido {draft.modifies}" if draft.modifies else "pedido nuevo"
-        wait = "esperando la dirección" if draft.waiting == WAIT_ADDRESS else "esperando confirmación"
+        wait = {WAIT_ADDRESS: "esperando la dirección",
+                WAIT_STOCK: "no alcanza el stock: se le ofreció ajustar a lo que hay (si dice que sí, "
+                            "es 'confirmar'; si pide otra cosa, es 'pedido' con la lista completa)",
+                }.get(draft.waiting, "esperando confirmación")
         return f"{kind}; {items or '(sin productos)'}; dirección: {draft.address or '(falta)'}; {wait}"
 
     def _resolve(self, draft: Draft, products: dict[str, Product]) -> tuple[list[tuple[Product, int]], list[str]]:
@@ -150,9 +162,102 @@ class CheckoutMixin:
                 pairs.append((p, int(qty)))
         return pairs, unknown
 
+    @staticmethod
+    def _merge(items: list[ParsedItem]) -> list[list]:
+        """[[sku, cantidad]] sumando si el mismo producto aparece dos veces."""
+        out: dict[str, list] = {}
+        for it in items:
+            if it.product and it.qty:
+                key = it.product.sku.upper()
+                if key in out:
+                    out[key][1] += it.qty
+                else:
+                    out[key] = [it.product.sku, it.qty]
+        return list(out.values())
+
+    def _products_for(self, draft: Draft) -> dict[str, Product]:
+        """Catálogo actual. Si se modifica un pedido ya confirmado, lo que ese pedido
+        tiene reservado cuenta como disponible (se le devuelve al modificarlo)."""
+        products = {p.sku.upper(): p for p in self.repo.list_products()}
+        if draft.modifies:
+            order = self.repo.get_order(draft.modifies)
+            if order is not None and order.status == ESTADO_CONFIRMADO:
+                held: dict[str, int] = {}
+                for l in order.lines:
+                    held[l.sku.upper()] = held.get(l.sku.upper(), 0) + l.qty
+                products = {k: replace(p, stock=p.stock + held.get(k, 0)) for k, p in products.items()}
+        return products
+
+    def _shortages(self, pairs: list[tuple[Product, int]]) -> list[tuple[Product, int, int]]:
+        """[(producto, pedido, disponible)] de lo que no alcanza."""
+        if not self.s.rules.require_stock:
+            return []
+        return [(p, q, max(int(p.stock), 0)) for p, q in pairs if q > p.stock]
+
+    def _next_step(self, user, draft: Draft, intro: str = "", note: str = "") -> list:
+        """Decide qué sigue con el borrador: avisar falta de stock, pedir dirección o resumen."""
+        pairs, _ = self._resolve(draft, self._products_for(draft))
+        short = self._shortages(pairs)
+        if short:
+            return self._stock_message(user, draft, pairs, short, intro, note)
+        if not draft.address:
+            draft.waiting = WAIT_ADDRESS
+            self._save_draft(user, draft)
+            pre = "".join(f"{x}\n\n" for x in (esc(intro) if intro else "", note) if x)
+            return [Outgoing(user.id, pre + ASK_ADDRESS)]
+        draft.waiting = WAIT_CONFIRM
+        self._save_draft(user, draft)
+        return self._summary(user, draft, intro, note)
+
+    def _stock_message(self, user, draft: Draft, pairs, short, intro: str = "", note: str = "") -> list:
+        """Le cuenta al cliente qué no alcanza (con lo que queda) y ofrece ajustar."""
+        rows = ([esc(intro), ""] if intro else []) + ([note, ""] if note else [])
+        rows += ["⚠️ <b>No me alcanza el stock para tu pedido:</b>"]
+        for p, asked, avail in short:
+            rows.append(f"• {esc(p.name)}: pediste {asked}, " +
+                        ("no me queda." if avail == 0 else f"me quedan {avail}."))
+        missing = {p.sku for p, _, _ in short}
+        adjusted = [(p, q if p.sku not in missing else min(q, max(int(p.stock), 0))) for p, q in pairs]
+        adjusted = [(p, q) for p, q in adjusted if q > 0]
+        if not adjusted:
+            self._clear_draft(user)
+            rows += ["", "No me queda nada de lo que pediste 😕. Mirá /catalogo o pedime otra cosa."]
+            return [Outgoing(user.id, "\n".join(rows))]
+        draft.waiting = WAIT_STOCK
+        self._save_draft(user, draft)
+        rows += ["", "¿Querés que lo ajuste a lo que hay? Quedaría:"]
+        rows += [f"• {q} × {esc(p.name)}" for p, q in adjusted]
+        rows += ["", "Respondé «sí» para ajustarlo, o mandame la lista como la querés."]
+        t = draft.token
+        return [Outgoing(user.id, "\n".join(rows),
+                         [("🔧 Ajustar a lo que hay", f"aj:{t}"), ("❌ Cancelar", f"cx:{t}")])]
+
+    def adjust_to_stock(self, user, token: str | None = None) -> list:
+        """Baja cada cantidad a lo que hay en stock (y saca lo que no hay)."""
+        try:
+            draft = self._get_draft(user)
+            if draft is None or (token and token != draft.token):
+                return self._stale(user)
+            if draft.waiting != WAIT_STOCK:
+                return self._next_step(user, draft)
+            products = self._products_for(draft)
+            new_items = []
+            for sku, qty in draft.items or []:
+                p = products.get(str(sku).upper())
+                n = min(int(qty), max(int(p.stock), 0)) if p is not None else 0
+                if n > 0:
+                    new_items.append([p.sku, n])
+            if not new_items:
+                self._clear_draft(user)
+                return [Outgoing(user.id, "No me queda nada de lo que pediste 😕. Mirá /catalogo o pedime otra cosa.")]
+            draft.items = new_items
+            return self._next_step(user, draft, note="🔧 Listo, lo ajusté a lo que hay.")
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "ajustar el pedido")
+
     def _summary(self, user, draft: Draft, intro: str = "", note: str = "") -> list:
         """Resumen del borrador con precios y total de la base, y los botones."""
-        products = {p.sku.upper(): p for p in self.repo.list_products()}
+        products = self._products_for(draft)
         pairs, unknown = self._resolve(draft, products)
         ev = evaluate(pairs, self.s.rules, self.today(), unknown)
         today = self.today()
@@ -189,7 +294,7 @@ class CheckoutMixin:
         if problems:
             return [Outgoing(user.id, "No pude armar el pedido todavía:\n• " + "\n• ".join(problems)
                              + "\n\nMandámelo de nuevo corregido, completo. 🙏")]
-        pairs = [[it.product.sku, it.qty] for it in items if it.product and it.qty]
+        pairs = self._merge(items)
         unknown = [it.unknown_name for it in items if it.error == "no_existe"]  # solo modo "review"
         try:
             previous = self._get_draft(user)
@@ -200,12 +305,7 @@ class CheckoutMixin:
                 customer = self.repo.get_customer(*self._key(user))
                 draft.address = (previous.address if previous and previous.address
                                  else customer.address if customer else "")
-            if not draft.address:
-                draft.waiting = WAIT_ADDRESS
-                self._save_draft(user, draft)
-                return [Outgoing(user.id, (f"{esc(intro)}\n\n" if intro else "") + ASK_ADDRESS)]
-            self._save_draft(user, draft)
-            return self._summary(user, draft, intro)
+            return self._next_step(user, draft, intro)
         except StorageError as exc:
             return self._storage_failure(user, exc, "armar el pedido")
 
@@ -250,9 +350,8 @@ class CheckoutMixin:
             if draft.items is None:  # borrador viejo (solo texto): se interpreta ahora
                 self._clear_draft(user)
                 return self.start_order(user, draft.text, self._interpret(draft.text))
-            self._save_draft(user, draft)
             note = f"📍 Listo, este pedido va a <b>{esc(address)}</b>."
-            return self._summary(user, draft, note=note)
+            return self._next_step(user, draft, note=note)
         except StorageError as exc:
             return self._storage_failure(user, exc, "guardar la dirección")
 
@@ -286,6 +385,8 @@ class CheckoutMixin:
             return self._stale(user)
         if draft.waiting == WAIT_ADDRESS:
             return [Outgoing(user.id, ASK_ADDRESS)]
+        if draft.waiting == WAIT_STOCK:  # «sí» a «¿lo ajusto a lo que hay?»
+            return self.adjust_to_stock(user)
         if draft.modifies:
             return self._apply_modification(user, draft)
         return self._place_order(user, draft)
@@ -314,24 +415,32 @@ class CheckoutMixin:
             pairs, unknown = self._resolve(draft, products)
             if not pairs and not unknown:
                 return [Outgoing(user.id, NO_ORDER_MSG)]
-            ev = evaluate(pairs, self.s.rules, self.today(), unknown)
-            now = self.stamp()
-            order = Order(order_id=self._new_order_id(), created_at=now, customer_id=user.id,
-                          customer_name=user.name, original_text=draft.text, lines=ev.lines,
-                          status=ev.status, reason="; ".join(ev.reasons), updated_at=now,
-                          address=draft.address, shipping_cost=COSTO_ENVIO, channel=user.channel)
+            sold_out = bool(self._shortages(pairs))
+            if not sold_out:
+                ev = evaluate(pairs, self.s.rules, self.today(), unknown)
+                now = self.stamp()
+                order = Order(order_id=self._new_order_id(), created_at=now, customer_id=user.id,
+                              customer_name=user.name, original_text=draft.text, lines=ev.lines,
+                              status=ev.status, reason="; ".join(ev.reasons), updated_at=now,
+                              address=draft.address, shipping_cost=COSTO_ENVIO, channel=user.channel)
+                try:
+                    if order.status == ESTADO_CONFIRMADO:
+                        self._confirm_and_record(order)
+                    else:
+                        self.repo.add_order(order)
+                    self._clear_draft(user)
+                    customer = self.repo.get_customer(*self._key(user))
+                    if customer is not None and customer.name != user.name:
+                        customer.name = user.name
+                        self.repo.save_customer(customer, self.stamp())
+                except StorageError as exc:
+                    return self._storage_failure(user, exc, "registrar un pedido")
+
+        if sold_out:  # entre el resumen y la confirmación se vendió parte del stock
             try:
-                if order.status == ESTADO_CONFIRMADO:
-                    self._confirm_and_record(order)
-                else:
-                    self.repo.add_order(order)
-                self._clear_draft(user)
-                customer = self.repo.get_customer(*self._key(user))
-                if customer is not None and customer.name != user.name:
-                    customer.name = user.name
-                    self.repo.save_customer(customer, self.stamp())
+                return self._next_step(user, draft, note="Uy, justo se vendió parte del stock 😕")
             except StorageError as exc:
-                return self._storage_failure(user, exc, "registrar un pedido")
+                return self._storage_failure(user, exc, "armar el pedido")
 
         tail = f"\n\n✏️ Si necesitás cambiar algo, avisame en los próximos {self.s.rules.modify_minutes} minutos."
         if order.status == ESTADO_CONFIRMADO:
@@ -389,7 +498,7 @@ class CheckoutMixin:
             problems = self._clarifications(items)
             if problems:
                 return [Outgoing(user.id, "No pude armar el cambio:\n• " + "\n• ".join(problems))]
-            draft.items = [[it.product.sku, it.qty] for it in items if it.product and it.qty]
+            draft.items = self._merge(items)
             draft.unknown = [it.unknown_name for it in items if it.error == "no_existe"]
         if address:
             problem = self._address_problem(address)
@@ -398,15 +507,15 @@ class CheckoutMixin:
         try:
             if address:
                 draft.address = address
-            self._save_draft(user, draft)
-            return self._summary(user, draft, intro,
-                                 note="" if (items or address) else
-                                 "Decime qué querés cambiar (por ejemplo «que sean 3 cocas» o «sacá la fanta»), "
-                                 "o tocá 📍 para cambiar la dirección.")
+            return self._next_step(user, draft, intro,
+                                   note="" if (items or address) else
+                                   "Decime qué querés cambiar (por ejemplo «que sean 3 cocas» o «sacá la fanta»), "
+                                   "o tocá 📍 para cambiar la dirección.")
         except StorageError as exc:
             return self._storage_failure(user, exc, "modificar tu pedido")
 
     def _apply_modification(self, user, draft: Draft) -> list:
+        sold_out = False
         with self._lock:
             try:
                 order = self.repo.get_order(draft.modifies)
@@ -434,6 +543,9 @@ class CheckoutMixin:
                     if not pairs and not unknown:
                         return [Outgoing(user.id, "El pedido quedaría vacío. Si querés anularlo, "
                                                   "avisale al equipo o rechazá los cambios con ❌.")]
+                    if self._shortages(pairs):
+                        sold_out = True
+                        raise _SoldOut
                     ev = evaluate(pairs, self.s.rules, self.today(), unknown)
                     taken = {l.sku.upper(): l.qty for l in ev.lines} if ev.status == ESTADO_CONFIRMADO else {}
                     net = {k: returned.get(k, 0) - taken.get(k, 0) for k in set(returned) | set(taken)}
@@ -452,6 +564,13 @@ class CheckoutMixin:
                             self.repo.apply_stock_deltas({k: -v for k, v in deltas.items()}, self.stamp())
                         raise
                 self._clear_draft(user)
+            except _SoldOut:
+                pass
+            except StorageError as exc:
+                return self._storage_failure(user, exc, "modificar tu pedido")
+        if sold_out:
+            try:
+                return self._next_step(user, draft, note="Uy, justo se vendió parte del stock 😕")
             except StorageError as exc:
                 return self._storage_failure(user, exc, "modificar tu pedido")
 
@@ -584,6 +703,8 @@ class CheckoutMixin:
             msg = esc(reply.respuesta) if reply.respuesta else NO_ORDER_MSG
         if draft is not None and draft.waiting == WAIT_CONFIRM:
             msg += "\n\n🧾 Tu pedido sigue esperando confirmación: respondé «sí» o tocá ✅ en el resumen."
+        elif draft is not None and draft.waiting == WAIT_STOCK:
+            msg += "\n\n🧾 ¿Te ajusto el pedido a lo que hay? Respondé «sí», o mandame la lista como la querés."
         return [Outgoing(user.id, msg)]
 
     def _converse_rules(self, user, text: str, draft: Draft | None, catalog=None) -> list:
@@ -598,6 +719,9 @@ class CheckoutMixin:
         except StorageError as exc:
             return self._storage_failure(user, exc, "leer el catálogo para un pedido")
         if draft is not None and not items:
+            if draft.waiting == WAIT_STOCK:
+                return [Outgoing(user.id, "¿Te ajusto el pedido a lo que hay? Respondé «sí» para ajustarlo o "
+                                          "«no» para cancelarlo, o mandame la lista completa como la querés.")]
             return [Outgoing(user.id, "¿Confirmo tu pedido? Respondé «sí» para confirmarlo o «no» para "
                                       "cancelarlo, o mandame la lista completa como la querés.")]
         return self.start_order(user, text, items)

@@ -96,9 +96,9 @@ def test_si_gemini_escribe_precios_se_descarta_su_texto(repo, settings):
 
 
 def test_no_puede_dar_por_confirmado_un_pedido(repo, settings):
-    models = _FakeModels(pedido([("CER1", "10 birras", 10)], "¡Confirmado, ya sale!"))
-    txt = plain(_svc(repo, settings, models).handle_message(CLIENT, "10 birras")[0].text)
-    assert "ya sale" not in txt and "queda en revisión" in txt  # falta stock: decide el bot
+    models = _FakeModels(pedido([("FER1", "1 fernet", 1)], "¡Confirmado, ya sale!"))
+    txt = plain(_svc(repo, settings, models).handle_message(CLIENT, "1 fernet")[0].text)
+    assert "ya sale" not in txt and "queda en revisión" in txt  # precio vencido: decide el bot
     assert repo.list_orders() == []
 
 
@@ -190,7 +190,7 @@ def test_stock_se_relee_despues_de_interpretar(repo, settings):
     svc.handle_message(CLIENT, "2 coca")
     repo.set_stock("COC1", 1, "s")
     out = svc.handle_message(CLIENT, "si")
-    assert "en revisión" in plain(out[0].text) and repo.get_product("COC1").stock == 1
+    assert "pediste 2, me quedan 1" in plain(out[0].text) and repo.list_orders() == []
 
 
 def test_pedido_retenido_por_direccion_no_depende_del_contexto(repo, settings):
@@ -213,3 +213,15 @@ def test_respuesta_segura():
 
 def test_tests_nunca_usan_gemini_real(settings):
     assert settings.ai.usable is False
+
+
+def test_falta_de_stock_charla_con_gemini(repo, settings):
+    models = _FakeModels(pedido([("CER1", "10 birras", 10)], "¡Dale!"),
+                         intent("confirmar", "Dale, ajustalo"), intent("confirmar"))
+    svc = _svc(repo, settings, models)
+    out = svc.handle_message(CLIENT, "10 birras")
+    assert "pediste 10, me quedan 5" in plain(out[0].text)  # el número lo pone el bot
+    out = svc.handle_message(CLIENT, "bueno, mandame las que tengas")
+    assert "no alcanza el stock" in models.prompts[1]  # Gemini sabe en qué paso estamos
+    assert "5 × Cerveza Rubia 1L" in plain(out[0].text) and "Revisá tu pedido" in plain(out[0].text)
+    assert "¡Pedido confirmado!" in plain(svc.handle_message(CLIENT, "dale")[0].text)

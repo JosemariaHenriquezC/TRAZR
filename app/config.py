@@ -61,7 +61,9 @@ class Rules:
     Y además, opcionalmente:
       4. El total no supera MAX_ORDER_TOTAL (0 = sin límite).
 
-    Si falla 2, 3 o 4 → el pedido se registra "EN REVISIÓN" y se deriva al admin.
+    Si falla 3 (stock), el pedido NO se puede confirmar: el bot le dice al cliente cuánto
+    queda y le ofrece ajustarlo (checkout.py). Si falla 2 o 4 → se registra "EN REVISIÓN"
+    y se deriva al admin.
     Si falla 1 → depende de ON_UNKNOWN_PRODUCT:
         "ask"    (default) se le pide al cliente que corrija; no se registra.
         "review" se registra en revisión igual.

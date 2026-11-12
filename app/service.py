@@ -162,11 +162,12 @@ class BotService(CheckoutMixin):
 
     def handle_callback(self, user: User, data: str) -> list[Outgoing]:
         """Botones. Cliente: 'cf:<token>' confirmar, 'cd:' cambiar dirección, 'cx:' cancelar,
-        'dk:'/'dn:' dejar guardada la dirección de siempre / la nueva.
+        'aj:' ajustar a lo que hay en stock, 'dk:'/'dn:' dejar guardada la dirección de siempre / la nueva.
         Admin: 'ap:<ID>' aprobar, 'rj:<ID>' rechazar."""
         action, _, arg = data.partition(":")
         client = {"cf": (self.confirm_draft, "Confirmar"), "cd": (self.ask_new_address, "Cambiar dirección"),
                   "cx": (self.cancel_draft, "Cancelar"),
+                  "aj": (self.adjust_to_stock, "Ajustar a lo que hay"),
                   "dk": (lambda u, t: self.choose_address(u, True, t), "La de siempre"),
                   "dn": (lambda u, t: self.choose_address(u, False, t), "La nueva")}
         if action in client:

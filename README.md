@@ -22,17 +22,22 @@ TFI de Administración de Recursos — UTN-FRT, comisión 4K1.
 
 ## 2. Regla «dentro de los parámetros»
 
-Un pedido se **confirma automáticamente** solo si **todos** sus renglones cumplen:
+**Stock:** se verifica **antes** de armar el pedido. Si algo no alcanza, el cliente **no puede
+confirmarlo**: el bot le dice cuánto queda de cada producto («Cerveza Rubia 1L: pediste 10, me
+quedan 5») y le ofrece **🔧 Ajustar a lo que hay**, o mandar otra lista. Un producto sin stock
+no se puede pedir. Al confirmar se vuelve a mirar (otro cliente pudo llevárselo).
+
+Con stock suficiente, un pedido se **confirma automáticamente** si además:
 
 1. **Producto existente**: está en el catálogo y activo.
 2. **Precio vigente**: `precio` > 0 y `vigente_hasta` vacío o igual/posterior a hoy.
-3. **Stock suficiente**: `stock` ≥ cantidad pedida.
-4. *(Opcional)* el total no supera `MAX_ORDER_TOTAL`.
+3. *(Opcional)* el total no supera `MAX_ORDER_TOTAL`.
 
 | Situación | Qué pasa |
 |---|---|
 | Cumple todo | **CONFIRMADO**, se descuenta el stock, el cliente recibe el detalle. |
-| Falta stock, precio vencido o supera el total máximo | **EN REVISION**, no se toca el stock, el admin recibe el pedido con botones Aprobar / Rechazar. |
+| No alcanza el stock | No se puede confirmar: el bot dice cuánto queda y ofrece ajustar. No se registra nada. |
+| Precio vencido o supera el total máximo | **EN REVISION**, no se toca el stock, el admin recibe el pedido con botones Aprobar / Rechazar. |
 | Producto inexistente | Por defecto se le pide al cliente que corrija (no se registra). Con `ON_UNKNOWN_PRODUCT=review` se registra en revisión. |
 | Mensaje ambiguo, sin cantidad, cantidad inválida | Se pide aclaración. No se registra nada. |
 | El cliente no tiene dirección guardada | El pedido queda **retenido** y se le pide la dirección (ver §3). |
@@ -50,11 +55,12 @@ comando usar (`/sumar`, `/precio`) y no aprueba.
 **Nada se registra sin que el cliente lo confirme.** El flujo (`app/checkout.py`):
 
 1. El cliente escribe su pedido. El bot arma un **borrador**: no registra nada ni toca el stock.
+   Si no alcanza el stock, se lo dice con la cantidad que queda y le ofrece ajustar (ver §2).
 2. Si el cliente no tiene dirección guardada, se la pide. Ningún pedido se registra sin
    dirección (lo valida el bot **y** la base de datos).
 3. Le muestra un **resumen** con los precios vigentes, el total, el envío (incluido, sin
-   costo) y la dirección guardada. Si el pedido va a quedar en revisión (falta stock, precio
-   vencido), se lo avisa antes. Debajo, tres botones:
+   costo) y la dirección guardada. Si el pedido va a quedar en revisión (precio vencido o
+   total máximo), se lo avisa antes. Debajo, tres botones:
    **✅ Confirmar** · **📍 Cambiar dirección** · **❌ Cancelar**.
 4. Antes de confirmar puede cambiar lo que quiera: mandar la lista nueva («mejor 3 cocas y
    una sprite»), otra dirección, o cancelar. Cada cambio genera un resumen nuevo (los botones
@@ -182,10 +188,10 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 | 1c | Cliente nuevo | ✅ Confirmar (o `sí`) | ✅ *¡Pedido confirmado!* COC1 50→48. |
 | 2 | Cliente | `2 coca` → 📍 Cambiar dirección → `Belgrano 300, Tafí Viejo` → `sí` | El resumen se actualiza con la dirección nueva y el pedido sale a esa dirección. Después: *¿Qué dirección dejo guardada para tus próximos pedidos?* [🏠 La de siempre] [📍 La nueva]. |
 | 2b | Cliente | `/modificar` → `3 coca, 1 sprite` → `sí` | ✏️ *¡Pedido modificado y confirmado!* Mismo ID, stock reajustado. El admin recibe el aviso. |
-| 3 | Cliente | `mandame 10 cervezas` → `sí` | El resumen avisa que va a quedar en revisión. Al confirmar: 🟡 en revisión; al admin le llega `Stock insuficiente: Cerveza Rubia 1L (pedido 10, disponible 5)` con botones. CER1 sigue en 5. |
-| 3b | Admin | `/sumar CER1 10` y ✅ Aprobar | Cliente: *¡Tu pedido fue confirmado!* Total $ 28.000,00. CER1 15→5. |
-| 4 | Cliente | `1 fernet` | En revisión por `Precio no vigente: Fernet 750ml`. Admin: `/precio FER1 13000` y `/aprobar ID`. |
-| 5 | Cliente | `2 vino` | En revisión (stock 0). Admin: `/rechazar ID Sin stock hasta el lunes` → al cliente le llega ❌ con el motivo. |
+| 3 | Cliente | `mandame 10 cervezas` | ⚠️ *No me alcanza el stock: Cerveza Rubia 1L: pediste 10, me quedan 5.* Botones 🔧 Ajustar / ❌ Cancelar, sin Confirmar. No se registra nada. |
+| 3b | Cliente | `sí` (o 🔧) y después `sí` | Ajusta a 5, muestra el resumen y confirma. CER1 5→0. |
+| 3c | Cliente | `2 vino` | *Vino Tinto Malbec 750ml: pediste 2, no me queda.* No se puede pedir. |
+| 4 | Cliente | `1 fernet` → `sí` | En revisión por `Precio no vigente: Fernet 750ml`. Admin: `/precio FER1 13000` y `/aprobar ID`. Si se rechaza: `/rechazar ID motivo` → al cliente le llega ❌ con el motivo. |
 | 6 | Cliente | `3 agua` | *¿cuál de estos? Agua Mineral con Gas 2L, Agua Mineral sin Gas 2L*. No se registra. |
 | 7 | Cliente | `2 whisky` | *«whisky»: no está en nuestro catálogo*. |
 | 8 | Cliente | `2,5 coca` / `-3 sprite` | *la cantidad debe ser un número entero entre 1 y 1000*. |
@@ -219,9 +225,11 @@ tests/            pruebas de punta a punta, dirección, base de datos e IA (sin 
 
 1. El catálogo es **solo de bebidas**.
 2. El envío está siempre incluido en el precio: no se cobra aparte.
-3. Un pedido en revisión **no reserva stock**; se descuenta recién al aprobar.
-4. Al aprobar se usa el precio vigente en ese momento.
-5. Cualquiera que escriba al bot puede pedir. Solo los IDs de `ADMIN_CHAT_IDS` gestionan.
-6. El bot corre como **un solo proceso**; un candado interno evita descontar dos veces el mismo stock.
-7. Los clientes se identifican por canal + ID, así el mismo número en Telegram y WhatsApp (fase 4) no se mezcla.
-8. Moneda: solo el símbolo es configurable (`CURRENCY_SYMBOL`); los importes se muestran con formato `1.234,50`.
+3. Un pedido en revisión **no reserva stock**; se descuenta recién al aprobar (y al aprobar
+   se vuelve a verificar).
+4. El bot le muestra al cliente la cantidad exacta que queda de un producto cuando no le alcanza.
+5. Al aprobar se usa el precio vigente en ese momento.
+6. Cualquiera que escriba al bot puede pedir. Solo los IDs de `ADMIN_CHAT_IDS` gestionan.
+7. El bot corre como **un solo proceso**; un candado interno evita descontar dos veces el mismo stock.
+8. Los clientes se identifican por canal + ID, así el mismo número en Telegram y WhatsApp (fase 5) no se mezcla.
+9. Moneda: solo el símbolo es configurable (`CURRENCY_SYMBOL`); los importes se muestran con formato `1.234,50`.
