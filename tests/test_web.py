@@ -237,3 +237,12 @@ def test_cobros_desde_el_tablero_y_cancelar_impago(admin, svc, repo, tg):
     assert "cancelado: volvió el stock" in r.text
     assert repo.get_order(o1.order_id).status == "CANCELADO" and repo.get_product("COC1").stock == 50
     assert "No recibimos el pago" in tg.sent[-1].text
+
+
+def test_politica_de_privacidad_es_publica(settings, svc):
+    from fastapi.testclient import TestClient
+    from app.notifier import Notifier
+    from app.web.main import create_app
+    r = TestClient(create_app(svc, Notifier(), settings)).get("/privacidad", follow_redirects=False)
+    assert r.status_code == 200
+    assert "Política de privacidad" in r.text and 'id="borrar"' in r.text and "25.326" in r.text

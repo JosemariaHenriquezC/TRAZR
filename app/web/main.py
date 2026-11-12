@@ -6,8 +6,8 @@ Solo traduce entre formularios HTML y las acciones de admin de BotService
 para el cliente (aprobar, rechazar), el Notifier los manda por su canal.
 
 Seguridad: sesión en cookie firmada (SECRET_KEY), httponly y samesite=lax; token
-CSRF en cada formulario; contraseñas con hash (auth.py); todo salvo /ingresar
-pide sesión de un admin activo.
+CSRF en cada formulario; contraseñas con hash (auth.py); todo salvo /ingresar, /privacidad
+y /salud pide sesión de un admin activo (el webhook de WhatsApp exige la firma de Meta).
 """
 from __future__ import annotations
 
@@ -348,6 +348,15 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
         cuando cambia (entra un pedido, cambia el stock, llega un aviso)."""
         current_admin(request)
         return Response(svc.version(), media_type="text/plain", headers={"Cache-Control": "no-store"})
+
+    @app.get("/privacidad", response_class=HTMLResponse)
+    def privacy(request: Request):
+        """Política de privacidad: pública (Meta la pide para publicar la app de WhatsApp).
+        Las instrucciones para borrar datos están en /privacidad#borrar."""
+        b = settings.business
+        return templates.TemplateResponse(request, "privacidad.html", {
+            "shop": b.name or "Trazr", "contact": b.contact, "zone": b.delivery_zone,
+            "updated": "12 de noviembre de 2026"})
 
     @app.get("/salud")
     def health() -> Response:

@@ -240,13 +240,29 @@ confirmado) les llegan por WhatsApp.
    Invoke-RestMethod -Method Post -Uri "https://graph.facebook.com/v25.0/<WABA_ID>/subscribed_apps" -Headers @{ Authorization = "Bearer $token" }
    ```
 
+**Avisos después de 24 h (plantillas).** WhatsApp solo deja escribirle libremente a un cliente
+hasta 24 h después de su último mensaje. Para los avisos de la web (pedido aprobado o rechazado,
+pago recibido, pedido cancelado) el bot tiene plantillas de respaldo: si el cliente escribió hace
+poco va el mensaje normal; si no, o si Meta lo rechaza, va la plantilla. Se crean una sola vez
+(hace falta `WHATSAPP_WABA_ID` en el `.env`):
+
+```bash
+python -m scripts.plantillas_whatsapp --ver      # el texto de cada una
+python -m scripts.plantillas_whatsapp --crear    # las manda a Meta para aprobar
+python -m scripts.plantillas_whatsapp --estado   # aprobadas / pendientes / rechazadas
+```
+
+Son de categoría «utilidad»: Meta solo las cobra cuando salen fuera de la ventana de 24 h.
+
+**Política de privacidad.** Meta la pide para publicar la app: está en `/privacidad` (pública,
+sin login), con las instrucciones para borrar datos en `/privacidad#borrar`. El contacto que
+muestra sale de `NEGOCIO_CONTACTO`.
+
 Cómo funciona: Meta avisa cada mensaje con un POST firmado; el bot comprueba la firma (clave
 secreta de la app), contesta enseguida y procesa el mensaje aparte. Si Meta repite un aviso, se
 contesta una sola vez. Los botones pasan a botones de respuesta de WhatsApp (hasta 3).
 Limitaciones: con el número de prueba solo se puede escribir a 5 números cargados en Meta; el
-token temporal vence a las 24 h; y pasadas 24 h desde el último mensaje del cliente, WhatsApp
-solo permite escribirle con plantillas aprobadas (los avisos de la web que caigan fuera de esa
-ventana quedan en el registro como no enviados).
+token temporal vence a las 24 h.
 
 ### La web de administración
 
@@ -327,6 +343,7 @@ app/
 scripts/
   init_db.py      crea la base y carga el catálogo (ejemplo o CSV)
   crear_admin.py  crea o actualiza un usuario de la web de administración
+  plantillas_whatsapp.py  crea en Meta las plantillas de los avisos fuera de las 24 h
   simulate.py     chat por consola sin Telegram
   probar_ia.py    prueba el intérprete contra Gemini real
 tests/            pruebas de punta a punta, dirección, base de datos e IA (sin APIs reales)

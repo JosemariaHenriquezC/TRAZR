@@ -12,6 +12,11 @@ pedidos no vive acá.
 - Las respuestas salen por la Graph API (POST /<phone_number_id>/messages).
 - Los botones del bot pasan a «botones de respuesta» (hasta 3, títulos de 20 caracteres).
 - Meta a veces manda el mismo aviso dos veces: se procesa una sola vez (por id).
+- Fuera de las 24 h desde el último mensaje del cliente, WhatsApp solo deja escribirle con
+  plantillas aprobadas. Los avisos de la web traen su plantilla de respaldo (Outgoing.template):
+  si el cliente escribió hace poco va el mensaje normal; si no (o si Meta lo rechaza por estar
+  fuera de la ventana), va la plantilla. Las plantillas se crean con
+  `python -m scripts.plantillas_whatsapp --crear`.
 
 Los clientes se identifican con su número (wa_id) en el canal "whatsapp".
 """
@@ -26,6 +31,7 @@ import logging
 import re
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 import httpx
@@ -49,6 +55,28 @@ MAX_TEXT = 4096
 # Errores de la Graph API
 ERR_NOT_ALLOWED = 131030   # número de prueba: el destinatario no está en la lista de permitidos
 ERR_OUT_OF_WINDOW = 131047 # pasaron más de 24 h desde el último mensaje del cliente: hace falta plantilla
+
+ERR_TEMPLATE_MISSING = 132001  # la plantilla no existe (o no está aprobada) en ese idioma
+WINDOW = timedelta(hours=23, minutes=30)   # margen antes de las 24 h de la ventana de atención
+
+# Plantillas de respaldo (categoría «utilidad»): clave que usa el bot → nombre en Meta y texto.
+# {shop} se reemplaza al crearlas; {{1}}, {{2}} los completa el bot al mandarlas.
+PLANTILLAS = {
+    "pedido_aprobado": ("trazr_pedido_aprobado",
+                        "Hola, tu pedido {{1}} en {shop} fue aprobado. Total: {{2}}. Queda pendiente de pago; "
+                        "respondé este mensaje si tenés alguna duda.", ["P261112-AB12", "$ 25.400,00"]),
+    "pedido_no_confirmado": ("trazr_pedido_no_confirmado",
+                             "Hola, tu pedido {{1}} en {shop} no pudo confirmarse. Motivo: {{2}}. "
+                             "Respondé este mensaje si querés hacer un pedido nuevo.",
+                             ["P261112-AB12", "no tenemos stock suficiente"]),
+    "pago_recibido": ("trazr_pago_recibido",
+                      "Hola, recibimos el pago de tu pedido {{1}} en {shop} por {{2}}. ¡Gracias por tu compra!",
+                      ["P261112-AB12", "$ 25.400,00"]),
+    "pedido_cancelado": ("trazr_pedido_cancelado",
+                         "Hola, cancelamos tu pedido {{1}} en {shop}. Motivo: {{2}}. Si todavía lo querés, "
+                         "respondé este mensaje y lo armamos de nuevo.",
+                         ["P261112-AB12", "no recibimos la transferencia en 24 h"]),
+}
 
 OTHER_TYPES_MSG = "Por ahora solo entiendo mensajes de texto. Escribí tu pedido, por ejemplo: 2 coca, 3 agua sin gas."
 
@@ -176,6 +204,18 @@ def parse_webhook(payload: dict) -> list[Incoming]:
     return found
 
 
+def parse_failures(payload: dict) -> list[tuple[str, int | None]]:
+    """Mensajes que Meta no pudo entregar: [(id, código de error)]."""
+    out = []
+    for entry in payload.get("entry") or []:
+        for change in entry.get("changes") or []:
+            for st in (change.get("value") or {}).get("statuses") or []:
+                if st.get("status") == "failed":
+                    errors = st.get("errors") or [{}]
+                    out.append((str(st.get("id") or ""), errors[0].get("code")))
+    return out
+
+
 class _Seen:
     """Ids de mensajes ya procesados (los últimos N), para no contestar dos veces."""
 
@@ -209,6 +249,9 @@ class WhatsAppClient:
         # Argentina: Meta avisa con 549…, pero un número cargado como 54… en la lista de
         # prueba solo recibe sin el 9. Se recuerda qué forma funcionó para cada cliente.
         self._route: dict[str, str] = {}
+        # Último mensaje de cada cliente (en memoria) y avisos con plantilla de respaldo por id.
+        self._last_in: dict[str, datetime] = {}
+        self._pending: OrderedDict[str, tuple[str, tuple[str, list[str]]]] = OrderedDict()
 
     async def _http_post(self, payload: dict) -> dict:
         if self._http is None:
@@ -228,13 +271,68 @@ class WhatsAppClient:
             await self._http.aclose()
             self._http = None
 
+    # ---- ventana de 24 h
+    def saw_customer(self, wa_id: str) -> None:
+        """El cliente escribió: se abre (o renueva) su ventana de 24 h."""
+        self._last_in[str(wa_id)] = datetime.now(timezone.utc)
+
+    def in_window(self, wa_id: str) -> bool:
+        last = self._last_in.get(str(wa_id))
+        return last is not None and datetime.now(timezone.utc) - last < WINDOW
+
     async def send(self, m: Outgoing) -> None:
         """Función de envío para el Notifier (respuestas del bot y avisos de la web)."""
         wa_id = str(m.chat_id)
+        if m.template and not self.in_window(wa_id):
+            # No sabemos de un mensaje reciente del cliente (o pasó el plazo): va la plantilla.
+            # Si la ventana estaba abierta igual, Meta no cobra las plantillas de utilidad.
+            await self._send_template(wa_id, m.template)
+            return
         for payload in build_payloads(m):
-            await self._send_one(wa_id, payload)
+            data = await self._send_one(wa_id, payload)
+            error = data.get("error") or {}
+            if error.get("code") == ERR_OUT_OF_WINDOW and m.template:
+                await self._send_template(wa_id, m.template)
+                return
+            if error:
+                return
+            if m.template:   # Meta puede rechazarlo después (estado «failed»): se recuerda para reintentar
+                for msg in data.get("messages") or []:
+                    self._pending[msg.get("id", "")] = (wa_id, m.template)
+                    while len(self._pending) > 500:
+                        self._pending.popitem(last=False)
 
-    async def _send_one(self, wa_id: str, payload: dict) -> None:
+    async def message_failed(self, message_id: str, code: int | None) -> None:
+        """Meta avisó que un mensaje no se entregó. Si fue por la ventana de 24 h y era un aviso
+        con plantilla de respaldo, se manda la plantilla."""
+        pending = self._pending.pop(message_id, None)
+        if pending and code == ERR_OUT_OF_WINDOW:
+            wa_id, template = pending
+            self._last_in.pop(wa_id, None)
+            await self._send_template(wa_id, template)
+
+    def template_payload(self, template: tuple[str, list[str]]) -> dict | None:
+        key, params = template
+        if key not in PLANTILLAS:
+            return None
+        name = PLANTILLAS[key][0]
+        # WhatsApp no admite saltos de línea ni tabulaciones en los valores de una plantilla.
+        clean = [re.sub(r"\s+", " ", str(p)).strip()[:300] or "-" for p in params]
+        return {"messaging_product": "whatsapp", "recipient_type": "individual", "type": "template",
+                "template": {"name": name, "language": {"code": self.cfg.template_lang},
+                             "components": [{"type": "body", "parameters": [{"type": "text", "text": p}
+                                                                             for p in clean]}]}}
+
+    async def _send_template(self, wa_id: str, template: tuple[str, list[str]]) -> None:
+        payload = self.template_payload(template)
+        if payload is None:
+            log.error("WhatsApp: no hay plantilla para «%s»; no se avisó a %s.", template[0], wa_id)
+            return
+        data = await self._send_one(wa_id, payload)
+        if not data.get("error"):
+            log.info("WhatsApp: aviso a %s enviado con la plantilla %s.", wa_id, payload["template"]["name"])
+
+    async def _send_one(self, wa_id: str, payload: dict) -> dict:
         to = self._route.get(wa_id, wa_id)
         data = await self._post({**payload, "to": to})
         error = data.get("error")
@@ -245,11 +343,13 @@ class WhatsAppClient:
             if not error:
                 self._route[wa_id] = alt
         if not error:
-            return
+            return data
         code = error.get("code")
         if code == ERR_OUT_OF_WINDOW:
-            log.warning("No se pudo avisar a %s por WhatsApp: pasaron más de 24 h desde su último mensaje "
-                        "(hace falta una plantilla aprobada por Meta).", wa_id)
+            log.warning("WhatsApp: %s no escribió en las últimas 24 h; se intenta con la plantilla.", wa_id)
+        elif code == ERR_TEMPLATE_MISSING:
+            log.error("WhatsApp: la plantilla %s no existe o no está aprobada. Creala con "
+                      "python -m scripts.plantillas_whatsapp --crear", payload.get("template", {}).get("name"))
         elif code == ERR_NOT_ALLOWED:
             log.warning("WhatsApp: %s no está en la lista de números permitidos del número de prueba.", wa_id)
         elif code == 190:
@@ -257,6 +357,7 @@ class WhatsAppClient:
                       "y actualizá WHATSAPP_TOKEN en el .env.")
         else:
             log.error("WhatsApp: no se pudo enviar a %s: %s (código %s)", wa_id, error.get("message"), code)
+        return data
 
 
 # ------------------------------------------------------------------ webhook
@@ -284,8 +385,11 @@ def build_router(svc: BotService, cfg: WhatsAppConfig, client: WhatsAppClient) -
         except ValueError:
             return Response(status_code=400)
         for item in parse_webhook(payload):
+            client.saw_customer(item.wa_id)
             if seen.add(item.message_id):
                 background.add_task(handle, item)
+        for message_id, code in parse_failures(payload):
+            background.add_task(client.message_failed, message_id, code)
         return Response(status_code=200)
 
     async def handle(item: Incoming) -> None:

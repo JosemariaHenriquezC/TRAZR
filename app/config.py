@@ -121,6 +121,7 @@ class Business:
     open_hour: int = 9           # horario de atención (para el tablero «el día en reparto»)
     close_hour: int = 20
     cutoff_hour: int = 13        # lo confirmado antes de esta hora sale en el día
+    contact: str = ""            # mail o teléfono de contacto (página de privacidad)
 
     def as_text(self) -> str:
         rows = [("Nombre", self.name), ("Días y horarios de entrega", self.delivery_hours),
@@ -138,6 +139,8 @@ class WhatsAppConfig:
     app_secret: str = ""        # clave secreta de la app: firma los avisos de Meta
     verify_token: str = ""      # palabra que inventás vos y repetís en el panel de Meta
     api_version: str = "v25.0"
+    waba_id: str = ""           # «Identificador de la cuenta de mensajes»: solo para crear plantillas
+    template_lang: str = "es_AR"  # idioma de las plantillas aprobadas por Meta
 
     @property
     def enabled(self) -> bool:
@@ -214,6 +217,8 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             app_secret=os.getenv("WHATSAPP_APP_SECRET", "").strip(),
             verify_token=os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip(),
             api_version=os.getenv("WHATSAPP_API_VERSION", "v25.0").strip() or "v25.0",
+            waba_id=os.getenv("WHATSAPP_WABA_ID", "").strip(),
+            template_lang=os.getenv("WHATSAPP_PLANTILLAS_IDIOMA", "es_AR").strip() or "es_AR",
         ),
         business=Business(
             name=os.getenv("NEGOCIO_NOMBRE", TRAZR["NEGOCIO_NOMBRE"]).strip(),
@@ -227,6 +232,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             open_hour=_int("NEGOCIO_HORA_APERTURA", 9),
             close_hour=_int("NEGOCIO_HORA_CIERRE", 20),
             cutoff_hour=_int("NEGOCIO_HORA_CORTE", 13),
+            contact=os.getenv("NEGOCIO_CONTACTO", "").strip(),
         ),
     )
 

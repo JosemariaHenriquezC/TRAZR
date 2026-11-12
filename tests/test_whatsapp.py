@@ -199,3 +199,109 @@ def test_argentina_reintenta_sin_el_9_y_lo_recuerda():
     assert [p["to"] for p in graph.sent] == [WA, "543815551234"]
     asyncio.run(client.send(Outgoing(int(WA), "otra vez")))
     assert graph.sent[-1]["to"] == "543815551234" and len(graph.sent) == 3
+
+
+# ------------------------------------------------------------------ plantillas (ventana de 24 h)
+class FakeGraphWindow(FakeGraph):
+    """Rechaza los mensajes libres como si el cliente no hubiera escrito en 24 h."""
+
+    def __init__(self, sync_error=True):
+        super().__init__()
+        self.sync_error = sync_error
+
+    async def post(self, payload):
+        self.sent.append(payload)
+        if payload["type"] != "template" and self.sync_error:
+            return {"error": {"code": 131047, "message": "Re-engagement message"}}
+        return {"messages": [{"id": f"wamid.{len(self.sent)}"}]}
+
+
+def _aviso(**kw):
+    return Outgoing(int(WA), "✅ <b>¡Tu pedido fue aprobado!</b>", channel="whatsapp",
+                    template=("pedido_aprobado", ["P1-AB", "$ 1.000,00"]), **kw)
+
+
+def test_aviso_sin_mensaje_reciente_va_con_plantilla():
+    import asyncio
+    graph = FakeGraphWindow()
+    client = WhatsAppClient(CFG, post=graph.post)
+    asyncio.run(client.send(_aviso()))
+    [p] = graph.sent
+    assert p["type"] == "template" and p["template"]["name"] == "trazr_pedido_aprobado"
+    assert p["template"]["language"]["code"] == "es_AR"
+    assert [x["text"] for x in p["template"]["components"][0]["parameters"]] == ["P1-AB", "$ 1.000,00"]
+
+
+def test_aviso_con_mensaje_reciente_va_normal_y_si_meta_lo_rechaza_va_la_plantilla():
+    import asyncio
+    graph = FakeGraphWindow()
+    client = WhatsAppClient(CFG, post=graph.post)
+    client.saw_customer(WA)
+    asyncio.run(client.send(_aviso()))
+    assert [p["type"] for p in graph.sent] == ["text", "template"]
+
+
+def test_rechazo_tardio_de_meta_reintenta_con_plantilla(wa):
+    """Meta puede aceptar el mensaje y avisar después (estado «failed») que estaba fuera de la ventana."""
+    import asyncio
+    graph = FakeGraphWindow(sync_error=False)
+    client = WhatsAppClient(CFG, post=graph.post)
+    client.saw_customer(WA)
+    asyncio.run(client.send(_aviso()))
+    assert [p["type"] for p in graph.sent] == ["text"]
+    asyncio.run(client.message_failed("wamid.1", 131047))
+    assert [p["type"] for p in graph.sent] == ["text", "template"]
+    asyncio.run(client.message_failed("wamid.1", 131047))   # no se manda dos veces
+    assert len(graph.sent) == 2
+
+
+def test_webhook_de_estado_fallido_dispara_la_plantilla(svc, settings):
+    graph = FakeGraphWindow(sync_error=False)
+    client = WhatsAppClient(CFG, post=graph.post)
+    app = create_app(svc, Notifier(), settings)
+    app.include_router(build_router(svc, CFG, client))
+    import asyncio
+    client.saw_customer(WA)
+    asyncio.run(client.send(_aviso()))
+    status = {"entry": [{"changes": [{"value": {"statuses": [
+        {"id": "wamid.1", "status": "failed", "recipient_id": WA, "errors": [{"code": 131047}]}]}}]}]}
+    post(TestClient(app), status)
+    assert graph.sent[-1]["type"] == "template"
+
+
+def test_los_valores_de_la_plantilla_no_llevan_saltos_de_linea():
+    client = WhatsAppClient(CFG, post=FakeGraph().post)
+    p = client.template_payload(("pedido_cancelado", ["P1", "sin\nstock\t  de coca"]))
+    assert p["template"]["components"][0]["parameters"][1]["text"] == "sin stock de coca"
+
+
+def test_respuestas_del_bot_no_usan_plantilla():
+    import asyncio
+    graph = FakeGraphWindow()
+    client = WhatsAppClient(CFG, post=graph.post)
+    asyncio.run(client.send(Outgoing(int(WA), "hola", channel="whatsapp")))
+    assert [p["type"] for p in graph.sent] == ["text"]
+
+
+def test_los_avisos_de_la_web_traen_su_plantilla(svc, repo):
+    from .conftest import pedir
+    from app.service import User
+    nuevo = User(int(WA), "Distribuidora Norte", "whatsapp")
+    svc.handle_message(nuevo, "2 coca")
+    pedir(svc, nuevo, "Av. Sarmiento 450, Yerba Buena")
+    [order] = repo.list_orders()
+    r = svc.confirm_payment(order.order_id, ADMIN)
+    assert r.notify[0].template == ("pago_recibido", [order.order_id, svc.money(order.total)])
+
+
+def test_definiciones_de_plantillas_para_meta():
+    from scripts.plantillas_whatsapp import definitions
+    from app.whatsapp import PLANTILLAS
+    defs = definitions("Trazr", "es_AR")
+    assert len(defs) == len(PLANTILLAS) == 4
+    for d in defs:
+        body = d["components"][0]
+        assert d["category"] == "UTILITY" and d["name"].startswith("trazr_")
+        assert "{shop}" not in body["text"] and "Trazr" in body["text"]
+        assert body["text"].count("{{") == len(body["example"]["body_text"][0])
+        assert not body["text"].startswith("{{") and not body["text"].rstrip(".!").endswith("}}")

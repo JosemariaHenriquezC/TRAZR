@@ -86,8 +86,13 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
    «messages») + suscripción de la app a la WABA (POST /<WABA_ID>/subscribed_apps). HECHO:
    el bot contesta por WhatsApp. Flujo completo probado por el usuario (pedido → aprobar en la
    web → aviso → pago recibido → aviso): FUNCIONA.
-4. Pendiente: plantillas aprobadas para avisos fuera de la ventana de 24 h (error 131047:
-   pedido aprobado, pago confirmado, transferencia vencida).
+4. Plantillas para avisos fuera de la ventana de 24 h — PROGRAMADO: `Outgoing.template`
+   (clave + valores) en approve/reject/confirm_payment/cancel_unpaid; `PLANTILLAS` en whatsapp.py
+   (utilidad, es_AR). Si no hubo mensaje del cliente en 23,5 h (memoria) → plantilla directa;
+   si no, mensaje normal y, ante 131047 (en la respuesta o en un estado «failed» del webhook),
+   plantilla. Se crean con `python -m scripts.plantillas_whatsapp --crear` (WHATSAPP_WABA_ID).
+   Falta: que el usuario las cree y Meta las apruebe.
+   Política de privacidad pública en /privacidad (#borrar = instrucciones de borrado); NEGOCIO_CONTACTO.
 5. Pendiente (producción): token permanente (usuario del sistema), número propio,
    verificación del negocio, servidor con HTTPS.
 

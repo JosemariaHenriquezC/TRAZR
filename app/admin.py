@@ -108,7 +108,8 @@ class AdminMixin:
                 return AdminResult(False, f"No pude acceder a la base de datos: {exc}")
         msg = Outgoing(order.customer_id,
                        self.format_order(order, "✅ <b>¡Tu pedido fue aprobado!</b> Queda pendiente de pago.")
-                       + self._payment_text(order), channel=order.channel)
+                       + self._payment_text(order), channel=order.channel,
+                       template=("pedido_aprobado", [order.order_id, self.money(order.total)]))
         return AdminResult(True, f"Pedido {order.order_id} aprobado: se descontó el stock y se avisó al cliente.",
                            order, notify=[msg])
 
@@ -132,7 +133,7 @@ class AdminMixin:
         msg = Outgoing(order.customer_id,
                        f"❌ Tu pedido <code>{esc(order.order_id)}</code> no pudo confirmarse.\n"
                        f"<b>Motivo:</b> {esc(reason)}\n\nSi querés, mandá un pedido nuevo o consultá /catalogo.",
-                       channel=order.channel)
+                       channel=order.channel, template=("pedido_no_confirmado", [order.order_id, reason]))
         return AdminResult(True, f"Pedido {order.order_id} rechazado: le avisamos al cliente el motivo.",
                            order, notify=[msg])
 
@@ -157,7 +158,7 @@ class AdminMixin:
         msg = Outgoing(order.customer_id,
                        f"💰 <b>¡Recibimos tu pago!</b>\nTu pedido <code>{esc(order.order_id)}</code> "
                        f"({self.money(order.total)}, {esc(order.payment_label.lower())}) quedó pagado. ¡Gracias!",
-                       channel=order.channel)
+                       channel=order.channel, template=("pago_recibido", [order.order_id, self.money(order.total)]))
         return AdminResult(True, f"Pago del pedido {order.order_id} registrado: le avisamos al cliente.",
                            order, notify=[msg])
 
@@ -184,7 +185,8 @@ class AdminMixin:
                 return AdminResult(False, f"No pude acceder a la base de datos: {exc}")
         msg = Outgoing(order.customer_id,
                        f"❌ Cancelamos tu pedido <code>{esc(order.order_id)}</code>.\n<b>Motivo:</b> {esc(reason)}"
-                       "\n\nSi todavía lo querés, mandame el pedido de nuevo 🙏", channel=order.channel)
+                       "\n\nSi todavía lo querés, mandame el pedido de nuevo 🙏", channel=order.channel,
+                       template=("pedido_cancelado", [order.order_id, reason]))
         return AdminResult(True, f"Pedido {order.order_id} cancelado: volvió el stock y le avisamos al cliente.",
                            order, notify=[msg])
 
