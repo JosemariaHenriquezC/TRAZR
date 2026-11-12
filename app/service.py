@@ -6,57 +6,39 @@ una lista de mensajes a enviar (`Outgoing`): la respuesta al que escribió y,
 si corresponde, avisos a los administradores o al cliente. Así la misma lógica
 se usa desde Telegram, desde el simulador de consola y desde los tests.
 
-Flujo de un pedido:
-  1. El cliente escribe su pedido en lenguaje natural → ai_parser.parse_order()
-     (Gemini interpreta; si falla o no hay clave, interpreta el parser por reglas)
-  2. Se lee el stock y precio vigentes en ese momento de la base de datos.
-  3. Dirección obligatoria: si el cliente todavía no tiene una guardada, el
-     pedido queda retenido (pedidos_pendientes) y se le pide la dirección.
-     Su respuesta se guarda y el pedido retenido se procesa en ese momento.
-     El envío está siempre incluido, sin costo.
-  4. Se evalúa la regla (rules.evaluate):
+Flujo de un pedido (detalle en checkout.py):
+  1. El cliente escribe en lenguaje natural. Gemini entiende el mensaje en el
+     contexto de la charla (si falla o no hay clave, interpreta el parser por reglas).
+  2. Se arma un BORRADOR: nada se registra ni se descuenta todavía.
+  3. Dirección obligatoria: si el cliente no tiene una guardada, se le pide.
+  4. Se le muestra un resumen (precios, total, dirección; envío incluido sin costo)
+     con botones Confirmar / Cambiar dirección / Cancelar.
+  5. Al confirmar se evalúa la regla (rules.evaluate) con el stock y precio de ese momento:
        - dentro de los parámetros  → CONFIRMADO + se descuenta stock
        - fuera (faltante, precio)   → EN REVISION + aviso al admin con botones
-  5. El cliente recibe la confirmación con el detalle completo
-     (o el aviso de que quedó en revisión; y luego el resultado de la revisión).
+  6. Durante un rato (MODIFICACION_MINUTOS) el cliente puede modificar el pedido.
 """
 from __future__ import annotations
 
-import html
-import json
 import logging
-import re
 import secrets
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import Settings
-from .models import (COSTO_ENVIO, ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION,
-                     Customer, Order, OrderLine, ParsedItem, Product)
-from . import parser as rules_parser
-from .ai_parser import conversar, items_a_parsed, parse_order
-from .rules import evaluate
+from .checkout import CheckoutMixin
+from .messages import Outgoing, esc, to_plain
+from .models import (ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION, Order, OrderLine,
+                     ParsedItem)
 from .storage.base import Repository, StorageError, to_date, to_number
 
 log = logging.getLogger(__name__)
 
-# Un pedido retenido esperando la dirección se descarta pasado este tiempo
-# (si el cliente vuelve días después, su mensaje es un pedido nuevo, no una dirección).
-PENDING_TTL = timedelta(hours=24)
 # Cuánta conversación previa ve Gemini.
 HISTORY_WINDOW = timedelta(hours=12)
 HISTORY_MESSAGES = 10
-MIN_ADDRESS_LEN = 8
-MAX_ADDRESS_LEN = 200
-
-
-@dataclass
-class Outgoing:
-    chat_id: int
-    text: str                                   # HTML de Telegram (<b>, <i>, <code>)
-    buttons: list[tuple[str, str]] = field(default_factory=list)  # (texto, callback_data)
 
 
 @dataclass
@@ -66,19 +48,8 @@ class User:
     channel: str = "telegram"   # canal por el que escribe (telegram, whatsapp...)
 
 
-def esc(value) -> str:
-    return html.escape(str(value), quote=False)
 
-
-def to_plain(text: str) -> str:
-    return html.unescape(re.sub(r"<[^>]+>", "", text))
-
-
-NO_ORDER_MSG = ("No encontré un pedido en tu mensaje 🤔. Escribí productos y cantidades, "
-                "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Mirá /catalogo.")
-
-
-class BotService:
+class BotService(CheckoutMixin):
     def __init__(self, repo: Repository, settings: Settings, ai_client=None):
         self.repo = repo
         self.s = settings
@@ -152,14 +123,14 @@ class BotService:
         if text.startswith("/"):
             return self._handle_command(user, text)
         try:
-            pending = self._pending_order(user)
+            draft = self._get_draft(user)
         except StorageError as exc:
             return self._storage_failure(user, exc, "leer un pedido pendiente")
-        if pending is not None:
-            # Hay un pedido retenido esperando la dirección: este mensaje es la dirección.
-            out = self.receive_address(user, text, pending)
+        if draft is not None and draft.waiting == "direccion":
+            # Le pedimos la dirección: este mensaje es la dirección.
+            out = self.receive_address(user, text, draft)
         else:
-            out = self.converse(user, text)
+            out = self.converse(user, text, draft)
         self._remember(user, text, out)
         return out
 
@@ -187,64 +158,20 @@ class BotService:
         return "\n".join(f"- {o.order_id} ({o.created_at}): {o.status}; "
                          + ", ".join(f"{l.qty} x {l.name}" for l in o.lines) for o in mine)
 
-    def converse(self, user: User, text: str) -> list[Outgoing]:
-        """Gemini entiende el mensaje en contexto y redacta; los datos los pone el bot."""
-        if self.ai_client is None and not self.s.ai.usable:
-            return self.process_order(user, text)
-        try:
-            catalog = [p for p in self.repo.list_products() if p.active]
-            history = self._history(user)
-            orders = self._orders_summary(user)
-        except StorageError as exc:
-            return self._storage_failure(user, exc, "leer el catálogo para un pedido")
-        reply = conversar(text, catalog, historial=history, pedidos=orders,
-                          negocio=self.s.business.as_text(), nombre_negocio=self.s.business.name,
-                          max_qty=self.s.rules.max_qty_per_item, config=self.s.ai, client=self.ai_client)
-        rules = self.s.rules
-        if reply is None:
-            # Gemini no respondió: se interpreta por reglas, sin volver a llamarlo.
-            items = rules_parser.parse_order(text, catalog, rules.match_threshold, rules.max_qty_per_item)
-            return self.process_order(user, text, items=items)
-
-        if reply.intencion == "pedido":
-            items = items_a_parsed(reply.items, catalog, rules.match_threshold, rules.max_qty_per_item)
-            if not items:
-                items = rules_parser.parse_order(text, catalog, rules.match_threshold, rules.max_qty_per_item)
-            return self.process_order(user, text, items=items, intro=reply.respuesta)
-
-        if reply.intencion == "consulta":
-            by_sku = {p.sku: p for p in catalog}
-            today = self.today()
-            facts = []
-            for sku in reply.consulta_skus:
-                p = by_sku[sku]
-                price = self.money(p.price) if p.price_is_valid(today) else "precio a confirmar"
-                avail = "✅ disponible" if p.stock > 0 else "❌ sin stock por ahora"
-                facts.append(f"• {esc(p.name)} — {price} {avail}")
-            if facts:
-                head = esc(reply.respuesta) if reply.respuesta else "Esto es lo que tengo:"
-                return [Outgoing(user.id, head + "\n\n" + "\n".join(facts)
-                                 + "\n\n🚚 Envío incluido, sin costo.")]
-            return [Outgoing(user.id, esc(reply.respuesta) if reply.respuesta else
-                             "Buena pregunta 🤔 Lo consulto con el equipo y te aviso.")]
-
-        if reply.intencion == "cambio_pedido":
-            out = [Outgoing(user.id, esc(reply.respuesta) if reply.respuesta else
-                            "Dale, le paso tu pedido al equipo para que lo ajuste y te avisamos 🙌")]
-            if self.s.admin_chat_ids:
-                last = orders.splitlines()[-1][2:] if orders else "(sin pedidos previos)"
-                out += self._admins(f"✏️ <b>{esc(user.name)}</b> (<code>{user.id}</code>) pide un cambio "
-                                    f"en su pedido:\n«{esc(text)}»\n\nÚltimo pedido: {esc(last)}")
-            return out
-
-        # charla: saludo, agradecimiento, pregunta para desambiguar, etc.
-        return [Outgoing(user.id, esc(reply.respuesta) if reply.respuesta else NO_ORDER_MSG)]
-
     def handle_callback(self, user: User, data: str) -> list[Outgoing]:
-        """Botones inline: 'ap:<ID>' aprobar, 'rj:<ID>' rechazar."""
+        """Botones. Cliente: 'cf:<token>' confirmar, 'cd:' cambiar dirección, 'cx:' cancelar.
+        Admin: 'ap:<ID>' aprobar, 'rj:<ID>' rechazar."""
+        action, _, arg = data.partition(":")
+        client = {"cf": (self.confirm_draft, "Confirmar"), "cd": (self.ask_new_address, "Cambiar dirección"),
+                  "cx": (self.cancel_draft, "Cancelar")}
+        if action in client:
+            fn, label = client[action]
+            out = fn(user, arg)
+            self._remember(user, f"(tocó el botón «{label}»)", out)
+            return out
         if not self.is_admin(user.id):
             return [Outgoing(user.id, "Solo el administrador puede usar estos botones.")]
-        action, _, order_id = data.partition(":")
+        order_id = arg
         if action == "ap":
             return self.approve(user, order_id)
         if action == "rj":
@@ -259,6 +186,7 @@ class BotService:
             "/start": self.cmd_start, "/ayuda": self.cmd_help, "/help": self.cmd_help,
             "/catalogo": self.cmd_catalog, "/mispedidos": self.cmd_my_orders, "/miid": self.cmd_my_id,
             "/direccion": self.cmd_address, "/cancelar": self.cmd_cancel,
+            "/confirmar": self.cmd_confirm, "/modificar": self.cmd_modify,
         }
         admin = {
             "/stock": self.cmd_stock, "/setstock": self.cmd_setstock, "/sumar": self.cmd_add_stock,
@@ -274,7 +202,8 @@ class BotService:
         return [Outgoing(user.id, "No conozco ese comando. Escribí /ayuda.")]
 
     def cmd_start(self, user, args):
-        msg = (f"¡Hola {esc(user.name)}! 👋\nSoy el bot de pedidos de bebidas. Escribime lo que necesitás, "
+        shop = f"de {esc(self.s.business.name)}" if self.s.business.name else "de bebidas"
+        msg = (f"¡Hola {esc(user.name)}! 👋\nSoy el asistente de pedidos {shop}. Escribime lo que necesitás, "
                "por ejemplo:\n<i>Quiero 2 coca, 3 agua sin gas y 1 fernet</i>\n\n"
                "🚚 El envío está siempre incluido, sin costo.\n\n"
                "/catalogo — bebidas y precios\n/direccion — ver o cambiar tu dirección de envío\n"
@@ -288,10 +217,13 @@ class BotService:
     def cmd_help(self, user, args):
         msg = ("<b>Cómo pedir</b>\nEscribí bebidas y cantidades separadas por coma o «y»:\n"
                "<i>2 coca, 3 agua sin gas y 1 fernet</i>  ·  <i>sprite x 4</i>  ·  <i>media docena de cervezas</i>\n\n"
-               "🚚 El envío está siempre incluido, sin costo. La primera vez te pido la dirección.\n\n"
+               "Te muestro un resumen con precios, total y dirección, y el pedido se hace "
+               "recién cuando lo confirmás.\n🚚 El envío está siempre incluido, sin costo.\n\n"
                "/catalogo — bebidas y precios\n"
+               "/confirmar — confirmar el pedido del resumen\n"
+               "/cancelar — descartar el pedido sin confirmar\n"
+               "/modificar — cambiar tu último pedido (productos o dirección)\n"
                "/direccion [nueva dirección] — ver o cambiar tu dirección de envío\n"
-               "/cancelar — descartar un pedido que espera tu dirección\n"
                "/mispedidos — tus últimos pedidos\n/miid — tu ID")
         if self.is_admin(user.id):
             msg += ("\n\n<b>Administrador</b>\n"
@@ -342,22 +274,22 @@ class BotService:
                         f"{self.money(o.total)} — {esc(o.status)}")
         return [Outgoing(user.id, "\n".join(rows))]
 
-    # ---- dirección de envío ----
+    # ---- dirección, confirmación y modificación (lógica en checkout.py) ----
     def cmd_address(self, user, args):
         new = " ".join(args).strip()
         try:
-            customer = self.repo.get_customer(user.channel, str(user.id))
+            draft = self._get_draft(user)
             if not new:
+                customer = self.repo.get_customer(user.channel, str(user.id))
                 if customer and customer.address:
                     return [Outgoing(user.id, f"📍 Tu dirección de envío es:\n<b>{esc(customer.address)}</b>\n\n"
                                               "Para cambiarla: /direccion nueva dirección")]
                 return [Outgoing(user.id, "Todavía no tenés dirección guardada.\n"
                                           "Cargala así: /direccion Av. Mate de Luna 1234, San Miguel de Tucumán")]
-            pending = self._pending_order(user)
         except StorageError as exc:
             return self._storage_failure(user, exc, "consultar la dirección")
-        if pending is not None:
-            return self.receive_address(user, new, pending)
+        if draft is not None:  # hay un pedido sin confirmar: la dirección nueva va para ese pedido
+            return self.receive_address(user, new, draft)
         problem = self._address_problem(new)
         if problem:
             return [Outgoing(user.id, problem)]
@@ -365,88 +297,17 @@ class BotService:
             self._save_address(user, new)
         except StorageError as exc:
             return self._storage_failure(user, exc, "guardar la dirección")
-        return [Outgoing(user.id, f"📍 Listo, tus próximos pedidos van a:\n<b>{esc(new)}</b>")]
+        return [Outgoing(user.id, f"📍 Listo, tus próximos pedidos van a:\n<b>{esc(new)}</b>\n"
+                                  "(si querés cambiar la de un pedido ya hecho, usá /modificar)")]
 
     def cmd_cancel(self, user, args):
-        try:
-            pending = self._pending_order(user)
-            if pending is None:
-                return [Outgoing(user.id, "No tenés ningún pedido esperando dirección.")]
-            self.repo.clear_pending_order(user.channel, str(user.id))
-        except StorageError as exc:
-            return self._storage_failure(user, exc, "cancelar el pedido pendiente")
-        return [Outgoing(user.id, "Listo, descarté ese pedido. Cuando quieras, mandame uno nuevo.")]
+        return self.cancel_draft(user)
 
-    def _pending_order(self, user: User) -> str | None:
-        """Mensaje del pedido retenido esperando dirección (None si no hay o venció)."""
-        found = self.repo.get_pending_order(user.channel, str(user.id))
-        if found is None:
-            return None
-        text, created = found
-        try:
-            created_at = datetime.strptime(created, "%Y-%m-%d %H:%M:%S").replace(tzinfo=self.tz)
-        except ValueError:
-            created_at = None
-        if created_at is None or self.now() - created_at > PENDING_TTL:
-            self.repo.clear_pending_order(user.channel, str(user.id))
-            return None
-        return text
+    def cmd_confirm(self, user, args):
+        return self.confirm_draft(user)
 
-    @staticmethod
-    def _address_problem(address: str) -> str | None:
-        if "?" in address:  # es una pregunta, no una dirección
-            return ("Para terminar tu pedido primero necesito la dirección de envío: calle, número y "
-                    "localidad. Después te respondo lo que quieras 🙌\n(o /cancelar para descartar el pedido)")
-        if len(address) < MIN_ADDRESS_LEN or not any(ch.isalpha() for ch in address):
-            return ("Esa dirección parece incompleta 🤔. Mandame calle, número y localidad, por ejemplo:\n"
-                    "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n(o /cancelar para descartar el pedido)")
-        if len(address) > MAX_ADDRESS_LEN:
-            return f"La dirección es muy larga (máximo {MAX_ADDRESS_LEN} caracteres)."
-        return None
-
-    def _save_address(self, user: User, address: str) -> Customer:
-        return self.repo.save_customer(Customer(user.channel, str(user.id), user.name, address.strip()),
-                                       self.stamp())
-
-    def receive_address(self, user: User, address: str, pending_text: str) -> list[Outgoing]:
-        """El cliente respondió con su dirección: se guarda y se procesa el pedido retenido."""
-        address = address.strip()
-        problem = self._address_problem(address)
-        if problem:
-            return [Outgoing(user.id, problem)]
-        try:
-            self._save_address(user, address)
-            self.repo.clear_pending_order(user.channel, str(user.id))
-        except StorageError as exc:
-            return self._storage_failure(user, exc, "guardar la dirección")
-        out = [Outgoing(user.id, f"📍 Guardé tu dirección: <b>{esc(address)}</b>\n"
-                                 "(podés cambiarla cuando quieras con /direccion)")]
-        text, items = self._decode_pending(pending_text)
-        return out + self.process_order(user, text, items=items)
-
-    @staticmethod
-    def _encode_pending(text: str, pairs: list[tuple[Product, int]], unknown: list[str]) -> str:
-        """Se guarda lo YA interpretado: al volver, no depende de releer la conversación."""
-        return json.dumps({"texto": text, "items": [[p.sku, q] for p, q in pairs],
-                           "desconocidos": unknown}, ensure_ascii=False)
-
-    def _decode_pending(self, raw: str) -> tuple[str, list[ParsedItem] | None]:
-        try:
-            data = json.loads(raw)
-            text, pairs, unknown = data["texto"], data["items"], data.get("desconocidos", [])
-        except (ValueError, KeyError, TypeError):
-            return raw, None  # formato viejo: solo el texto, se vuelve a interpretar
-        try:
-            by_sku = {p.sku.upper(): p for p in self.repo.list_products() if p.active}
-        except StorageError:
-            return text, None
-        items = []
-        for sku, qty in pairs:
-            p = by_sku.get(str(sku).upper())
-            items.append(ParsedItem(raw=f"{qty} {p.name}", qty=int(qty), product=p) if p else
-                         ParsedItem(raw=str(sku), error="no_existe", unknown_name=str(sku)))
-        items += [ParsedItem(raw=n, error="no_existe", unknown_name=n) for n in unknown]
-        return text, items
+    def cmd_modify(self, user, args):
+        return self.start_modification(user)
 
     # ---- admin: stock ----
     def cmd_stock(self, user, args):
@@ -605,93 +466,6 @@ class BotService:
             elif it.error == "cantidad_invalida":
                 msgs.append(f"«{esc(it.raw)}»: la cantidad debe ser un número entero entre 1 y {max_q}.")
         return msgs
-
-    def process_order(self, user: User, text: str, items: list[ParsedItem] | None = None,
-                      intro: str = "") -> list[Outgoing]:
-        """Registra un pedido. `items` ya interpretados (si no, se interpretan acá);
-        `intro` es el acuse redactado por Gemini que va arriba del detalle."""
-        # Etapa 1: interpretar el mensaje. Va FUERA del candado: Gemini puede
-        # tardar unos segundos y mientras tanto otros clientes pueden pedir.
-        if items is None:
-            try:
-                catalog = [p for p in self.repo.list_products() if p.active]
-            except StorageError as exc:
-                return self._storage_failure(user, exc, "leer el catálogo para un pedido")
-            items = parse_order(text, catalog, self.s.rules.match_threshold, self.s.rules.max_qty_per_item,
-                                config=self.s.ai, client=self.ai_client)
-        if not items:
-            return [Outgoing(user.id, NO_ORDER_MSG)]
-        pre = f"{esc(intro)}\n\n" if intro else ""
-        problems = self._clarifications(items)
-        if problems:
-            return [Outgoing(user.id, "No pude registrar el pedido todavía:\n• " + "\n• ".join(problems)
-                             + "\n\nMandámelo de nuevo corregido, completo. 🙏")]
-
-        with self._lock:
-            # Etapa 2: stock y precios en tiempo real, releídos justo antes de decidir
-            # (pudieron cambiar mientras Gemini interpretaba).
-            try:
-                current = {p.sku.upper(): p for p in self.repo.list_products()}
-            except StorageError as exc:
-                return self._storage_failure(user, exc, "leer el stock para un pedido")
-            pairs, unknown = [], [it.unknown_name for it in items if it.error == "no_existe"]
-            for it in items:
-                if it.product and it.qty:
-                    fresh = current.get(it.product.sku.upper())
-                    if fresh is None or not fresh.active:
-                        unknown.append(it.product.name)  # lo dieron de baja recién
-                    else:
-                        pairs.append((fresh, it.qty))
-
-            # Etapa 3: dirección obligatoria. Sin dirección no se registra nada:
-            # el pedido queda retenido y se le pide la dirección al cliente.
-            try:
-                customer = self.repo.get_customer(user.channel, str(user.id))
-                if customer is None or not customer.address:
-                    self.repo.set_pending_order(user.channel, str(user.id),
-                                                self._encode_pending(text, pairs, unknown), self.stamp())
-                    return [Outgoing(user.id, pre +
-                                     "📍 ¡Casi listo! ¿A qué dirección te lo enviamos? "
-                                     "<b>El envío está incluido, sin costo.</b>\n"
-                                     "Respondé con calle, número y localidad, por ejemplo:\n"
-                                     "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n"
-                                     "(o /cancelar para descartar el pedido)")]
-                if customer.name != user.name:  # mantener el nombre al día
-                    customer.name = user.name
-                    self.repo.save_customer(customer, self.stamp())
-            except StorageError as exc:
-                return self._storage_failure(user, exc, "leer los datos del cliente")
-
-            # Etapa 4: regla de parámetros.
-            ev = evaluate(pairs, self.s.rules, self.today(), unknown)
-            now = self.stamp()
-            order = Order(order_id=self._new_order_id(), created_at=now, customer_id=user.id,
-                          customer_name=user.name, original_text=text, lines=ev.lines,
-                          status=ev.status, reason="; ".join(ev.reasons), updated_at=now,
-                          address=customer.address, shipping_cost=COSTO_ENVIO, channel=user.channel)
-
-            try:
-                if order.status == ESTADO_CONFIRMADO:
-                    self._confirm_and_record(order)
-                else:
-                    self.repo.add_order(order)
-            except StorageError as exc:
-                return self._storage_failure(user, exc, "registrar un pedido")
-
-        # Etapa 5: avisos.
-        if order.status == ESTADO_CONFIRMADO:
-            return [Outgoing(user.id, pre + self.format_order(order, "✅ <b>¡Pedido confirmado!</b>"))]
-        client_msg = pre + self.format_order(order, "🟡 <b>Recibimos tu pedido</b>") + \
-            "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva."
-        admin_msg = self.format_order(order, f"🔔 <b>Pedido derivado a revisión</b>\nCliente: "
-                                             f"<b>{esc(user.name)}</b> (<code>{user.id}</code>)")
-        out = [Outgoing(user.id, client_msg)]
-        if self.s.admin_chat_ids:
-            out += self._admins(admin_msg, [("✅ Aprobar", f"ap:{order.order_id}"),
-                                            ("❌ Rechazar", f"rj:{order.order_id}")])
-        else:
-            log.warning("Pedido %s en revisión pero no hay ADMIN_CHAT_IDS configurados", order.order_id)
-        return out
 
     def _confirm_and_record(self, order: Order) -> None:
         """Descuenta stock y registra el pedido. Si falla el registro, devuelve el stock."""

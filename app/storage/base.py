@@ -79,6 +79,11 @@ class Repository(ABC):
     def get_order(self, order_id: str) -> Order | None: ...
 
     @abstractmethod
+    def update_order(self, order: Order) -> Order:
+        """Reescribe un pedido existente: renglones, total, dirección, estado y motivo
+        (se usa cuando el cliente modifica su pedido)."""
+
+    @abstractmethod
     def update_order_status(self, order_id: str, status: str, reason: str,
                             reviewed_by: str, stamp: str,
                             lines: list[OrderLine] | None = None) -> Order:

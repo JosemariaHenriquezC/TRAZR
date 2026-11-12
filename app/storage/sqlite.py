@@ -336,6 +336,19 @@ class SQLiteRepository(Repository):
         found = self._orders("WHERE upper(pedido_id) = upper(?)", (order_id.strip(),))
         return found[0] if found else None
 
+    def update_order(self, o: Order) -> Order:
+        if self.get_order(o.order_id) is None:
+            raise KeyError(o.order_id)
+        with self._tx() as c:
+            c.execute("""UPDATE pedidos SET direccion_envio = ?, costo_envio = ?, total = ?, estado = ?,
+                                          motivo = ?, actualizado = ?, revisado_por = ?
+                         WHERE pedido_id = ?""",
+                      (o.address, o.shipping_cost, o.total, o.status, o.reason, o.updated_at,
+                       o.reviewed_by, o.order_id))
+            c.execute("DELETE FROM pedido_items WHERE pedido_id = ?", (o.order_id,))
+            self._insert_lines(c, o.order_id, o.lines)
+        return self.get_order(o.order_id)
+
     def update_order_status(self, order_id: str, status: str, reason: str,
                             reviewed_by: str, stamp: str,
                             lines: list[OrderLine] | None = None) -> Order:

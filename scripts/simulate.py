@@ -6,7 +6,9 @@ Simulador de consola: probá el bot SIN Telegram (misma lógica, misma base de d
 Escribí mensajes como si fueras un cliente. Comandos del simulador:
     :admin    → pasás a escribir como administrador
     :cliente  → volvés a escribir como cliente
-    :ap ID / :rj ID → simula tocar los botones Aprobar / Rechazar
+    :ap ID / :rj ID → simula tocar los botones Aprobar / Rechazar (admin)
+    :cf X / :cd X / :cx X → Confirmar / Cambiar dirección / Cancelar (cliente)
+    (o escribí «sí» / «no» para confirmar o cancelar)
     :salir
 """
 from __future__ import annotations
@@ -55,8 +57,9 @@ def main() -> None:
             me = ADMIN; continue
         if text == ":cliente":
             me = CLIENT; continue
-        if text.startswith((":ap ", ":rj ")):
-            show(svc.handle_callback(ADMIN, f"{text[1:3]}:{text[4:].strip()}")); continue
+        if text[:4] in (":ap ", ":rj ", ":cf ", ":cd ", ":cx "):
+            who = ADMIN if text[1:3] in ("ap", "rj") else me
+            show(svc.handle_callback(who, f"{text[1:3]}:{text[4:].strip()}")); continue
         show(svc.handle_message(me, text))
 
 

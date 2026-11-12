@@ -5,7 +5,7 @@ Mismo código que corre en Telegram.
 from app.models import ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION
 from app.storage.base import StorageError
 
-from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, plain
+from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, pedir, plain
 
 
 def stock(repo, sku):
@@ -18,7 +18,7 @@ def last_order(repo):
 
 # 1) Pedido dentro de los parámetros → confirmado automáticamente
 def test_pedido_confirmado(svc, repo):
-    out = svc.handle_message(CLIENT, "Hola, quiero 2 coca y 3 agua sin gas")
+    out = pedir(svc, CLIENT, "Hola, quiero 2 coca y 3 agua sin gas")
     assert len(out) == 1 and out[0].chat_id == CLIENT.id
     txt = plain(out[0].text)
     assert "¡Pedido confirmado!" in txt
@@ -39,7 +39,7 @@ def test_pedido_confirmado(svc, repo):
 
 # 2) Faltante de stock → en revisión → admin repone y aprueba
 def test_faltante_revision_y_aprobacion(svc, repo):
-    out = svc.handle_message(CLIENT, "mandame 10 cervezas")
+    out = pedir(svc, CLIENT, "mandame 10 cervezas")
     client_msg, admin_msg = out[0], out[1]
     assert client_msg.chat_id == CLIENT.id and "en revisión" in plain(client_msg.text)
     assert admin_msg.chat_id == ADMIN.id and "Stock insuficiente: Cerveza Rubia 1L (pedido 10, disponible 5)" in plain(admin_msg.text)
@@ -69,7 +69,7 @@ def test_faltante_revision_y_aprobacion(svc, repo):
 
 # 3) Precio vencido → revisión → admin actualiza precio y aprueba con el precio nuevo
 def test_precio_no_vigente(svc, repo):
-    out = svc.handle_message(CLIENT, "1 fernet")
+    out = pedir(svc, CLIENT, "1 fernet")
     assert "Precio no vigente: Fernet 750ml" in plain(out[1].text)
     oid = last_order(repo).order_id
     assert "precio no vigente" in plain(svc.handle_message(ADMIN, f"/aprobar {oid}")[0].text)
@@ -81,7 +81,7 @@ def test_precio_no_vigente(svc, repo):
 
 # 4) Rechazo con motivo
 def test_rechazo(svc, repo):
-    svc.handle_message(CLIENT, "2 vino")
+    pedir(svc, CLIENT, "2 vino")
     oid = last_order(repo).order_id
     out = svc.handle_message(ADMIN, f"/rechazar {oid} Sin stock hasta el lunes")
     assert out[1].chat_id == CLIENT.id and "Sin stock hasta el lunes" in plain(out[1].text)
@@ -117,7 +117,7 @@ def test_errores_de_interpretacion(svc, repo):
         "2 coca y 1 whisky": "«whisky»: no está en nuestro catálogo",
     }
     for msg, expected in cases.items():
-        out = svc.handle_message(CLIENT, msg)
+        out = pedir(svc, CLIENT, msg)
         assert expected in plain(out[0].text), (msg, out[0].text)
     assert repo.list_orders() == [] and stock(repo, "COC1") == 50
 
@@ -127,7 +127,7 @@ def test_falla_de_base_de_datos(svc, repo, monkeypatch):
     def boom(*a, **k):
         raise StorageError("La base de datos está ocupada")
     monkeypatch.setattr(repo, "list_products", boom)
-    out = svc.handle_message(CLIENT, "2 coca")
+    out = pedir(svc, CLIENT, "2 coca")
     assert "No pude acceder a la base de datos" in out[0].text
     assert out[1].chat_id == ADMIN.id and "La base de datos está ocupada" in out[1].text
 
@@ -136,32 +136,32 @@ def test_falla_al_registrar_revierte_stock(svc, repo, monkeypatch):
     def boom(order):
         raise StorageError("timeout")
     monkeypatch.setattr(repo, "add_order", boom)
-    svc.handle_message(CLIENT, "2 coca")
+    pedir(svc, CLIENT, "2 coca")
     assert stock(repo, "COC1") == 50  # se devolvió el stock
 
 
 # 8) Reglas configurables
 def test_regla_producto_desconocido_a_revision(svc, repo, settings):
     settings.rules.on_unknown_product = "review"
-    out = svc.handle_message(CLIENT, "2 coca y 1 whisky")
+    out = pedir(svc, CLIENT, "2 coca y 1 whisky")
     assert "Producto no encontrado: «whisky»" in plain(out[1].text)
     assert last_order(repo).status == ESTADO_REVISION
 
 
 def test_regla_total_maximo(svc, repo, settings):
     settings.rules.max_order_total = 10000
-    svc.handle_message(CLIENT, "4 coca")  # 12.800 > 10.000
+    pedir(svc, CLIENT, "4 coca")  # 12.800 > 10.000
     assert last_order(repo).status == ESTADO_REVISION and stock(repo, "COC1") == 50
 
 
 def test_mismo_producto_dos_veces_se_suma(svc, repo):
-    svc.handle_message(CLIENT, "2 coca, 3 coca")
+    pedir(svc, CLIENT, "2 coca, 3 coca")
     o = last_order(repo)
     assert [(l.sku, l.qty) for l in o.lines] == [("COC1", 5)] and stock(repo, "COC1") == 45
 
 
 def test_comandos_cliente(svc, repo):
-    svc.handle_message(CLIENT, "1 sprite")
+    pedir(svc, CLIENT, "1 sprite")
     assert "Tus últimos pedidos" in svc.handle_message(CLIENT, "/mispedidos")[0].text
     cat = plain(svc.handle_message(CLIENT, "/catalogo")[0].text)
     assert "Vino Tinto Malbec 750ml — $ 6.500,00 ❌ sin stock" in cat and "Fernet 750ml — precio a confirmar" in cat

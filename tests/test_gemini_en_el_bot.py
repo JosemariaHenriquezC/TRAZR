@@ -11,7 +11,7 @@ from app.config import Business
 from app.models import ESTADO_CONFIRMADO
 from app.service import BotService
 
-from .conftest import ADMIN, CLIENT, plain
+from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, plain
 
 
 class _FakeModels:
@@ -33,6 +33,14 @@ def _svc(repo, settings, models, **business):
     return BotService(repo, settings, ai_client=SimpleNamespace(aio=SimpleNamespace(models=models)))
 
 
+def charla(respuesta):
+    return {"intencion": "charla", "respuesta": respuesta}
+
+
+def intent(nombre, respuesta="", **extra):
+    return {"intencion": nombre, "respuesta": respuesta, **extra}
+
+
 def pedido(items, respuesta="¡Dale, te lo preparo!"):
     return {"intencion": "pedido", "respuesta": respuesta,
             "items": [{"sku": s, "texto": t, "cantidad": q} for s, t, q in items]}
@@ -40,11 +48,17 @@ def pedido(items, respuesta="¡Dale, te lo preparo!"):
 
 def test_entiende_jerga_y_responde_como_persona(repo, settings):
     models = _FakeModels(pedido([("COC1", "un par de gaseosas cola grandes", 2),
-                                 ("CER1", "una rubia", 1)], "¡Buenísimo, Juana! Ya te lo armo 🍻"))
-    out = _svc(repo, settings, models).handle_message(CLIENT, "pasame un par de gaseosas cola grandes y una rubia")
+                                 ("CER1", "una rubia", 1)], "¡Buenísimo, Juana! Fijate el resumen 🍻"),
+                         intent("confirmar", "¡Listo!"))
+    svc = _svc(repo, settings, models)
+    out = svc.handle_message(CLIENT, "pasame un par de gaseosas cola grandes y una rubia")
     txt = plain(out[0].text)
-    assert txt.startswith("¡Buenísimo, Juana! Ya te lo armo 🍻")
-    assert "¡Pedido confirmado!" in txt and "2 × Coca-Cola 2.25L" in txt and "1 × Cerveza Rubia 1L" in txt
+    assert txt.startswith("¡Buenísimo, Juana! Fijate el resumen 🍻")
+    assert "Revisá tu pedido" in txt and "2 × Coca-Cola 2.25L" in txt and "1 × Cerveza Rubia 1L" in txt
+    assert repo.list_orders() == []
+    out = svc.handle_message(CLIENT, "joya, mandalo")  # Gemini entiende que confirma
+    assert "¡Pedido confirmado!" in plain(out[0].text)
+    assert "BORRADOR ACTUAL" in models.prompts[1] and "2 x Coca-Cola 2.25L (COC1)" in models.prompts[1]
     # Gemini ve el catálogo de la base, pero sin precios
     assert "COC1 | Coca-Cola 2.25L" in models.prompts[0] and "3200" not in models.prompts[0]
     o = repo.list_orders()[-1]
@@ -59,7 +73,7 @@ def test_recuerda_la_conversacion(repo, settings):
     svc = _svc(repo, settings, models)
     assert plain(svc.handle_message(CLIENT, "3 aguas")[0].text) == "¿Querés el agua con gas o sin gas?"
     out = svc.handle_message(CLIENT, "con gas")
-    assert "3 × Agua Mineral con Gas 2L" in plain(out[0].text)
+    assert "3 × Agua Mineral con Gas 2L" in plain(out[0].text) and "Revisá tu pedido" in plain(out[0].text)
     # La segunda vez Gemini recibió lo que se habló antes
     assert "CLIENTE: 3 aguas" in models.prompts[1] and "VOS: ¿Querés el agua con gas" in models.prompts[1]
 
@@ -84,7 +98,8 @@ def test_si_gemini_escribe_precios_se_descarta_su_texto(repo, settings):
 def test_no_puede_dar_por_confirmado_un_pedido(repo, settings):
     models = _FakeModels(pedido([("CER1", "10 birras", 10)], "¡Confirmado, ya sale!"))
     txt = plain(_svc(repo, settings, models).handle_message(CLIENT, "10 birras")[0].text)
-    assert "ya sale" not in txt and "en revisión" in txt  # falta stock: decide el bot
+    assert "ya sale" not in txt and "queda en revisión" in txt  # falta stock: decide el bot
+    assert repo.list_orders() == []
 
 
 def test_info_del_negocio_llega_a_gemini(repo, settings):
@@ -96,30 +111,85 @@ def test_info_del_negocio_llega_a_gemini(repo, settings):
     assert "Envío: siempre incluido, sin costo" in models.prompts[0]
 
 
-def test_cambio_de_pedido_avisa_al_admin(repo, settings):
+def test_cambio_de_pedido_ya_hecho(repo, settings):
+    models = _FakeModels(pedido([("COC1", "2 coca", 2), ("FAN1", "1 fanta", 1)]), intent("confirmar"),
+                         intent("cambio_pedido", "Dale, te lo cambio. Fijate cómo queda 👇",
+                                items=[{"sku": "COC1", "texto": "2 coca", "cantidad": 2},
+                                       {"sku": "SPR1", "texto": "1 sprite", "cantidad": 1}]),
+                         intent("confirmar"))
+    svc = _svc(repo, settings, models)
+    svc.handle_message(CLIENT, "2 coca y 1 fanta")
+    svc.handle_message(CLIENT, "si")
+    oid = repo.list_orders()[-1].order_id
+    out = svc.handle_message(CLIENT, "che, cambiame la fanta por una sprite")
+    txt = plain(out[0].text)
+    assert txt.startswith("Dale, te lo cambio") and f"Así quedaría tu pedido {oid}" in txt
+    assert "CONFIRMADO; 2 x Coca-Cola 2.25L, 1 x Fanta Naranja 2.25L" in models.prompts[2]
+    out = svc.handle_message(CLIENT, "dale")
+    assert "¡Pedido modificado y confirmado!" in plain(out[0].text)
+    assert [(l.sku, l.qty) for l in repo.get_order(oid).lines] == [("COC1", 2), ("SPR1", 1)]
+    assert repo.get_product("FAN1").stock == 40 and repo.get_product("SPR1").stock == 39
+
+
+def test_cambiar_direccion_por_chat(repo, settings):
     models = _FakeModels(pedido([("COC1", "2 coca", 2)]),
-                         {"intencion": "cambio_pedido", "respuesta": "Dale, le aviso al equipo para sacarla."})
+                         intent("cambiar_direccion", "¡Dale!", direccion="Belgrano 300, Tafí Viejo"),
+                         intent("confirmar"))
+    svc = _svc(repo, settings, models)
+    assert f"Dirección: {CLIENT_ADDRESS}" in plain(svc.handle_message(CLIENT, "2 coca")[0].text)
+    out = svc.handle_message(CLIENT, "mandalo a lo de mi vieja, Belgrano 300, Tafí Viejo")
+    assert "Dirección: Belgrano 300, Tafí Viejo" in plain(out[0].text)
+    svc.handle_message(CLIENT, "si")
+    assert repo.list_orders()[-1].address == "Belgrano 300, Tafí Viejo"
+
+
+def test_cambiar_direccion_sin_decirla_la_pide(repo, settings):
+    models = _FakeModels(pedido([("COC1", "2 coca", 2)]), intent("cambiar_direccion", "¡Dale!"))
     svc = _svc(repo, settings, models)
     svc.handle_message(CLIENT, "2 coca")
-    out = svc.handle_message(CLIENT, "sacá una coca porfa")
-    assert out[0].chat_id == CLIENT.id and "le aviso al equipo" in plain(out[0].text)
-    admin = next(m for m in out if m.chat_id == ADMIN.id)
-    assert "sacá una coca porfa" in plain(admin.text) and repo.list_orders()[-1].order_id in admin.text
-    assert "CONFIRMADO; 2 x Coca-Cola 2.25L" in models.prompts[1]  # Gemini ve su último pedido
+    assert "mandame la nueva dirección" in plain(svc.handle_message(CLIENT, "a otra dirección")[0].text)
+    out = svc.handle_message(CLIENT, "Belgrano 300, Tafí Viejo")  # no pasa por Gemini
+    assert "Dirección: Belgrano 300, Tafí Viejo" in plain(out[0].text) and len(models.prompts) == 2
+
+
+def test_cancelar_por_chat(repo, settings):
+    models = _FakeModels(pedido([("COC1", "2 coca", 2)]), intent("cancelar", "Uh, bueno"))
+    svc = _svc(repo, settings, models)
+    svc.handle_message(CLIENT, "2 coca")
+    assert "descarté" in plain(svc.handle_message(CLIENT, "mejor no, después te escribo")[0].text)
+    assert repo.list_orders() == []
+
+
+def test_consulta_con_borrador_pendiente_lo_recuerda(repo, settings):
+    models = _FakeModels(pedido([("COC1", "2 coca", 2)]), charla("Entregamos de lunes a sábado."))
+    svc = _svc(repo, settings, models)
+    svc.handle_message(CLIENT, "2 coca")
+    txt = plain(svc.handle_message(CLIENT, "qué días reparten?")[0].text)
+    assert "lunes a sábado" in txt and "sigue esperando confirmación" in txt
+
+
+def test_cambio_fuera_de_termino_avisa_al_admin(repo, settings):
+    models = _FakeModels(intent("cambio_pedido", "Dale, veo qué se puede hacer",
+                                items=[{"sku": "COC1", "texto": "3 coca", "cantidad": 3}]))
+    out = _svc(repo, settings, models).handle_message(CLIENT, "cambiá mi pedido a 3 cocas")
+    assert "ya no se puede modificar" in plain(out[0].text)
+    assert any(m.chat_id == ADMIN.id and "3 cocas" in plain(m.text) for m in out)
 
 
 def test_si_gemini_falla_responde_el_bot_de_siempre(repo, settings):
     models = _FakeModels(error=RuntimeError("503 UNAVAILABLE"))
-    out = _svc(repo, settings, models).handle_message(CLIENT, "2 coca")
-    assert "¡Pedido confirmado!" in plain(out[0].text) and len(models.prompts) == 1  # no reintenta aparte
+    svc = _svc(repo, settings, models)
+    out = svc.handle_message(CLIENT, "2 coca")
+    assert "Revisá tu pedido" in plain(out[0].text) and len(models.prompts) == 1  # no reintenta aparte
+    assert "¡Pedido confirmado!" in plain(svc.handle_message(CLIENT, "si")[0].text)  # «sí» por reglas
 
 
 def test_stock_se_relee_despues_de_interpretar(repo, settings):
-    class _Lento(_FakeModels):
-        async def generate_content(self, model, **kwargs):
-            repo.set_stock("COC1", 1, "s")  # otro pedido se lleva el stock mientras Gemini piensa
-            return await super().generate_content(model, **kwargs)
-    out = _svc(repo, settings, _Lento(pedido([("COC1", "2 coca", 2)]))).handle_message(CLIENT, "2 coca")
+    # Entre el resumen y la confirmación, otro pedido se lleva el stock: decide el stock al confirmar.
+    svc = _svc(repo, settings, _FakeModels(pedido([("COC1", "2 coca", 2)]), intent("confirmar")))
+    svc.handle_message(CLIENT, "2 coca")
+    repo.set_stock("COC1", 1, "s")
+    out = svc.handle_message(CLIENT, "si")
     assert "en revisión" in plain(out[0].text) and repo.get_product("COC1").stock == 1
 
 
@@ -131,7 +201,7 @@ def test_pedido_retenido_por_direccion_no_depende_del_contexto(repo, settings):
     svc.handle_message(nuevo, "quiero coca")
     assert "¿A qué dirección" in plain(svc.handle_message(nuevo, "3")[0].text)
     out = svc.handle_message(nuevo, "Av. Sarmiento 450, Yerba Buena")  # no llama a Gemini
-    assert "3 × Coca-Cola 2.25L" in plain(out[1].text) and len(models.prompts) == 2
+    assert "3 × Coca-Cola 2.25L" in plain(out[0].text) and len(models.prompts) == 2
 
 
 def test_respuesta_segura():

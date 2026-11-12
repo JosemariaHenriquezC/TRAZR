@@ -76,6 +76,22 @@ class Rules:
     max_qty_per_item: int = 1000          # cantidades mayores se consideran inválidas
     on_unknown_product: str = "ask"       # "ask" | "review"
     match_threshold: float = 0.72         # similitud mínima para reconocer un producto (0-1)
+    modify_minutes: int = 60              # minutos que tiene el cliente para modificar su pedido
+
+
+# Tienda ficticia de ejemplo: se usa si el .env no define los NEGOCIO_*.
+TRAZR = {
+    "NEGOCIO_NOMBRE": "Trazr",
+    "NEGOCIO_HORARIOS": ("lunes a viernes de 9 a 20 y sábados de 9 a 14; domingos y feriados cerrado. "
+                         "Los pedidos confirmados antes de las 13 se entregan en el día; "
+                         "después de las 13, el siguiente día hábil."),
+    "NEGOCIO_ZONA": "San Miguel de Tucumán, Yerba Buena, Tafí Viejo y Banda del Río Salí",
+    "NEGOCIO_PEDIDO_MINIMO": "no hay pedido mínimo",
+    "NEGOCIO_PAGOS": "efectivo o transferencia bancaria al recibir el pedido",
+    "NEGOCIO_INFO": ("Trazr es una distribuidora de bebidas de Tucumán: gaseosas, aguas, cervezas, vinos, "
+                     "aperitivos, jugos y energizantes. Venta a mayoristas, almacenes y particulares. "
+                     "Las bebidas alcohólicas solo se venden a mayores de 18 años."),
+}
 
 
 @dataclass
@@ -146,6 +162,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         max_qty_per_item=_int("MAX_QTY_PER_ITEM", 1000),
         on_unknown_product=on_unknown,
         match_threshold=_float("MATCH_THRESHOLD", 0.72),
+        modify_minutes=_int("MODIFICACION_MINUTOS", 60),
     )
 
     settings = Settings(
@@ -157,12 +174,12 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         rules=rules,
         ai=load_ai_config(),
         business=Business(
-            name=os.getenv("NEGOCIO_NOMBRE", "").strip(),
-            delivery_hours=os.getenv("NEGOCIO_HORARIOS", "").strip(),
-            delivery_zone=os.getenv("NEGOCIO_ZONA", "").strip(),
-            min_order=os.getenv("NEGOCIO_PEDIDO_MINIMO", "").strip(),
-            payment=os.getenv("NEGOCIO_PAGOS", "").strip(),
-            extra=os.getenv("NEGOCIO_INFO", "").strip(),
+            name=os.getenv("NEGOCIO_NOMBRE", TRAZR["NEGOCIO_NOMBRE"]).strip(),
+            delivery_hours=os.getenv("NEGOCIO_HORARIOS", TRAZR["NEGOCIO_HORARIOS"]).strip(),
+            delivery_zone=os.getenv("NEGOCIO_ZONA", TRAZR["NEGOCIO_ZONA"]).strip(),
+            min_order=os.getenv("NEGOCIO_PEDIDO_MINIMO", TRAZR["NEGOCIO_PEDIDO_MINIMO"]).strip(),
+            payment=os.getenv("NEGOCIO_PAGOS", TRAZR["NEGOCIO_PAGOS"]).strip(),
+            extra=os.getenv("NEGOCIO_INFO", TRAZR["NEGOCIO_INFO"]).strip(),
         ),
     )
 

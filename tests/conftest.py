@@ -38,3 +38,15 @@ def repo(settings):
 @pytest.fixture
 def svc(repo, settings):
     return BotService(repo, settings)
+
+
+def button(out, prefix):
+    """Dato del botón que empieza con `prefix` (ej. "cf:") en los mensajes, o None."""
+    return next((d for m in out for _, d in m.buttons if d.startswith(prefix)), None)
+
+
+def pedir(svc, user, text):
+    """Manda el pedido y, si el bot muestra el resumen, lo confirma (como tocar ✅)."""
+    out = svc.handle_message(user, text)
+    data = button(out, "cf:")
+    return svc.handle_callback(user, data) if data else out

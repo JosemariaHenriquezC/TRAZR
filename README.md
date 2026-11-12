@@ -45,19 +45,34 @@ Todo se ajusta en el `.env` (`RULE_REQUIRE_PRICE_VALID`, `RULE_REQUIRE_STOCK`,
 **en ese momento**. Si todavía falta stock o el precio sigue vencido, te dice qué
 comando usar (`/sumar`, `/precio`) y no aprueba.
 
-## 3. Dirección obligatoria y envío sin costo
+## 3. Confirmación, dirección y modificación de pedidos
 
-- Ningún pedido se registra sin dirección de envío (lo valida el bot **y** la base de datos).
-- La primera vez que un cliente pide, el bot interpreta el pedido, lo **retiene** y le pregunta
-  la dirección. Con la respuesta guarda la dirección en su ficha de cliente y procesa el
-  pedido retenido (con el stock y precio de ese momento).
-- Los pedidos siguientes usan la dirección guardada. Cada pedido guarda una **copia** de la
-  dirección, así un cambio posterior no altera pedidos viejos.
-- `/direccion` muestra la dirección; `/direccion nueva dirección` la cambia;
-  `/cancelar` descarta un pedido retenido. Un pedido retenido vence a las 24 h.
-- El envío figura en cada pedido como «incluido, sin costo» (`costo_envio = 0`).
+**Nada se registra sin que el cliente lo confirme.** El flujo (`app/checkout.py`):
 
-> La confirmación de dirección con botones (Sí / Cambiar) es la fase 3.
+1. El cliente escribe su pedido. El bot arma un **borrador**: no registra nada ni toca el stock.
+2. Si el cliente no tiene dirección guardada, se la pide. Ningún pedido se registra sin
+   dirección (lo valida el bot **y** la base de datos).
+3. Le muestra un **resumen** con los precios vigentes, el total, el envío (incluido, sin
+   costo) y la dirección guardada. Si el pedido va a quedar en revisión (falta stock, precio
+   vencido), se lo avisa antes. Debajo, tres botones:
+   **✅ Confirmar** · **📍 Cambiar dirección** · **❌ Cancelar**.
+4. Antes de confirmar puede cambiar lo que quiera: mandar la lista nueva («mejor 3 cocas y
+   una sprite»), otra dirección, o cancelar. Cada cambio genera un resumen nuevo (los botones
+   de resúmenes viejos dejan de funcionar).
+5. Recién al confirmar (botón, «sí» o `/confirmar`) se evalúa la regla con el stock y precio
+   de ese momento y se registra **CONFIRMADO** o **EN REVISION**.
+
+**Modificar un pedido ya hecho** (productos y/o dirección): durante `MODIFICACION_MINUTOS`
+(60 por defecto) desde que se hizo, si no fue rechazado. Con `/modificar`, o diciéndolo
+(«cambiame la fanta por una sprite», «mandalo a otra dirección»). El bot arma un resumen de
+cómo quedaría y pide confirmación. Al confirmar devuelve el stock del pedido viejo, evalúa el
+nuevo y descuenta lo que corresponde; el pedido conserva su ID. Si el cambio lo deja fuera de
+los parámetros, vuelve a revisión y el admin recibe los botones. Fuera de término, el bot le
+avisa al admin para que lo resuelva a mano.
+
+Otros detalles: la dirección nueva queda guardada para los próximos pedidos; cada pedido guarda
+su **copia** de la dirección; un borrador sin confirmar vence a las 24 h; `/direccion` muestra
+o cambia la dirección guardada.
 
 ## 4. Cómo conversa el bot (Gemini)
 
@@ -135,8 +150,8 @@ siempre prendida o un servidor. Hacé copia del archivo `data/trazr.db` con regu
 
 ## 7. Comandos
 
-**Clientes:** escribir el pedido en texto libre · `/catalogo` · `/direccion [nueva]` ·
-`/cancelar` · `/mispedidos` · `/miid` · `/ayuda`
+**Clientes:** escribir el pedido en texto libre · `/catalogo` · `/confirmar` · `/cancelar` ·
+`/modificar` · `/direccion [nueva]` · `/mispedidos` · `/miid` · `/ayuda`
 
 **Administrador:**
 
@@ -157,10 +172,12 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 
 | # | Quién | Mensaje | Resultado esperado |
 |---|---|---|---|
-| 1 | Cliente nuevo | `2 coca y 1 sprite` | 📍 *¿A qué dirección te lo enviamos? El envío está incluido, sin costo.* No se registra nada todavía. |
-| 1b | Cliente nuevo | `Av. Sarmiento 450, Yerba Buena` | *Guardé tu dirección* + ✅ *¡Pedido confirmado!* con envío incluido, la dirección y Total $ 9.400,00. COC1 50→48. |
-| 2 | Cliente | `Hola, quiero 2 coca y 3 agua sin gas` | ✅ Confirmado directo (ya tiene dirección). Total $ 9.700,00. |
-| 3 | Cliente | `mandame 10 cervezas` | 🟡 En revisión. Al admin: `Stock insuficiente: Cerveza Rubia 1L (pedido 10, disponible 5)` y botones. CER1 sigue en 5. |
+| 1 | Cliente nuevo | `2 coca y 1 sprite` | 📍 *¿A qué dirección te lo enviamos? El envío está incluido, sin costo.* No se registra nada. |
+| 1b | Cliente nuevo | `Av. Sarmiento 450, Yerba Buena` | 🧾 *Revisá tu pedido* con precios, envío incluido, la dirección y Total $ 9.400,00, y los botones ✅ 📍 ❌. Todavía no se registra. |
+| 1c | Cliente nuevo | ✅ Confirmar (o `sí`) | ✅ *¡Pedido confirmado!* COC1 50→48. |
+| 2 | Cliente | `2 coca` → 📍 Cambiar dirección → `Belgrano 300, Tafí Viejo` → `sí` | El resumen se actualiza con la dirección nueva y el pedido sale a esa dirección. |
+| 2b | Cliente | `/modificar` → `3 coca, 1 sprite` → `sí` | ✏️ *¡Pedido modificado y confirmado!* Mismo ID, stock reajustado. El admin recibe el aviso. |
+| 3 | Cliente | `mandame 10 cervezas` → `sí` | El resumen avisa que va a quedar en revisión. Al confirmar: 🟡 en revisión; al admin le llega `Stock insuficiente: Cerveza Rubia 1L (pedido 10, disponible 5)` con botones. CER1 sigue en 5. |
 | 3b | Admin | `/sumar CER1 10` y ✅ Aprobar | Cliente: *¡Tu pedido fue confirmado!* Total $ 28.000,00. CER1 15→5. |
 | 4 | Cliente | `1 fernet` | En revisión por `Precio no vigente: Fernet 750ml`. Admin: `/precio FER1 13000` y `/aprobar ID`. |
 | 5 | Cliente | `2 vino` | En revisión (stock 0). Admin: `/rechazar ID Sin stock hasta el lunes` → al cliente le llega ❌ con el motivo. |
@@ -174,7 +191,9 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 ```
 app/
   bot.py          capa de Telegram (handlers, botones, arranque); sin lógica de negocio
-  service.py      BotService: pedidos, dirección, revisión, comandos (independiente del canal)
+  service.py      BotService: entrada de mensajes, comandos y revisión del admin (independiente del canal)
+  checkout.py     borrador, resumen, confirmación, dirección y modificación de pedidos
+  messages.py     mensaje de salida genérico (texto + botones)
   ai_parser.py    Gemini: intérprete (parse_order) y conversación (conversar)
   parser.py       intérprete por reglas (respaldo)
   rules.py        regla «dentro de los parámetros»

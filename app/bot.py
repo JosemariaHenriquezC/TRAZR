@@ -33,7 +33,9 @@ async def _send(context: ContextTypes.DEFAULT_TYPE, messages: list[Outgoing]) ->
     for m in messages:
         markup = None
         if m.buttons:
-            markup = InlineKeyboardMarkup([[InlineKeyboardButton(t, callback_data=d) for t, d in m.buttons]])
+            buttons = [InlineKeyboardButton(t, callback_data=d) for t, d in m.buttons]
+            # Hasta 2 botones en una fila; más, uno por fila (así no se cortan los textos).
+            markup = InlineKeyboardMarkup([buttons] if len(buttons) <= 2 else [[b] for b in buttons])
         try:
             await context.bot.send_message(chat_id=m.chat_id, text=m.text, parse_mode=ParseMode.HTML,
                                            reply_markup=markup, disable_web_page_preview=True)
@@ -62,8 +64,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     out = await asyncio.to_thread(service.handle_callback, _user(update), query.data or "")
-    # Si se aprobó/rechazó, se quitan los botones del mensaje para no repetir la acción.
-    if out and out[0].text.startswith(("✅", "❌")):
+    # Se quitan los botones para que no se toquen dos veces: siempre en los del cliente
+    # (confirmar, cambiar dirección, cancelar) y en los del admin si se resolvió.
+    client_button = (query.data or "").split(":")[0] in {"cf", "cd", "cx"}
+    if client_button or (out and out[0].text.startswith(("✅", "❌"))):
         try:
             await query.edit_message_reply_markup(reply_markup=None)
         except TelegramError:
@@ -85,6 +89,9 @@ async def post_init(app: Application) -> None:
     await app.bot.set_my_commands([
         BotCommand("start", "Empezar"), BotCommand("catalogo", "Bebidas y precios"),
         BotCommand("direccion", "Ver o cambiar mi dirección de envío"),
+        BotCommand("confirmar", "Confirmar el pedido del resumen"),
+        BotCommand("modificar", "Cambiar mi último pedido"),
+        BotCommand("cancelar", "Descartar el pedido sin confirmar"),
         BotCommand("mispedidos", "Mis últimos pedidos"), BotCommand("ayuda", "Ayuda y comandos"),
         BotCommand("miid", "Ver mi ID de Telegram"),
     ])

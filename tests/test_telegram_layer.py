@@ -26,20 +26,29 @@ def make_update(user, text=None, data=None):
 
 
 def test_mensaje_y_botones(svc: BotService, repo):
+    # 1) El cliente pide: le llega el resumen con botones (uno por fila)
     ctx = make_context(svc)
     asyncio.run(tg.on_text(make_update(CLIENT, "10 cerveza"), ctx))
-    calls = ctx.bot.send_message.call_args_list
-    assert calls[0].kwargs["chat_id"] == CLIENT.id and calls[0].kwargs["parse_mode"] == "HTML"
-    admin_call = calls[1].kwargs
-    assert admin_call["chat_id"] == ADMIN.id
+    call = ctx.bot.send_message.call_args_list[0].kwargs
+    assert call["chat_id"] == CLIENT.id and call["parse_mode"] == "HTML"
+    rows = call["reply_markup"].inline_keyboard
+    assert [r[0].text for r in rows] == ["✅ Confirmar", "📍 Cambiar dirección", "❌ Cancelar"]
+
+    # 2) Toca Confirmar: se quitan los botones, y el admin recibe el pedido en revisión
+    ctx2 = make_context(svc)
+    upd = make_update(CLIENT, data=rows[0][0].callback_data)
+    asyncio.run(tg.on_button(upd, ctx2))
+    upd.callback_query.edit_message_reply_markup.assert_awaited()
+    admin_call = next(c.kwargs for c in ctx2.bot.send_message.call_args_list if c.kwargs["chat_id"] == ADMIN.id)
     assert isinstance(admin_call["reply_markup"], InlineKeyboardMarkup)
     data = admin_call["reply_markup"].inline_keyboard[0][1].callback_data
     assert data.startswith("rj:")
 
-    ctx2 = make_context(svc)
+    # 3) El admin rechaza con el botón
+    ctx3 = make_context(svc)
     upd = make_update(ADMIN, data=data)
-    asyncio.run(tg.on_button(upd, ctx2))
-    upd.callback_query.edit_message_reply_markup.assert_awaited()  # se quitan los botones
-    sent_to = [c.kwargs["chat_id"] for c in ctx2.bot.send_message.call_args_list]
+    asyncio.run(tg.on_button(upd, ctx3))
+    upd.callback_query.edit_message_reply_markup.assert_awaited()
+    sent_to = [c.kwargs["chat_id"] for c in ctx3.bot.send_message.call_args_list]
     assert sent_to == [ADMIN.id, CLIENT.id]
     assert repo.list_orders()[-1].status == "RECHAZADO"
