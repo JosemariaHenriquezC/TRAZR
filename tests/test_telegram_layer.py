@@ -3,12 +3,11 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from telegram import InlineKeyboardMarkup
-
 from app import bot as tg
+from app.notifier import Notifier
 from app.service import BotService
 
-from .conftest import ADMIN, CLIENT
+from .conftest import ADMIN, CLIENT, avisos
 
 
 def make_context(svc):
@@ -34,21 +33,25 @@ def test_mensaje_y_botones(svc: BotService, repo):
     rows = call["reply_markup"].inline_keyboard
     assert [r[0].text for r in rows] == ["✅ Confirmar", "📍 Cambiar dirección", "❌ Cancelar"]
 
-    # 2) Toca Confirmar: se quitan los botones, y el admin recibe el pedido en revisión
+    # 2) Toca Confirmar: se quitan los botones; queda en revisión y el aviso va a la web, no al chat
     ctx2 = make_context(svc)
     upd = make_update(CLIENT, data=rows[0][0].callback_data)
     asyncio.run(tg.on_button(upd, ctx2))
     upd.callback_query.edit_message_reply_markup.assert_awaited()
-    admin_call = next(c.kwargs for c in ctx2.bot.send_message.call_args_list if c.kwargs["chat_id"] == ADMIN.id)
-    assert isinstance(admin_call["reply_markup"], InlineKeyboardMarkup)
-    data = admin_call["reply_markup"].inline_keyboard[0][1].callback_data
-    assert data.startswith("rj:")
+    assert {c.kwargs["chat_id"] for c in ctx2.bot.send_message.call_args_list} == {CLIENT.id}
+    order = repo.list_orders()[-1]
+    assert order.status == "EN REVISION" and avisos(repo)[0].order_id == order.order_id
 
-    # 3) El admin rechaza con el botón
-    ctx3 = make_context(svc)
-    upd = make_update(ADMIN, data=data)
-    asyncio.run(tg.on_button(upd, ctx3))
-    upd.callback_query.edit_message_reply_markup.assert_awaited()
-    sent_to = [c.kwargs["chat_id"] for c in ctx3.bot.send_message.call_args_list]
-    assert sent_to == [ADMIN.id, CLIENT.id]
-    assert repo.list_orders()[-1].status == "RECHAZADO"
+    # 3) El admin lo rechaza en la web: el Notifier le manda el aviso al cliente por Telegram
+    result = svc.reject(order.order_id, ADMIN, "Sin Fernet hasta el lunes")
+    fake_bot = SimpleNamespace(send_message=AsyncMock())
+    notifier = Notifier()
+    notifier.register("telegram", tg.telegram_sender(fake_bot))
+    assert asyncio.run(notifier.send(result.notify)) == 1
+    sent = fake_bot.send_message.call_args.kwargs
+    assert sent["chat_id"] == CLIENT.id and "Sin Fernet hasta el lunes" in sent["text"]
+
+
+def test_notifier_sin_canal_no_rompe():
+    from app.messages import Outgoing
+    assert asyncio.run(Notifier().send([Outgoing(1, "hola", channel="whatsapp")])) == 0

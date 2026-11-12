@@ -8,7 +8,7 @@ from app.sample_data import sample_products
 from app.service import BotService, User
 from app.storage.sqlite import SQLiteRepository
 
-ADMIN = User(1001, "Admin")
+ADMIN = "Lucía Fernández"   # admin de la web (ya no es un usuario del chat)
 CLIENT = User(2002, "Juana Pérez")
 CLIENT_ADDRESS = "Av. Mate de Luna 1234, San Miguel de Tucumán"
 
@@ -19,7 +19,7 @@ def plain(text: str) -> str:
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(telegram_token="", admin_chat_ids={ADMIN.id},
+    return Settings(telegram_token="",
                     database_path=str(tmp_path / "trazr.db"), timezone="UTC", rules=Rules())
 
 
@@ -38,6 +38,11 @@ def repo(settings):
 @pytest.fixture
 def svc(repo, settings):
     return BotService(repo, settings)
+
+
+def avisos(repo):
+    """Avisos para el admin (los que ve en la web), del más nuevo al más viejo."""
+    return [n for n in repo.list_notices()]
 
 
 def button(out, prefix):

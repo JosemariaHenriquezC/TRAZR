@@ -10,7 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
 
-from ..models import Customer, Order, OrderLine, Product
+from ..models import Admin, Customer, Notice, Order, OrderLine, Product
 
 
 class StorageError(Exception):
@@ -66,6 +66,29 @@ class Repository(ABC):
     @abstractmethod
     def recent_messages(self, channel: str, external_id: str, limit: int = 10) -> list[tuple[str, str, str]]:
         """Últimos mensajes del chat, del más viejo al más nuevo: [(rol, texto, fecha)]."""
+
+    # ---- avisos para el admin (web) ----
+    @abstractmethod
+    def add_notice(self, kind: str, title: str, detail: str, order_id: str, stamp: str) -> None: ...
+
+    @abstractmethod
+    def list_notices(self, limit: int = 50, unread_only: bool = False) -> list[Notice]:
+        """Del más nuevo al más viejo."""
+
+    @abstractmethod
+    def mark_notices_read(self, ids: list[int] | None = None) -> None:
+        """Marca como leídos esos avisos (None = todos)."""
+
+    # ---- admins de la web ----
+    @abstractmethod
+    def get_admin(self, username: str) -> Admin | None: ...
+
+    @abstractmethod
+    def list_admins(self) -> list[Admin]: ...
+
+    @abstractmethod
+    def save_admin(self, admin: Admin, stamp: str) -> None:
+        """Alta o actualización (por username)."""
 
     # ---- pedidos ----
     @abstractmethod

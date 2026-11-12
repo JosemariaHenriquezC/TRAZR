@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from app.models import ESTADO_CONFIRMADO, ESTADO_REVISION
 from app.service import User
 
-from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, button, pedir, plain
+from .conftest import CLIENT, CLIENT_ADDRESS, avisos, button, pedir, plain
 
 NUEVO = User(3003, "Cliente Nuevo")
 DIR = "Av. Sarmiento 450, Yerba Buena"
@@ -215,8 +215,8 @@ def test_pedido_en_revision_tambien_lleva_direccion(svc, repo):
     out = svc.handle_message(NUEVO, "si")
     o = repo.list_orders()[-1]
     assert o.status == ESTADO_REVISION and o.address == DIR
-    admin_msg = next(m for m in out if m.chat_id == ADMIN.id)
-    assert f"Dirección: {DIR}" in plain(admin_msg.text)
+    assert all(m.chat_id == NUEVO.id for m in out)  # nada por chat al admin
+    assert avisos(repo)[0].kind == "revision" and avisos(repo)[0].order_id == o.order_id
 
 
 def test_cancelar_mientras_espera_la_direccion(svc, repo):

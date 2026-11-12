@@ -11,7 +11,7 @@ Flujo de un pedido nuevo (_next_step decide el paso siguiente):
          [✅ Confirmar] [📍 Cambiar dirección] [❌ Cancelar]
   El cliente confirma (botón, «sí», /confirmar) → se vuelve a mirar el stock (otro
   cliente pudo llevárselo) y recién ahí se evalúa la regla y se registra
-  CONFIRMADO o EN REVISION (revisión: solo precio vencido o total máximo).
+  CONFIRMADO o EN REVISION (revisión: solo precio vencido o total máximo; el admin la ve en la web).
 
 Modificar un pedido ya hecho (productos y/o dirección): mientras no esté
 rechazado y dentro de Rules.modify_minutes desde que se hizo. Se arma un
@@ -449,16 +449,12 @@ class CheckoutMixin:
             out = [Outgoing(user.id, self.format_order(order, "🟡 <b>Recibimos tu pedido</b>")
                             + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva."
                             + tail)]
-            out += self._notify_review(order, f"🔔 <b>Pedido derivado a revisión</b>\nCliente: "
-                                              f"<b>{esc(user.name)}</b> (<code>{user.id}</code>)")
+            self._notify_review(order, f"Pedido {order.order_id} en revisión")
         return out + self._ask_which_address(user, order.address)
 
-    def _notify_review(self, order: Order, header: str) -> list:
-        if not self.s.admin_chat_ids:
-            log.warning("Pedido %s en revisión pero no hay ADMIN_CHAT_IDS configurados", order.order_id)
-            return []
-        return self._admins(self.format_order(order, header),
-                            [("✅ Aprobar", f"ap:{order.order_id}"), ("❌ Rechazar", f"rj:{order.order_id}")])
+    def _notify_review(self, order: Order, title: str) -> None:
+        """Aviso en la web: el admin revisa los pedidos ahí, no en el chat."""
+        self.notify_admins("revision", title, order.reason, order.order_id)
 
     # ------------------------------------------------------------ modificar
     def _modifiable_order(self, user) -> Order | None:
@@ -488,9 +484,9 @@ class CheckoutMixin:
         if order is None:
             out = [Outgoing(user.id, "Tu último pedido ya no se puede modificar desde acá (pasó el tiempo para "
                                      "cambios o ya se resolvió). Le aviso al equipo para que te ayude 🙌")]
-            if text and self.s.admin_chat_ids:
-                out += self._admins(f"✏️ <b>{esc(user.name)}</b> (<code>{user.id}</code>) pide un cambio "
-                                    f"fuera de término:\n«{esc(text)}»")
+            if text:
+                self.notify_admins("fuera_de_termino", f"{user.name} pide un cambio fuera de término",
+                                   f"«{text}»")
             return out
         draft = Draft(text=order.original_text, items=[[l.sku, l.qty] for l in order.lines],
                       address=order.address, modifies=order.order_id)
@@ -574,15 +570,15 @@ class CheckoutMixin:
             except StorageError as exc:
                 return self._storage_failure(user, exc, "modificar tu pedido")
 
-        who = f"<b>{esc(user.name)}</b> (<code>{user.id}</code>)"
         if order.status == ESTADO_CONFIRMADO:
             out = [Outgoing(user.id, self.format_order(order, "✏️ <b>¡Pedido modificado y confirmado!</b>"))]
-            if self.s.admin_chat_ids:
-                out += self._admins(self.format_order(order, f"✏️ <b>Pedido modificado por el cliente</b>\n{who}"))
+            items = ", ".join(f"{l.qty} × {l.name}" for l in order.lines)
+            self.notify_admins("modificado", f"Pedido {order.order_id} modificado por {user.name}",
+                               f"Quedó: {items}. Dirección: {order.address}.", order.order_id)
         else:
             out = [Outgoing(user.id, self.format_order(order, "✏️ <b>Modificamos tu pedido</b>")
                             + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva.")]
-            out += self._notify_review(order, f"✏️🔔 <b>Pedido modificado, en revisión</b>\n{who}")
+            self._notify_review(order, f"Pedido {order.order_id} modificado: quedó en revisión")
         return out + self._ask_which_address(user, order.address)
 
     # ------------------------------------------------- ¿qué dirección guardo?

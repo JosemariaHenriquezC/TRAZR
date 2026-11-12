@@ -29,20 +29,29 @@ def _user(update: Update) -> User:
     return User(id=update.effective_chat.id, name=name, channel="telegram")
 
 
-async def _send(context: ContextTypes.DEFAULT_TYPE, messages: list[Outgoing]) -> None:
-    for m in messages:
+def telegram_sender(bot):
+    """Función de envío por Telegram para el Notifier (la usan el bot y la web)."""
+    async def send(m: Outgoing) -> None:
         markup = None
         if m.buttons:
             buttons = [InlineKeyboardButton(t, callback_data=d) for t, d in m.buttons]
             # Hasta 2 botones en una fila; más, uno por fila (así no se cortan los textos).
             markup = InlineKeyboardMarkup([buttons] if len(buttons) <= 2 else [[b] for b in buttons])
         try:
-            await context.bot.send_message(chat_id=m.chat_id, text=m.text, parse_mode=ParseMode.HTML,
-                                           reply_markup=markup, disable_web_page_preview=True)
+            await bot.send_message(chat_id=m.chat_id, text=m.text, parse_mode=ParseMode.HTML,
+                                   reply_markup=markup, disable_web_page_preview=True)
         except Forbidden:
             log.warning("El chat %s bloqueó al bot o nunca lo inició; no se pudo avisar.", m.chat_id)
         except TelegramError as exc:
             log.error("No se pudo enviar a %s: %s", m.chat_id, exc)
+    return send
+
+
+async def _send(context: ContextTypes.DEFAULT_TYPE, messages: list[Outgoing]) -> None:
+    send = telegram_sender(context.bot)
+    for m in messages:
+        if m.channel == "telegram":
+            await send(m)
 
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -64,14 +73,11 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     out = await asyncio.to_thread(service.handle_callback, _user(update), query.data or "")
-    # Se quitan los botones para que no se toquen dos veces: siempre en los del cliente
-    # (confirmar, cambiar dirección, cancelar) y en los del admin si se resolvió.
-    client_button = (query.data or "").split(":")[0] in {"cf", "cd", "cx", "aj", "dk", "dn"}
-    if client_button or (out and out[0].text.startswith(("✅", "❌"))):
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except TelegramError:
-            pass
+    # Se quitan los botones para que no se toquen dos veces.
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except TelegramError:
+        pass
     await _send(context, out)
 
 
@@ -93,7 +99,6 @@ async def post_init(app: Application) -> None:
         BotCommand("modificar", "Cambiar mi último pedido"),
         BotCommand("cancelar", "Descartar el pedido sin confirmar"),
         BotCommand("mispedidos", "Mis últimos pedidos"), BotCommand("ayuda", "Ayuda y comandos"),
-        BotCommand("miid", "Ver mi ID de Telegram"),
     ])
     me = await app.bot.get_me()
     log.info("Bot @%s en marcha. Escribile en https://t.me/%s", me.username, me.username)
@@ -126,9 +131,6 @@ def main() -> None:
     else:
         log.warning("Gemini APAGADO (falta GEMINI_API_KEY, AI_PARSER_ENABLED=false o falta "
                     "la librería google-genai): los pedidos se interpretan solo por reglas.")
-    if not settings.admin_chat_ids:
-        log.warning("ADMIN_CHAT_IDS vacío: nadie es administrador. Escribile /miid al bot y "
-                    "poné ese número en el .env.")
 
     app = Application.builder().token(settings.telegram_token).post_init(post_init).build()
     app.bot_data["service"] = BotService(repo, settings)

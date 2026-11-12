@@ -37,18 +37,22 @@ Con stock suficiente, un pedido se **confirma automáticamente** si además:
 |---|---|
 | Cumple todo | **CONFIRMADO**, se descuenta el stock, el cliente recibe el detalle. |
 | No alcanza el stock | No se puede confirmar: el bot dice cuánto queda y ofrece ajustar. No se registra nada. |
-| Precio vencido o supera el total máximo | **EN REVISION**, no se toca el stock, el admin recibe el pedido con botones Aprobar / Rechazar. |
+| Precio vencido o supera el total máximo | **EN REVISION**, no se toca el stock, queda un aviso para el admin en la web, donde lo aprueba o rechaza. |
 | Producto inexistente | Por defecto se le pide al cliente que corrija (no se registra). Con `ON_UNKNOWN_PRODUCT=review` se registra en revisión. |
 | Mensaje ambiguo, sin cantidad, cantidad inválida | Se pide aclaración. No se registra nada. |
 | El cliente no tiene dirección guardada | El pedido queda **retenido** y se le pide la dirección (ver §3). |
-| Falla de la base de datos | Mensaje claro al cliente, alerta al admin con el error. No queda nada a medias. |
+| Falla de la base de datos | Mensaje claro al cliente y aviso con el error para el admin en la web. No queda nada a medias. |
 
 Todo se ajusta en el `.env` (`RULE_REQUIRE_PRICE_VALID`, `RULE_REQUIRE_STOCK`,
 `MAX_ORDER_TOTAL`, `MAX_QTY_PER_ITEM`, `ON_UNKNOWN_PRODUCT`, `MATCH_THRESHOLD`).
 
-**Al aprobar** un pedido en revisión, el bot vuelve a verificar stock y precio
-**en ese momento**. Si todavía falta stock o el precio sigue vencido, te dice qué
-comando usar (`/sumar`, `/precio`) y no aprueba.
+**El chat es solo para clientes.** Todo lo del administrador (avisos, revisar, aprobar,
+rechazar, stock, precios, productos) se hace en la **web de administración** (fase 4). El admin
+no recibe nada por Telegram: los avisos quedan guardados y se ven en la web.
+
+**Al aprobar** un pedido en revisión se vuelve a verificar stock y precio **en ese momento**.
+Si falta stock o el precio sigue vencido, no aprueba y dice qué resolver; el precio nuevo se
+puede cargar al aprobar. Al rechazar, el motivo es obligatorio y le llega al cliente.
 
 ## 3. Confirmación, dirección y modificación de pedidos
 
@@ -73,7 +77,7 @@ comando usar (`/sumar`, `/precio`) y no aprueba.
 («cambiame la fanta por una sprite», «mandalo a otra dirección»). El bot arma un resumen de
 cómo quedaría y pide confirmación. Al confirmar devuelve el stock del pedido viejo, evalúa el
 nuevo y descuenta lo que corresponde; el pedido conserva su ID. Si el cambio lo deja fuera de
-los parámetros, vuelve a revisión y el admin recibe los botones. Fuera de término, el bot le
+los parámetros, vuelve a revisión y queda el aviso en la web. Fuera de término, el bot le
 avisa al admin para que lo resuelva a mano.
 
 **Dirección guardada:** la primera que da el cliente se guarda sola. Si después un pedido (o
@@ -112,6 +116,8 @@ solo. Para verlo o editarlo a mano: [DB Browser for SQLite](https://sqlitebrowse
 | `pedido_items` | renglones de cada pedido: `sku`, `producto`, `cantidad`, `precio_unitario`, `subtotal` |
 | `pedidos_pendientes` | pedido retenido (ya interpretado) esperando la dirección del cliente |
 | `mensajes` | historial reciente de cada chat (memoria de Gemini; se guardan los últimos 50) |
+| `avisos` | avisos para el admin (pedido en revisión, modificado, cambio fuera de término, falla); se ven en la web |
+| `admins` | usuarios de la web: usuario, nombre, hash de la contraseña, activo |
 
 ### Cargar el catálogo
 
@@ -146,15 +152,23 @@ python -m pytest -q                # corre todos los tests
 3. BotFather te da un **token**. Pegalo en `.env` como `TELEGRAM_BOT_TOKEN=...`.
    Es secreto: si se filtra, en BotFather usá `/revoke`.
 
-### Paso 2: ejecutar y hacerte administrador
+### Paso 2: crear los usuarios de la web de administración
+
+```bash
+python -m scripts.crear_admin lucia "Lucía Fernández"
+```
+
+Pide la contraseña sin mostrarla (mínimo 8 caracteres) y la guarda con hash, nunca en texto
+plano. Se pueden crear varios admins; en cada pedido queda quién lo aprobó o rechazó.
+
+### Paso 3: ejecutar
 
 ```bash
 python -m app.bot
 ```
 
-1. En Telegram buscá tu bot y mandale `/miid`. Te responde tu ID.
-2. Ponelo en `.env`: `ADMIN_CHAT_IDS=123456789` (varios admins: separados por coma).
-3. Cortá el bot (Ctrl+C) y volvé a ejecutarlo. Ya sos admin: `/ayuda` muestra los comandos de gestión.
+Hasta que esté la web, el simulador de consola tiene las acciones de admin
+(`:avisos`, `:revision`, `:aprobar ID [SKU=precio]`, `:rechazar ID motivo`, `:sumar SKU cantidad`).
 
 El bot funciona **mientras el proceso esté corriendo**. Para 24/7 necesitás una PC
 siempre prendida o un servidor. Hacé copia del archivo `data/trazr.db` con regularidad.
@@ -162,20 +176,9 @@ siempre prendida o un servidor. Hacé copia del archivo `data/trazr.db` con regu
 ## 7. Comandos
 
 **Clientes:** escribir el pedido en texto libre · `/catalogo` · `/confirmar` · `/cancelar` ·
-`/modificar` · `/direccion [nueva]` · `/mispedidos` · `/miid` · `/ayuda`
+`/modificar` · `/direccion [nueva]` · `/mispedidos` · `/ayuda`
 
-**Administrador:**
-
-| Comando | Qué hace |
-|---|---|
-| `/stock [texto o SKU]` | Consulta stock, precio y vigencia (todo o filtrado) |
-| `/setstock SKU cantidad` | Fija el stock |
-| `/sumar SKU cantidad` | Suma (o resta con negativo) al stock; no permite negativos |
-| `/precio SKU valor [AAAA-MM-DD]` | Precio y vigencia (sin fecha = sin vencimiento) |
-| `/revision` | Lista pedidos en revisión con botones |
-| `/pedido ID` | Ver un pedido |
-| `/aprobar ID` o botón ✅ | Aprueba: verifica, descuenta stock y avisa al cliente |
-| `/rechazar ID [motivo]` o botón ❌ | Rechaza y avisa al cliente con el motivo |
+**Administrador:** no hay comandos en el chat. Todo se hace en la web de administración.
 
 ## 8. Prueba de punta a punta
 
@@ -187,15 +190,15 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 | 1b | Cliente nuevo | `Av. Sarmiento 450, Yerba Buena` | 🧾 *Revisá tu pedido* con precios, envío incluido, la dirección y Total $ 9.400,00, y los botones ✅ 📍 ❌. Todavía no se registra. |
 | 1c | Cliente nuevo | ✅ Confirmar (o `sí`) | ✅ *¡Pedido confirmado!* COC1 50→48. |
 | 2 | Cliente | `2 coca` → 📍 Cambiar dirección → `Belgrano 300, Tafí Viejo` → `sí` | El resumen se actualiza con la dirección nueva y el pedido sale a esa dirección. Después: *¿Qué dirección dejo guardada para tus próximos pedidos?* [🏠 La de siempre] [📍 La nueva]. |
-| 2b | Cliente | `/modificar` → `3 coca, 1 sprite` → `sí` | ✏️ *¡Pedido modificado y confirmado!* Mismo ID, stock reajustado. El admin recibe el aviso. |
+| 2b | Cliente | `/modificar` → `3 coca, 1 sprite` → `sí` | ✏️ *¡Pedido modificado y confirmado!* Mismo ID, stock reajustado. Queda el aviso en la web. |
 | 3 | Cliente | `mandame 10 cervezas` | ⚠️ *No me alcanza el stock: Cerveza Rubia 1L: pediste 10, me quedan 5.* Botones 🔧 Ajustar / ❌ Cancelar, sin Confirmar. No se registra nada. |
 | 3b | Cliente | `sí` (o 🔧) y después `sí` | Ajusta a 5, muestra el resumen y confirma. CER1 5→0. |
 | 3c | Cliente | `2 vino` | *Vino Tinto Malbec 750ml: pediste 2, no me queda.* No se puede pedir. |
-| 4 | Cliente | `1 fernet` → `sí` | En revisión por `Precio no vigente: Fernet 750ml`. Admin: `/precio FER1 13000` y `/aprobar ID`. Si se rechaza: `/rechazar ID motivo` → al cliente le llega ❌ con el motivo. |
+| 4 | Cliente | `1 fernet` → `sí` | En revisión por `Precio no vigente: Fernet 750ml`. En la web: aprobar cargando el precio nuevo (13.000) → al cliente le llega ✅. O rechazar con motivo → le llega ❌ con el motivo. |
 | 6 | Cliente | `3 agua` | *¿cuál de estos? Agua Mineral con Gas 2L, Agua Mineral sin Gas 2L*. No se registra. |
 | 7 | Cliente | `2 whisky` | *«whisky»: no está en nuestro catálogo*. |
 | 8 | Cliente | `2,5 coca` / `-3 sprite` | *la cantidad debe ser un número entero entre 1 y 1000*. |
-| 9 | Cliente | `/setstock COC1 0` | ⛔ *Ese comando es solo para el administrador.* |
+| 9 | Cliente | `/aprobar P1` | *No conozco ese comando.* El chat no tiene comandos de admin. |
 
 ## 9. Estructura del código
 
@@ -204,6 +207,9 @@ app/
   bot.py          capa de Telegram (handlers, botones, arranque); sin lógica de negocio
   service.py      BotService: entrada de mensajes, comandos y revisión del admin (independiente del canal)
   checkout.py     borrador, resumen, confirmación, dirección y modificación de pedidos
+  admin.py        acciones del admin para la web: aprobar, rechazar, stock, precios, productos, avisos, tablero
+  auth.py         contraseñas de los admins (hash scrypt)
+  notifier.py     manda los avisos a cada cliente por su canal (Telegram, WhatsApp)
   messages.py     mensaje de salida genérico (texto + botones)
   ai_parser.py    Gemini: intérprete (parse_order) y conversación (conversar)
   parser.py       intérprete por reglas (respaldo)
@@ -216,6 +222,7 @@ app/
     sqlite.py     base de datos SQLite (esquema y consultas)
 scripts/
   init_db.py      crea la base y carga el catálogo (ejemplo o CSV)
+  crear_admin.py  crea o actualiza un usuario de la web de administración
   simulate.py     chat por consola sin Telegram
   probar_ia.py    prueba el intérprete contra Gemini real
 tests/            pruebas de punta a punta, dirección, base de datos e IA (sin APIs reales)
@@ -229,7 +236,7 @@ tests/            pruebas de punta a punta, dirección, base de datos e IA (sin 
    se vuelve a verificar).
 4. El bot le muestra al cliente la cantidad exacta que queda de un producto cuando no le alcanza.
 5. Al aprobar se usa el precio vigente en ese momento.
-6. Cualquiera que escriba al bot puede pedir. Solo los IDs de `ADMIN_CHAT_IDS` gestionan.
+6. Cualquiera que escriba al bot puede pedir. Solo los admins de la web (usuario y contraseña) gestionan.
 7. El bot corre como **un solo proceso**; un candado interno evita descontar dos veces el mismo stock.
 8. Los clientes se identifican por canal + ID, así el mismo número en Telegram y WhatsApp (fase 5) no se mezcla.
 9. Moneda: solo el símbolo es configurable (`CURRENCY_SYMBOL`); los importes se muestran con formato `1.234,50`.

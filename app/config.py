@@ -119,7 +119,6 @@ class Business:
 @dataclass
 class Settings:
     telegram_token: str
-    admin_chat_ids: set[int]
     # Base de datos SQLite (un archivo; se crea solo si no existe)
     database_path: str = "data/trazr.db"
     # Presentación
@@ -142,17 +141,6 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             "Falta TELEGRAM_BOT_TOKEN. Crealo con @BotFather y pegalo en el archivo .env."
         )
 
-    admin_raw = os.getenv("ADMIN_CHAT_IDS", "").strip()
-    admin_ids: set[int] = set()
-    for part in admin_raw.replace(";", ",").split(","):
-        part = part.strip()
-        if not part:
-            continue
-        try:
-            admin_ids.add(int(part))
-        except ValueError as exc:
-            raise ConfigError(f"ADMIN_CHAT_IDS contiene un valor no numérico: {part!r}") from exc
-
     on_unknown = os.getenv("ON_UNKNOWN_PRODUCT", "ask").strip().lower()
     if on_unknown not in {"ask", "review"}:
         raise ConfigError("ON_UNKNOWN_PRODUCT debe ser 'ask' o 'review'.")
@@ -169,7 +157,6 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
 
     settings = Settings(
         telegram_token=token,
-        admin_chat_ids=admin_ids,
         database_path=os.getenv("DATABASE_PATH", "data/trazr.db").strip() or "data/trazr.db",
         currency_symbol=os.getenv("CURRENCY_SYMBOL", "$").strip() or "$",
         timezone=os.getenv("TIMEZONE", "UTC").strip() or "UTC",

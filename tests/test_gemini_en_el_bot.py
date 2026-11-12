@@ -11,7 +11,7 @@ from app.config import Business
 from app.models import ESTADO_CONFIRMADO
 from app.service import BotService
 
-from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, plain
+from .conftest import CLIENT, CLIENT_ADDRESS, avisos, plain
 
 
 class _FakeModels:
@@ -173,7 +173,7 @@ def test_cambio_fuera_de_termino_avisa_al_admin(repo, settings):
                                 items=[{"sku": "COC1", "texto": "3 coca", "cantidad": 3}]))
     out = _svc(repo, settings, models).handle_message(CLIENT, "cambiá mi pedido a 3 cocas")
     assert "ya no se puede modificar" in plain(out[0].text)
-    assert any(m.chat_id == ADMIN.id and "3 cocas" in plain(m.text) for m in out)
+    assert avisos(repo)[0].kind == "fuera_de_termino" and "3 cocas" in avisos(repo)[0].detail
 
 
 def test_si_gemini_falla_responde_el_bot_de_siempre(repo, settings):

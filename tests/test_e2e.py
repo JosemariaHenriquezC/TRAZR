@@ -5,7 +5,7 @@ Mismo código que corre en Telegram.
 from app.models import ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION
 from app.storage.base import StorageError
 
-from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, pedir, plain
+from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, avisos, pedir, plain
 
 
 def stock(repo, sku):
@@ -61,58 +61,57 @@ def test_faltante_no_se_puede_pedir_y_se_ajusta(svc, repo):
 # 2b) Admin: pedido en revisión (precio) que al aprobar ya no tiene stock
 def test_aprobar_revisa_stock_y_precio(svc, repo):
     out = pedir(svc, CLIENT, "1 fernet")
-    admin_msg = out[1]
-    assert admin_msg.chat_id == ADMIN.id and "Precio no vigente: Fernet 750ml" in plain(admin_msg.text)
+    assert len(out) == 1 and out[0].chat_id == CLIENT.id  # al admin no le llega nada por chat
     order_id = last_order(repo).order_id
-    assert admin_msg.buttons == [("✅ Aprobar", f"ap:{order_id}"), ("❌ Rechazar", f"rj:{order_id}")]
+    aviso = avisos(repo)[0]
+    assert aviso.kind == "revision" and aviso.order_id == order_id and "Precio no vigente: Fernet 750ml" in aviso.detail
     assert last_order(repo).status == ESTADO_REVISION and stock(repo, "FER1") == 10
 
-    svc.handle_message(ADMIN, "/setstock FER1 0")
-    svc.handle_message(ADMIN, "/precio FER1 13000")
-    out = svc.handle_message(ADMIN, f"/aprobar {order_id}")
-    assert "No puedo aprobar todavía" in plain(out[0].text) and "/sumar FER1" in plain(out[0].text)
-    svc.handle_message(ADMIN, "/sumar FER1 4")
-    out = svc.handle_callback(ADMIN, f"ap:{order_id}")
-    assert plain(out[0].text).startswith("✅ Pedido") and out[1].chat_id == CLIENT.id
-    assert "¡Tu pedido fue confirmado!" in plain(out[1].text) and "Total: $ 13.000,00" in plain(out[1].text)
-    assert stock(repo, "FER1") == 3 and last_order(repo).reviewed_by.startswith("Admin")
-    assert "ya está" in plain(svc.handle_callback(ADMIN, f"ap:{order_id}")[0].text)
+    assert svc.set_stock("FER1", 0).ok
+    assert svc.set_price("FER1", 13000).ok
+    r = svc.approve(order_id, ADMIN)
+    assert not r.ok and "hay 0, se piden 1" in r.message and r.notify == []
+    assert svc.add_stock("FER1", 4).ok
+    r = svc.approve(order_id, ADMIN)
+    assert r.ok and r.notify[0].chat_id == CLIENT.id and r.notify[0].channel == "telegram"
+    assert "¡Tu pedido fue confirmado!" in plain(r.notify[0].text) and "Total: $ 13.000,00" in plain(r.notify[0].text)
+    assert stock(repo, "FER1") == 3 and last_order(repo).reviewed_by == ADMIN
+    assert "ya está confirmado" in svc.approve(order_id, ADMIN).message
 
 
 # 3) Precio vencido → revisión → admin actualiza precio y aprueba con el precio nuevo
 def test_precio_no_vigente(svc, repo):
-    out = pedir(svc, CLIENT, "1 fernet")
-    assert "Precio no vigente: Fernet 750ml" in plain(out[1].text)
+    pedir(svc, CLIENT, "1 fernet")
     oid = last_order(repo).order_id
-    assert "precio no vigente" in plain(svc.handle_message(ADMIN, f"/aprobar {oid}")[0].text)
-    assert "✅" in svc.handle_message(ADMIN, "/precio FER1 13000")[0].text
-    out = svc.handle_message(ADMIN, f"/aprobar {oid}")
-    assert "Total: $ 13.000,00" in plain(out[1].text)
+    assert "el precio no está vigente" in svc.approve(oid, ADMIN).message
+    r = svc.approve(oid, ADMIN, {"FER1": 13000})  # aprobar cargando el precio nuevo (como en la web)
+    assert r.ok and "Total: $ 13.000,00" in plain(r.notify[0].text)
     assert last_order(repo).total == 13000 and stock(repo, "FER1") == 9
+    assert repo.get_product("FER1").price == 13000 and repo.get_product("FER1").valid_until is None
 
 
 # 4) Rechazo con motivo
 def test_rechazo(svc, repo):
     pedir(svc, CLIENT, "1 fernet")
     oid = last_order(repo).order_id
-    out = svc.handle_message(ADMIN, f"/rechazar {oid} Sin stock hasta el lunes")
-    assert out[1].chat_id == CLIENT.id and "Sin stock hasta el lunes" in plain(out[1].text)
+    assert "Escribí el motivo" in svc.reject(oid, ADMIN, "  ").message
+    r = svc.reject(oid, ADMIN, "Sin stock hasta el lunes")
+    assert r.ok and r.notify[0].chat_id == CLIENT.id and "Sin stock hasta el lunes" in plain(r.notify[0].text)
     o = last_order(repo)
     assert o.status == ESTADO_RECHAZADO and o.reason == "Sin stock hasta el lunes"
 
 
-# 5) Consulta y actualización de stock (admin)
-def test_consulta_y_actualizacion_stock(svc, repo):
-    txt = plain(svc.handle_message(ADMIN, "/stock coca")[0].text)
-    assert "COC1 Coca-Cola 2.25L: 50 u." in txt
-    assert "Stock de Coca-Cola 2.25L (COC1) actualizado a 120" in plain(svc.handle_message(ADMIN, "/setstock COC1 120")[0].text)
+# 5) Stock (acciones del admin en la web)
+def test_actualizacion_de_stock(svc, repo):
+    assert svc.set_stock("COC1", 120).message == "Stock de Coca-Cola 2.25L: 120 unidades."
     assert stock(repo, "COC1") == 120
-    assert "ahora: 115" in plain(svc.handle_message(ADMIN, "/sumar COC1 -5")[0].text)
-    assert "negativo" in plain(svc.handle_message(ADMIN, "/sumar COC1 -500")[0].text)
-    assert "No existe el SKU" in plain(svc.handle_message(ADMIN, "/setstock XXX 3")[0].text)
-    assert "no es un número" in plain(svc.handle_message(ADMIN, "/setstock COC1 muchos")[0].text)
-    # El cliente no puede usar comandos de admin
-    assert "solo para el administrador" in svc.handle_message(CLIENT, "/setstock COC1 0")[0].text
+    assert "115 unidades (-5)" in svc.add_stock("COC1", -5).message
+    assert "negativo" in svc.add_stock("COC1", -500).message
+    assert "No existe el producto" in svc.set_stock("XXX", 3).message
+    assert not svc.set_stock("COC1", -1).ok and not svc.add_stock("COC1", 0).ok
+    # El chat ya no tiene comandos de admin
+    assert "No conozco ese comando" in svc.handle_message(CLIENT, "/setstock COC1 0")[0].text
+    assert "No conozco ese comando" in svc.handle_message(CLIENT, "/aprobar P1")[0].text
     assert stock(repo, "COC1") == 115
 
 
@@ -140,8 +139,9 @@ def test_falla_de_base_de_datos(svc, repo, monkeypatch):
         raise StorageError("La base de datos está ocupada")
     monkeypatch.setattr(repo, "list_products", boom)
     out = pedir(svc, CLIENT, "2 coca")
-    assert "No pude acceder a la base de datos" in out[0].text
-    assert out[1].chat_id == ADMIN.id and "La base de datos está ocupada" in out[1].text
+    assert len(out) == 1 and "No pude acceder a la base de datos" in out[0].text
+    falla = avisos(repo)[0]
+    assert falla.kind == "falla" and "La base de datos está ocupada" in falla.detail
 
 
 def test_falla_al_registrar_revierte_stock(svc, repo, monkeypatch):
@@ -155,9 +155,9 @@ def test_falla_al_registrar_revierte_stock(svc, repo, monkeypatch):
 # 8) Reglas configurables
 def test_regla_producto_desconocido_a_revision(svc, repo, settings):
     settings.rules.on_unknown_product = "review"
-    out = pedir(svc, CLIENT, "2 coca y 1 whisky")
-    assert "Producto no encontrado: «whisky»" in plain(out[1].text)
+    pedir(svc, CLIENT, "2 coca y 1 whisky")
     assert last_order(repo).status == ESTADO_REVISION
+    assert "Producto no encontrado: «whisky»" in avisos(repo)[0].detail
 
 
 def test_regla_total_maximo(svc, repo, settings):
@@ -178,4 +178,4 @@ def test_comandos_cliente(svc, repo):
     cat = plain(svc.handle_message(CLIENT, "/catalogo")[0].text)
     assert "Vino Tinto Malbec 750ml — $ 6.500,00 ❌ sin stock" in cat and "Fernet 750ml — precio a confirmar" in cat
     assert "Gaseosas" in cat and "Envío incluido, sin costo" in cat
-    assert "Hay 0" not in plain(svc.handle_message(ADMIN, "/revision")[0].text)
+

@@ -11,6 +11,7 @@ class Outgoing:
     chat_id: int
     text: str                                   # HTML simple (<b>, <i>, <code>)
     buttons: list[tuple[str, str]] = field(default_factory=list)  # (texto, dato del botón)
+    channel: str = "telegram"                   # por dónde se manda: telegram | whatsapp
 
 
 def esc(value) -> str:

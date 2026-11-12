@@ -41,6 +41,27 @@ class Customer:
 
 
 @dataclass
+class Notice:
+    """Aviso para el admin (se ve en la web, ya no llega por chat)."""
+    id: int
+    created_at: str
+    kind: str          # revision | modificado | fuera_de_termino | falla
+    title: str
+    detail: str = ""
+    order_id: str = ""
+    read: bool = False
+
+
+@dataclass
+class Admin:
+    """Usuario de la web de administración."""
+    username: str
+    name: str
+    password_hash: str
+    active: bool = True
+
+
+@dataclass
 class OrderLine:
     sku: str
     name: str

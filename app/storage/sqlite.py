@@ -20,7 +20,7 @@ from datetime import date
 from pathlib import Path
 from typing import Iterator
 
-from ..models import ESTADOS, Customer, Order, OrderLine, Product
+from ..models import ESTADOS, Admin, Customer, Notice, Order, OrderLine, Product
 from .base import Repository, StorageError
 
 log = logging.getLogger(__name__)
@@ -92,6 +92,28 @@ CREATE TABLE IF NOT EXISTS mensajes (
     fecha       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_mensajes_chat ON mensajes (canal, externo_id, id);
+
+-- Avisos para el admin: se ven en la web (el admin no recibe nada por chat).
+CREATE TABLE IF NOT EXISTS avisos (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha      TEXT NOT NULL,
+    tipo       TEXT NOT NULL,
+    titulo     TEXT NOT NULL,
+    detalle    TEXT NOT NULL DEFAULT '',
+    pedido_id  TEXT NOT NULL DEFAULT '',
+    leido      INTEGER NOT NULL DEFAULT 0 CHECK (leido IN (0, 1))
+);
+CREATE INDEX IF NOT EXISTS ix_avisos_leido ON avisos (leido, id);
+
+-- Usuarios de la web de administración (contraseña con hash scrypt, nunca en texto plano).
+CREATE TABLE IF NOT EXISTS admins (
+    usuario      TEXT PRIMARY KEY COLLATE NOCASE,
+    nombre       TEXT NOT NULL,
+    clave_hash   TEXT NOT NULL,
+    activo       INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+    creado       TEXT NOT NULL,
+    actualizado  TEXT NOT NULL
+);
 
 -- Pedido ya interpretado que espera la dirección del cliente (uno por cliente).
 CREATE TABLE IF NOT EXISTS pedidos_pendientes (
@@ -281,6 +303,47 @@ class SQLiteRepository(Repository):
         rows = self._query("SELECT rol, texto, fecha FROM mensajes WHERE canal = ? AND externo_id = ? "
                            "ORDER BY id DESC LIMIT ?", (channel, str(external_id), limit))
         return [(r["rol"], r["texto"], r["fecha"]) for r in reversed(rows)]
+
+    # --------------------------------------------------------------- avisos
+    def add_notice(self, kind: str, title: str, detail: str, order_id: str, stamp: str) -> None:
+        with self._tx() as c:
+            c.execute("INSERT INTO avisos (fecha, tipo, titulo, detalle, pedido_id) VALUES (?, ?, ?, ?, ?)",
+                      (stamp, kind, title, detail, order_id or ""))
+
+    def list_notices(self, limit: int = 50, unread_only: bool = False) -> list[Notice]:
+        where = "WHERE leido = 0" if unread_only else ""
+        rows = self._query(f"SELECT * FROM avisos {where} ORDER BY id DESC LIMIT ?", (limit,))
+        return [Notice(id=r["id"], created_at=r["fecha"], kind=r["tipo"], title=r["titulo"],
+                       detail=r["detalle"], order_id=r["pedido_id"], read=bool(r["leido"])) for r in rows]
+
+    def mark_notices_read(self, ids: list[int] | None = None) -> None:
+        with self._tx() as c:
+            if ids is None:
+                c.execute("UPDATE avisos SET leido = 1 WHERE leido = 0")
+            else:
+                c.executemany("UPDATE avisos SET leido = 1 WHERE id = ?", [(int(i),) for i in ids])
+
+    # --------------------------------------------------------------- admins
+    @staticmethod
+    def _admin(r: sqlite3.Row) -> Admin:
+        return Admin(username=r["usuario"], name=r["nombre"], password_hash=r["clave_hash"],
+                     active=bool(r["activo"]))
+
+    def get_admin(self, username: str) -> Admin | None:
+        rows = self._query("SELECT * FROM admins WHERE usuario = ?", (username.strip(),))
+        return self._admin(rows[0]) if rows else None
+
+    def list_admins(self) -> list[Admin]:
+        return [self._admin(r) for r in self._query("SELECT * FROM admins ORDER BY usuario")]
+
+    def save_admin(self, a: Admin, stamp: str) -> None:
+        with self._tx() as c:
+            c.execute("""INSERT INTO admins (usuario, nombre, clave_hash, activo, creado, actualizado)
+                         VALUES (?, ?, ?, ?, ?, ?)
+                         ON CONFLICT (usuario) DO UPDATE SET nombre = excluded.nombre,
+                           clave_hash = excluded.clave_hash, activo = excluded.activo,
+                           actualizado = excluded.actualizado""",
+                      (a.username.strip().lower(), a.name.strip(), a.password_hash, int(a.active), stamp, stamp))
 
     # -------------------------------------------------------------- pedidos
     @staticmethod

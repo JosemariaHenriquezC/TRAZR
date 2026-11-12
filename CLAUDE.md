@@ -8,7 +8,9 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - `app/bot.py` — capa de Telegram, sin lógica de negocio
 - `app/service.py` — `BotService`: entrada de mensajes, comandos, revisión del admin (independiente del canal)
 - `app/checkout.py` — borrador → resumen → confirmación; dirección; modificar pedidos hechos
-- `app/messages.py` — `Outgoing` (texto + botones genéricos)
+- `app/messages.py` — `Outgoing` (texto + botones + canal)
+- `app/admin.py` — acciones del admin para la web (`AdminResult`: ok, mensaje, `notify` para clientes)
+- `app/auth.py` — hash de contraseñas (scrypt) · `app/notifier.py` — envío por canal del cliente
 - `app/parser.py` — intérprete por reglas (respaldo)
 - `app/ai_parser.py` — Gemini: `parse_order` (intérprete) y `conversar` (intención + respuesta humana)
 - `app/rules.py` — regla "dentro de los parámetros"
@@ -92,11 +94,12 @@ Diseño:
   Tablero, Pedidos (filtro por estado), Detalle de pedido (aprobar con precio nuevo / rechazar
   con motivo, historial), Productos y stock (sumar stock en la fila, editar producto),
   Clientes (con detalle y pedidos) e Ingreso. Su `admin.css` (variables + estructura de página)
-  es la base del CSS de la web real. Estado: esperando revisión del usuario.
+  es la base del CSS de la web real. Aprobado por el usuario.
 
 Orden de trabajo:
-1. Diseño en Claude Design (Design System de Trazr + pantallas) → revisión del usuario.
-2. Backend: quitar admin del chat, avisos y admins en la base, resultados tipados, Notifier.
+1. Diseño en Claude Design (Design System de Trazr + pantallas) → aprobado. HECHO.
+2. Backend: quitar admin del chat, avisos y admins en la base, resultados tipados, Notifier. HECHO
+   (admin.py, auth.py, notifier.py, scripts/crear_admin.py; ADMIN_CHAT_IDS eliminado).
 3. Web: login, pantallas según el diseño aprobado, tests.
 4. Capturas con Playwright para revisar y para el TFI.
 
