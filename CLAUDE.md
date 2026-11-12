@@ -34,6 +34,13 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - Los tests no deben llamar a APIs reales (`Settings.ai` viene apagado por defecto;
   para probar con IA se pasa un cliente simulado a `BotService(ai_client=...)`). Correr con `python -m pytest -q`.
 
+## Herramientas del proyecto
+- Agente `consultor` (`.claude/agents/consultor.md`, modelo Fable, solo lectura): consultarlo
+  antes de decisiones de arquitectura, diseño o alcance. Compara opciones y recomienda una.
+- Plugins para la fase 4: `frontend-design`, `audit-suite` (skills de Emil Kowalski:
+  `web-animation-design`, `emil-design-engineering`), `figma`, `playwright` (navegador para
+  probar la web y sacar capturas).
+
 ## Plan por fases
 0. Preparación — hecha
 1. Gemini como intérprete — hecha y conectada en `service.py` (respaldo: reglas)
