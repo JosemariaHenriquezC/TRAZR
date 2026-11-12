@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Pedido {{ order.order_id }} · {{ shop }}{% endblock %}
+{% block content %}
+{% set o = order %}
+<a href="/pedidos">← Volver a pedidos</a>
+<div class="head">
+  <div>
+    <span class="eyebrow">Pedido</span>
+    <h1 style="font-family: var(--font-mono); font-size: 28px">{{ o.order_id }}</h1>
+    <p>Entró por {{ 'Telegram' if o.channel == 'telegram' else o.channel|capitalize }} {{ o.created_at|fecha }} · {{ o.customer_name }}</p>
+  </div>
+  {% include "_badge.html" %}
+</div>
+
+{% if o.status == 'EN REVISION' %}
+<div class="tz-notice tz-notice--unread">
+  <strong>Por qué está en revisión</strong>
+  <span>{{ o.reason }}</span>
+</div>
+{% elif o.reviewed_by %}
+<div class="tz-notice">
+  <strong>{{ 'Aprobado' if o.status == 'CONFIRMADO' else 'Rechazado' }} por {{ o.reviewed_by }} {{ o.updated_at|fecha }}</strong>
+  {% if o.reason %}<span>{{ o.reason }}</span>{% endif %}
+</div>
+{% endif %}
+
+<div class="grid-2" style="grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr)">
+  <div class="stack" style="gap: 24px">
+    <section class="tz-panel scroll">
+      <div class="panel-head"><h2 class="section">Productos</h2></div>
+      <table class="tz-table">
+        <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Subtotal</th>{% if o.status == 'EN REVISION' %}<th>Stock hoy</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for x in lines %}
+          <tr>
+            <td>{{ x.line.name }} <span class="id muted">{{ x.line.sku }}</span></td>
+            <td class="num">{{ x.line.qty }}</td>
+            {% if o.status == 'EN REVISION' and not x.price_ok %}
+            <td class="num"><span style="color: var(--warn); font-weight: 600">a confirmar</span></td><td class="num">—</td>
+            {% else %}
+            <td class="num">{{ x.line.unit_price|money }}</td><td class="num">{{ x.line.subtotal|money }}</td>
+            {% endif %}
+            {% if o.status == 'EN REVISION' %}
+            <td>{% if x.product is none %}<span class="tz-badge tz-badge--danger">Ya no existe</span>{% elif x.stock_ok %}<span class="tz-badge tz-badge--ok">Alcanza</span>{% else %}<span class="tz-badge tz-badge--danger">Hay {{ x.product.stock|qty }}</span>{% endif %}</td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr><td colspan="3" class="right muted">Envío</td><td class="num">incluido</td>{% if o.status == 'EN REVISION' %}<td></td>{% endif %}</tr>
+          <tr><td colspan="3" class="right"><strong>Total</strong></td><td class="num"><strong>{{ (known_total if o.status == 'EN REVISION' and expired else o.total)|money }}</strong></td>{% if o.status == 'EN REVISION' %}<td class="muted">{{ 'sin los precios a confirmar' if expired }}</td>{% endif %}</tr>
+        </tfoot>
+      </table>
+    </section>
+
+    <section class="tz-panel">
+      <div class="panel-head"><h2 class="section">Historial</h2></div>
+      <ul class="timeline">
+        {% if o.reviewed_by %}
+        <li><span class="dot"></span><div><strong>{{ 'Aprobado' if o.status == 'CONFIRMADO' else 'Rechazado' }} por {{ o.reviewed_by }}</strong><div class="muted">{{ o.updated_at|fecha }}</div></div></li>
+        {% elif o.updated_at and o.updated_at != o.created_at %}
+        <li><span class="dot"></span><div><strong>Última modificación</strong><div class="muted">{{ o.updated_at|fecha }}{{ ' · ' ~ o.reason if 'Modificado' in o.reason }}</div></div></li>
+        {% endif %}
+        <li><span class="dot {{ 'dot--warn' if o.status == 'EN REVISION' }}"></span><div><strong>{{ 'Quedó en revisión' if o.status == 'EN REVISION' else 'Confirmado por el cliente en el chat' }}</strong><div class="muted">{{ o.created_at|fecha }}</div></div></li>
+        <li><span class="dot"></span><div><strong>Mensaje original</strong><div class="muted">«{{ o.original_text }}»</div></div></li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="stack" style="gap: 24px">
+    <section class="tz-panel">
+      <div class="panel-head"><h2 class="section">Cliente</h2></div>
+      <dl class="kv">
+        <dt>Nombre</dt><dd>{{ o.customer_name }}</dd>
+        <dt>Canal</dt><dd>{{ 'Telegram' if o.channel == 'telegram' else o.channel|capitalize }}</dd>
+        <dt>Envío a</dt><dd>{{ o.address }}</dd>
+        {% if customer and customer.address != o.address %}<dt>Guardada</dt><dd>{{ customer.address }}</dd>{% endif %}
+        <dt>Pedidos</dt><dd>{{ customer_orders }} en total · <a href="/clientes?c={{ (o.channel ~ ':' ~ o.customer_id)|urlq }}">ver cliente</a></dd>
+      </dl>
+    </section>
+
+    {% if o.status == 'EN REVISION' %}
+    <section class="tz-panel">
+      <div class="panel-head"><h2 class="section">Decisión</h2></div>
+      <div class="stack panel-body" style="gap: 16px">
+        <form method="post" action="/pedidos/{{ o.order_id }}/aprobar" class="stack" style="gap: 16px">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          {% for x in expired %}
+          <div class="tz-field">
+            <label for="precio_{{ x.product.sku }}">Precio de {{ x.product.name }} ($)</label>
+            <input id="precio_{{ x.product.sku }}" name="precio_{{ x.product.sku }}" inputmode="decimal" required placeholder="Último: {{ x.product.price|money }}">
+            <span class="tz-field__hint">Se guarda como precio vigente del producto.</span>
+          </div>
+          {% endfor %}
+          <button class="tz-btn tz-btn--primary" type="submit" style="justify-content: center">Aprobar y avisar al cliente</button>
+        </form>
+        <form method="post" action="/pedidos/{{ o.order_id }}/rechazar" class="stack" style="gap: 16px">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <div class="tz-field">
+            <label for="motivo">Motivo del rechazo</label>
+            <textarea id="motivo" name="motivo" rows="2" required placeholder="Ej.: Sin Fernet hasta el lunes"></textarea>
+            <span class="tz-field__hint">Se lo mandamos al cliente por el chat.</span>
+          </div>
+          <button class="tz-btn tz-btn--danger" type="submit" style="justify-content: center">Rechazar pedido</button>
+        </form>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

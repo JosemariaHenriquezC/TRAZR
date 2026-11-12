@@ -258,6 +258,11 @@ class SQLiteRepository(Repository):
         return Customer(channel=r["canal"], external_id=r["externo_id"], name=r["nombre"],
                         address=r["direccion"])
 
+    def list_customers(self) -> list[Customer]:
+        rows = self._query("SELECT * FROM clientes ORDER BY nombre COLLATE NOCASE")
+        return [Customer(channel=r["canal"], external_id=r["externo_id"], name=r["nombre"],
+                         address=r["direccion"]) for r in rows]
+
     def save_customer(self, cu: Customer, stamp: str) -> Customer:
         with self._tx() as c:
             c.execute(

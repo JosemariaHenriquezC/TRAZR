@@ -91,17 +91,31 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
             pass
 
 
+BOT_COMMANDS = [
+    BotCommand("start", "Empezar"), BotCommand("catalogo", "Bebidas y precios"),
+    BotCommand("direccion", "Ver o cambiar mi dirección de envío"),
+    BotCommand("confirmar", "Confirmar el pedido del resumen"),
+    BotCommand("modificar", "Cambiar mi último pedido"),
+    BotCommand("cancelar", "Descartar el pedido sin confirmar"),
+    BotCommand("mispedidos", "Mis últimos pedidos"), BotCommand("ayuda", "Ayuda y comandos"),
+]
+
+
 async def post_init(app: Application) -> None:
-    await app.bot.set_my_commands([
-        BotCommand("start", "Empezar"), BotCommand("catalogo", "Bebidas y precios"),
-        BotCommand("direccion", "Ver o cambiar mi dirección de envío"),
-        BotCommand("confirmar", "Confirmar el pedido del resumen"),
-        BotCommand("modificar", "Cambiar mi último pedido"),
-        BotCommand("cancelar", "Descartar el pedido sin confirmar"),
-        BotCommand("mispedidos", "Mis últimos pedidos"), BotCommand("ayuda", "Ayuda y comandos"),
-    ])
+    await app.bot.set_my_commands(BOT_COMMANDS)
     me = await app.bot.get_me()
     log.info("Bot @%s en marcha. Escribile en https://t.me/%s", me.username, me.username)
+
+
+def build_telegram_app(token: str, service: BotService) -> Application:
+    """Arma el bot con sus handlers (lo usan `python -m app.bot` y el servidor web)."""
+    app = Application.builder().token(token).post_init(post_init).build()
+    app.bot_data["service"] = service
+    app.add_handler(MessageHandler(filters.TEXT, on_text))
+    app.add_handler(CallbackQueryHandler(on_button))
+    app.add_handler(MessageHandler(~filters.TEXT & ~filters.StatusUpdate.ALL, on_other))
+    app.add_error_handler(on_error)
+    return app
 
 
 def main() -> None:
@@ -132,12 +146,7 @@ def main() -> None:
         log.warning("Gemini APAGADO (falta GEMINI_API_KEY, AI_PARSER_ENABLED=false o falta "
                     "la librería google-genai): los pedidos se interpretan solo por reglas.")
 
-    app = Application.builder().token(settings.telegram_token).post_init(post_init).build()
-    app.bot_data["service"] = BotService(repo, settings)
-    app.add_handler(MessageHandler(filters.TEXT, on_text))
-    app.add_handler(CallbackQueryHandler(on_button))
-    app.add_handler(MessageHandler(~filters.TEXT & ~filters.StatusUpdate.ALL, on_other))
-    app.add_error_handler(on_error)
+    app = build_telegram_app(settings.telegram_token, BotService(repo, settings))
     asyncio.set_event_loop(asyncio.new_event_loop())
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

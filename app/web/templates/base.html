@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ shop }} Admin{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="/static/components.css">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="brand" href="/"><span class="brand__mark"></span>{{ shop }}</a>
+    <nav class="nav" aria-label="Secciones">
+      <a href="/" {% if page == 'tablero' %}aria-current="page"{% endif %}>Tablero</a>
+      <a href="/pedidos" {% if page == 'pedidos' %}aria-current="page"{% endif %}>Pedidos {% if pending_count %}<span class="count" aria-label="{{ pending_count }} en revisión">{{ pending_count }}</span>{% endif %}</a>
+      <a href="/productos" {% if page == 'productos' %}aria-current="page"{% endif %}>Productos y stock</a>
+      <a href="/clientes" {% if page == 'clientes' %}aria-current="page"{% endif %}>Clientes</a>
+    </nav>
+    <div class="side__foot">
+      <strong>{{ admin.name }}</strong><span>Administración</span>
+      <form method="post" action="/salir"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Salir</button></form>
+    </div>
+  </aside>
+  <main class="main">
+    {% if flash %}
+    <div class="tz-notice flash {{ 'flash--ok' if flash.ok else 'tz-notice--error' }}" role="status"><strong>{{ flash.message }}</strong></div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

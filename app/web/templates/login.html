@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingresar a {{ shop }}</title>
+<link rel="stylesheet" href="/static/components.css">
+<link rel="stylesheet" href="/static/admin.css">
+<style>
+  .login { min-height:100vh; display:flex; flex-wrap:wrap; }
+  .login__brand { flex:1 1 420px; box-sizing:border-box; padding:48px; display:flex; flex-direction:column; justify-content:space-between; gap:32px; background:var(--monte); color:var(--on-monte); }
+  .login__mark { display:flex; align-items:center; gap:10px; font:700 26px/32px var(--font-display); letter-spacing:-.02em; }
+  .login__mark span { width:20px; height:20px; border-radius:4px; background:var(--limon); }
+  .login__claim { display:flex; flex-direction:column; gap:12px; max-width:440px; }
+  .login__claim strong { font:700 44px/48px var(--font-display); letter-spacing:-.03em; text-wrap:balance; }
+  .login__claim span { font-size:15px; line-height:22px; opacity:.85; }
+  .login__form-wrap { flex:1 1 420px; box-sizing:border-box; padding:48px 24px; display:flex; align-items:center; justify-content:center; }
+  .login form { width:100%; max-width:360px; display:flex; flex-direction:column; gap:16px; }
+  .login h1 { margin:0; font:700 28px/34px var(--font-display); letter-spacing:-.02em; }
+  .login p { margin:0; color:var(--ink-muted); }
+</style>
+</head>
+<body>
+<div class="login">
+  <div class="login__brand">
+    <div class="login__mark"><span></span>{{ shop }}</div>
+    <div class="login__claim">
+      <strong>Los pedidos llegan solos. Vos decidís los que necesitan una mirada.</strong>
+      <span>Administración de la distribuidora: pedidos, stock, precios y clientes.</span>
+    </div>
+    <span style="font-size:12px; opacity:.7">San Miguel de Tucumán</span>
+  </div>
+  <div class="login__form-wrap">
+    <form method="post" action="/ingresar">
+      <div style="display:flex; flex-direction:column; gap:4px">
+        <h1>Ingresar</h1>
+        <p>Usá el usuario que te dio el equipo.</p>
+      </div>
+      {% if error %}
+      <div class="tz-notice tz-notice--error flash" role="alert"><strong>Usuario o contraseña incorrectos.</strong><span>Revisalos e intentá de nuevo.</span></div>
+      {% endif %}
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="tz-field"><label for="usuario">Usuario</label><input id="usuario" name="usuario" autocomplete="username" value="{{ username }}" required autofocus></div>
+      <div class="tz-field"><label for="clave">Contraseña</label><input id="clave" name="clave" type="password" autocomplete="current-password" required></div>
+      <button class="tz-btn tz-btn--primary" type="submit" style="justify-content:center">Ingresar</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Clientes · {{ shop }}{% endblock %}
+{% block content %}
+<div class="head">
+  <div>
+    <h1>Clientes</h1>
+    <p>Quienes pidieron por el chat, con la dirección que tienen guardada para los envíos.</p>
+  </div>
+  <form class="search" method="get" action="/clientes" role="search">
+    <label class="eyebrow" for="buscar-c">Buscar</label>
+    <input id="buscar-c" name="q" type="search" value="{{ q }}" placeholder="Nombre o dirección">
+  </form>
+</div>
+
+{% if rows %}
+<div class="grid-2" style="grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr)">
+  <section class="tz-panel scroll">
+    <table class="tz-table">
+      <thead><tr><th>Cliente</th><th>Canal</th><th>Dirección guardada</th><th class="num">Pedidos</th><th class="num">Comprado</th><th>Último pedido</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr {% if selected and r.key == selected.key %}class="is-selected"{% endif %}>
+          <td><a href="/clientes?c={{ r.key|urlq }}{{ '&q=' ~ q|urlq if q }}">{{ r.customer.name or 'Sin nombre' }}</a></td>
+          <td>{{ 'Telegram' if r.customer.channel == 'telegram' else r.customer.channel|capitalize }}</td>
+          <td>{% if r.customer.address %}{{ r.customer.address }}{% else %}<span class="muted">sin dirección todavía</span>{% endif %}</td>
+          <td class="num">{{ r.count }}</td>
+          <td class="num">{{ r.spent|money }}</td>
+          <td>{{ r.last|fecha if r.last else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% if selected %}
+  <section class="tz-panel">
+    <div class="panel-head"><h2 class="section">{{ selected.customer.name or 'Sin nombre' }}</h2>
+      {% if selected.count %}<span class="tz-badge tz-badge--ok">Cliente activo</span>{% endif %}</div>
+    <dl class="kv">
+      <dt>Canal</dt><dd>{{ 'Telegram' if selected.customer.channel == 'telegram' else selected.customer.channel|capitalize }}</dd>
+      <dt>Dirección</dt><dd>{{ selected.customer.address or '—' }}</dd>
+      <dt>Comprado</dt><dd>{{ selected.spent|money }} en pedidos confirmados</dd>
+      {% if selected.top %}<dt>Compra típica</dt><dd>{{ selected.top|join(', ') }}</dd>{% endif %}
+    </dl>
+    {% if selected.orders %}
+    <table class="tz-table">
+      <thead><tr><th>Pedido</th><th>Fecha</th><th class="num">Total</th><th>Estado</th></tr></thead>
+      <tbody>
+      {% for o in selected.orders|reverse %}{% if loop.index <= 8 %}
+        <tr><td class="id"><a href="/pedidos/{{ o.order_id }}">{{ o.order_id }}</a></td><td>{{ o.created_at|fecha }}</td><td class="num">{{ o.total|money }}</td><td>{% include "_badge.html" %}</td></tr>
+      {% endif %}{% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Todavía no hizo pedidos.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% else %}
+<section class="tz-panel"><p class="empty">{% if q %}No hay clientes que coincidan con «{{ q }}».{% else %}Todavía no hay clientes: aparecen cuando alguien escribe al bot.{% endif %}</p></section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Pedidos · {{ shop }}{% endblock %}
+{% block content %}
+<div class="head">
+  <div>
+    <h1>Pedidos</h1>
+    <p>Todos los pedidos que entraron por el chat. Los que están en revisión esperan tu decisión.</p>
+  </div>
+</div>
+
+<div class="toolbar">
+  <nav class="tabs" aria-label="Filtrar por estado">
+    <a href="/pedidos?estado=todos" {% if estado == 'todos' %}aria-current="page"{% endif %}>Todos · {{ total }}</a>
+    <a href="/pedidos?estado=revision" {% if estado == 'revision' %}aria-current="page"{% endif %}>En revisión · {{ counts.revision }}</a>
+    <a href="/pedidos?estado=confirmados" {% if estado == 'confirmados' %}aria-current="page"{% endif %}>Confirmados · {{ counts.confirmados }}</a>
+    <a href="/pedidos?estado=rechazados" {% if estado == 'rechazados' %}aria-current="page"{% endif %}>Rechazados · {{ counts.rechazados }}</a>
+  </nav>
+  <form class="search" method="get" action="/pedidos" role="search">
+    <input type="hidden" name="estado" value="{{ estado }}">
+    <label class="eyebrow" for="buscar">Buscar</label>
+    <input id="buscar" name="q" type="search" value="{{ q }}" placeholder="Pedido, cliente o producto">
+  </form>
+</div>
+
+<section class="tz-panel scroll">
+  {% if orders %}
+  <table class="tz-table">
+    <thead>
+      <tr><th>Pedido</th><th>Fecha</th><th>Cliente</th><th>Productos</th><th>Motivo</th><th class="num">Total</th><th>Estado</th><th><span class="sr-only">Acción</span></th></tr>
+    </thead>
+    <tbody>
+    {% for o in orders %}
+      <tr>
+        <td class="id">{{ o.order_id }}</td><td>{{ o.created_at|fecha }}</td><td>{{ o.customer_name }}</td>
+        <td>{% for l in o.lines %}{{ l.qty }} × {{ l.name }}{{ ', ' if not loop.last }}{% endfor %}</td>
+        <td>{{ o.reason or '—' }}</td>
+        <td class="num">{{ o.total|money }}</td>
+        <td>{% include "_badge.html" %}</td>
+        <td class="right"><a class="tz-btn tz-btn--secondary btn-sm" href="/pedidos/{{ o.order_id }}">{{ 'Revisar' if o.status == 'EN REVISION' else 'Ver' }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">{% if q %}No hay pedidos que coincidan con «{{ q }}».{% elif estado == 'revision' %}No hay pedidos en revisión.{% else %}Todavía no hay pedidos acá.{% endif %}</p>
+  {% endif %}
+</section>
+<p class="muted" style="margin: 0">Mostrando {{ orders|length }} pedido{{ 's' if orders|length != 1 }}. Los confirmados solos no necesitan acción.</p>
+{% endblock %}

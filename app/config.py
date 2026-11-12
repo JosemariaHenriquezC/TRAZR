@@ -129,6 +129,10 @@ class Settings:
     # (Así los tests, que arman Settings a mano, nunca llaman a la API real.)
     ai: AIConfig = field(default_factory=lambda: AIConfig(enabled=False))
     business: Business = field(default_factory=Business)
+    # Web de administración
+    secret_key: str = ""                  # firma la cookie de sesión (vacío = se genera al arrancar)
+    web_host: str = "127.0.0.1"
+    web_port: int = 8000
 
 
 def load_settings(require_telegram: bool = True, env_file: str | None = None) -> Settings:
@@ -162,6 +166,9 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         timezone=os.getenv("TIMEZONE", "UTC").strip() or "UTC",
         rules=rules,
         ai=load_ai_config(),
+        secret_key=os.getenv("SECRET_KEY", "").strip(),
+        web_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",
+        web_port=_int("WEB_PORT", 8000),
         business=Business(
             name=os.getenv("NEGOCIO_NOMBRE", TRAZR["NEGOCIO_NOMBRE"]).strip(),
             delivery_hours=os.getenv("NEGOCIO_HORARIOS", TRAZR["NEGOCIO_HORARIOS"]).strip(),

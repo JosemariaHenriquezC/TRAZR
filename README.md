@@ -161,13 +161,34 @@ python -m scripts.crear_admin lucia "Lucía Fernández"
 Pide la contraseña sin mostrarla (mínimo 8 caracteres) y la guarda con hash, nunca en texto
 plano. Se pueden crear varios admins; en cada pedido queda quién lo aprobó o rechazó.
 
-### Paso 3: ejecutar
+### Paso 3: ejecutar (web + bot juntos)
 
 ```bash
-python -m app.bot
+python -m app.server
 ```
 
-Hasta que esté la web, el simulador de consola tiene las acciones de admin
+Abrí **http://127.0.0.1:8000** e ingresá con el usuario del paso 2. El bot de Telegram corre en
+el mismo proceso: cuando aprobás o rechazás un pedido en la web, el aviso le llega al cliente por
+el chat. Sin `TELEGRAM_BOT_TOKEN` arranca solo la web. Poné una `SECRET_KEY` en el `.env` (ver
+`.env.example`) para no tener que volver a ingresar cada vez que reiniciás.
+
+(`python -m app.bot` sigue funcionando para correr solo el bot, sin web.)
+
+### La web de administración
+
+| Pantalla | Qué hacés ahí |
+|---|---|
+| **Tablero** | Ventas del día, pedidos de hoy, cuántos esperan revisión, poco stock y los avisos. |
+| **Pedidos** | Todos los pedidos con filtro por estado y buscador. |
+| **Detalle** | Por qué quedó en revisión, stock de hoy, cliente y dirección. **Aprobar** (cargando el precio nuevo si estaba vencido) o **rechazar** con motivo: al cliente le llega por el chat. |
+| **Productos y stock** | Sumar stock en la fila, editar precio, vigencia, alias y visibilidad, dar de alta productos. |
+| **Clientes** | Dirección guardada, pedidos, total comprado y compra típica de cada cliente. |
+
+Seguridad: contraseñas con hash, sesión en cookie firmada (`httponly`, `samesite=lax`, 12 h),
+token CSRF en cada formulario y todo pide ingresar. Corre en tu PC (`127.0.0.1`); para
+publicarla en internet hace falta HTTPS (fase 5).
+
+El simulador de consola también tiene las acciones de admin
 (`:avisos`, `:revision`, `:aprobar ID [SKU=precio]`, `:rechazar ID motivo`, `:sumar SKU cantidad`).
 
 El bot funciona **mientras el proceso esté corriendo**. Para 24/7 necesitás una PC
@@ -204,7 +225,9 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 
 ```
 app/
+  server.py       arranca la web y el bot juntos (un proceso)
   bot.py          capa de Telegram (handlers, botones, arranque); sin lógica de negocio
+  web/            web de administración: main.py (rutas FastAPI), templates/ (Jinja2), static/ (CSS del diseño)
   service.py      BotService: entrada de mensajes, comandos y revisión del admin (independiente del canal)
   checkout.py     borrador, resumen, confirmación, dirección y modificación de pedidos
   admin.py        acciones del admin para la web: aprobar, rechazar, stock, precios, productos, avisos, tablero

@@ -5,6 +5,8 @@ valida stock y precio contra la base SQLite, confirma o deriva a revisión del
 admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 
 ## Arquitectura
+- `app/server.py` — `python -m app.server`: web + bot de Telegram en un proceso
+- `app/web/` — web de admin: `main.py` (rutas FastAPI, login, CSRF), `templates/` (Jinja2), `static/` (CSS del diseño)
 - `app/bot.py` — capa de Telegram, sin lógica de negocio
 - `app/service.py` — `BotService`: entrada de mensajes, comandos, revisión del admin (independiente del canal)
 - `app/checkout.py` — borrador → resumen → confirmación; dirección; modificar pedidos hechos
@@ -56,7 +58,7 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 
 ## Próxima sesión — empezar por acá
 
-### Fase 4: web de administración — EN CURSO
+### Fase 4: web de administración — HECHA (falta crear los usuarios reales)
 Decisiones tomadas (usuario + consultor):
 - **Revisión del admin solo en la web.** El chat es solo para clientes: se QUITAN los comandos
   de admin del chat (/stock, /setstock, /sumar, /precio, /revision, /pedido, /aprobar,
@@ -100,8 +102,9 @@ Orden de trabajo:
 1. Diseño en Claude Design (Design System de Trazr + pantallas) → aprobado. HECHO.
 2. Backend: quitar admin del chat, avisos y admins en la base, resultados tipados, Notifier. HECHO
    (admin.py, auth.py, notifier.py, scripts/crear_admin.py; ADMIN_CHAT_IDS eliminado).
-3. Web: login, pantallas según el diseño aprobado, tests.
-4. Capturas con Playwright para revisar y para el TFI.
+3. Web: login, pantallas según el diseño aprobado, tests. HECHO (tests/test_web.py).
+4. Capturas con Playwright para revisar. HECHO (para el TFI se pueden repetir a escala 2).
+Pendiente de la fase 4: crear los usuarios reales en la PC del usuario (scripts/crear_admin.py).
 
 Método de diseño: partir de buenas referencias, skills de diseño y diseño real antes de programar.
 - Claude Design (artifacts «Design System» y «Design»); Figma como alternativa (el MCP de Figma

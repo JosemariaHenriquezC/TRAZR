@@ -44,6 +44,9 @@ class Repository(ABC):
     def get_customer(self, channel: str, external_id: str) -> Customer | None: ...
 
     @abstractmethod
+    def list_customers(self) -> list[Customer]: ...
+
+    @abstractmethod
     def save_customer(self, customer: Customer, stamp: str) -> Customer:
         """Alta o actualización (nombre y dirección) del cliente."""
 

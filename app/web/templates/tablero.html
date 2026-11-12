@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Tablero · {{ shop }}{% endblock %}
+{% block content %}
+<div class="head">
+  <div>
+    <span class="eyebrow">{{ today_label }}</span>
+    <h1>{{ greeting }}, {{ admin.name.split(' ')[0] }}</h1>
+    {% if d.pending %}
+    <p>Hay {{ d.pending|length }} pedido{{ 's' if d.pending|length != 1 }} esperando tu revisión. El más viejo entró {{ d.pending[0].created_at|fecha }}.</p>
+    {% else %}
+    <p>No hay pedidos esperando revisión. Los que entran dentro de los parámetros se confirman solos.</p>
+    {% endif %}
+  </div>
+  {% if d.pending %}<a class="tz-btn tz-btn--primary" href="/pedidos?estado=revision">Revisar pedidos</a>{% endif %}
+</div>
+
+<section class="grid-4" aria-label="Resumen del día">
+  <div class="tz-panel tz-stat"><span class="tz-stat__label">Ventas de hoy</span><span class="tz-stat__value">{{ d.sales_today|money }}</span><span class="tz-stat__hint">ayer: {{ d.sales_yesterday|money }}</span></div>
+  <div class="tz-panel tz-stat"><span class="tz-stat__label">Pedidos de hoy</span><span class="tz-stat__value">{{ d.orders_today }}</span><span class="tz-stat__hint">{{ d.auto_confirmed_today }} confirmado{{ 's' if d.auto_confirmed_today != 1 }} solo{{ 's' if d.auto_confirmed_today != 1 }}</span></div>
+  <div class="tz-panel tz-stat tz-stat--key"><span class="tz-stat__label">En revisión</span><span class="tz-stat__value">{{ d.pending|length }}</span><span class="tz-stat__hint">{{ 'esperan tu decisión' if d.pending else 'nada pendiente' }}</span></div>
+  <div class="tz-panel tz-stat"><span class="tz-stat__label">Poco stock</span><span class="tz-stat__value">{{ d.low_stock|length }}</span><span class="tz-stat__hint">menos de {{ LOW_STOCK }} unidades</span></div>
+</section>
+
+<div class="grid-2">
+  <section class="tz-panel">
+    <div class="panel-head"><h2 class="section">Para revisar</h2><a href="/pedidos?estado=revision">Ver todos</a></div>
+    {% if d.pending %}
+    <div class="scroll">
+      <table class="tz-table">
+        <thead><tr><th>Pedido</th><th>Cliente</th><th>Motivo</th><th class="num">Total</th><th><span class="sr-only">Acción</span></th></tr></thead>
+        <tbody>
+        {% for o in d.pending[:6] %}
+          <tr><td class="id">{{ o.order_id }}</td><td>{{ o.customer_name }}</td><td>{{ o.reason }}</td><td class="num">{{ o.total|money }}</td>
+              <td class="right"><a class="tz-btn tz-btn--secondary btn-sm" href="/pedidos/{{ o.order_id }}">Revisar</a></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">Nada para revisar por ahora.</p>
+    {% endif %}
+  </section>
+
+  <div class="stack" style="gap: 24px">
+    <section class="tz-panel">
+      <div class="panel-head">
+        <h2 class="section">Avisos</h2>
+        {% if unread %}
+        <form method="post" action="/avisos/leidos"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Marcar {{ unread }} como leído{{ 's' if unread != 1 }}</button></form>
+        {% endif %}
+      </div>
+      <div class="stack panel-body">
+        {% for n in notices %}
+        <div class="tz-notice {{ 'tz-notice--unread' if not n.read }} {{ 'tz-notice--error' if n.kind == 'falla' }}">
+          <strong>{% if n.order_id %}<a href="/pedidos/{{ n.order_id }}">{{ n.title }}</a>{% else %}{{ n.title }}{% endif %}</strong>
+          {% if n.detail %}<span>{{ n.detail }}</span>{% endif %}
+          <span class="tz-notice__meta">{{ n.created_at|fecha }}</span>
+        </div>
+        {% else %}
+        <p class="empty" style="padding: 16px 0">Sin avisos.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="tz-panel">
+      <div class="panel-head"><h2 class="section">Poco stock</h2><a href="/productos?filtro=poco">Ir a productos</a></div>
+      {% if d.low_stock %}
+      <table class="tz-table">
+        <tbody>
+        {% for p in d.low_stock %}
+          <tr><td>{{ p.name }} <span class="id muted">{{ p.sku }}</span></td><td class="num">{{ p.stock|qty }} u.</td>
+              <td class="right">{% if p.stock <= 0 %}<span class="tz-badge tz-badge--danger">Sin stock</span>{% else %}<span class="tz-badge tz-badge--warn">Poco stock</span>{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="empty">Todo el catálogo tiene stock suficiente.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
