@@ -35,6 +35,38 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 1. Gemini como intérprete — hecha y conectada en `service.py` (respaldo: reglas)
 2. SQLite + dirección obligatoria (envío siempre incluido, sin costo) — hecha
 3. Confirmación del pedido y de la dirección (botones), modificación de pedidos hechos — hecha
-4. FastAPI + webhook de WhatsApp Cloud API
-5. Mercado Pago (link de pago + webhook idempotente)
-6. Faltantes del TFI: crédito, panel, recompra, planes
+4. **Web de administración** (FastAPI) — SOLO para el admin
+5. WhatsApp Cloud API (webhook en la misma app FastAPI)
+6. Mercado Pago (link de pago + webhook idempotente)
+7. Faltantes del TFI: crédito, recompra, planes
+8. (A evaluar al final) web para clientes. Por ahora el canal del cliente es el chat.
+
+## Próxima sesión — empezar por acá
+
+### A. Stock antes de armar el pedido (hacer PRIMERO, antes de la fase 4)
+Hoy el resumen solo avisa «si confirmás queda en revisión por stock insuficiente».
+Lo que se quiere:
+- Verificar el stock al armar el borrador (`checkout.start_order` / `_summary`), ANTES
+  de mostrar el resumen, y de nuevo al confirmar (otro cliente pudo llevárselo).
+- Si un producto no alcanza, el bot se lo dice al cliente y NO le deja confirmar ese
+  pedido: le ofrece lo que hay (ej. «de cerveza me quedan 5, ¿te mando 5?»), sacarlo,
+  o reemplazarlo. Producto con stock 0 = no se puede pedir.
+- Gemini puede redactar la charla, pero las cantidades disponibles las pone el bot
+  (regla: Gemini nunca escribe números).
+- Decidir con el usuario:
+  1. ¿Mostrar la cantidad exacta que queda o solo «no alcanza / me quedan pocas»?
+  2. Con esto, «EN REVISION por stock insuficiente» deja de existir. ¿Revisión queda solo
+     para precio vencido y total máximo? (afecta `rules.evaluate`, tests y el README)
+  3. ¿Aplica igual al modificar un pedido hecho? (se supone que sí)
+
+### B. Fase 4: web de administración
+- Interpretación a confirmar con el usuario: «todo lo de confirmar el pedido va a la
+  web» = la gestión del admin (pedidos en revisión, aprobar/rechazar, ver pedidos) pasa
+  a la web. El cliente sigue confirmando su pedido en el chat.
+- Propuesta: FastAPI + plantillas HTML (Jinja2) simples, login de admin, misma base
+  SQLite y misma lógica de `BotService` (approve/reject/stock/precio): la web es otro
+  «canal» del admin, sin duplicar reglas. Pantallas: pedidos (filtro por estado),
+  detalle con aprobar/rechazar, stock y precios, clientes.
+- Decidir: ¿los avisos al admin por Telegram siguen como notificación, o todo solo en la web?
+  ¿Cómo corren juntos el bot y la web (un proceso o dos)? La FastAPI de la fase 4 es la
+  misma que después recibe el webhook de WhatsApp (fase 5).
