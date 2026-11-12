@@ -87,7 +87,12 @@ Diseño:
   Verde `monte` (marca/acción) + amarillo `limon` (identidad, solo como fondo), estados
   ok/warn/danger, Archivo (títulos) + Inter (texto) + IBM Plex Mono (IDs/SKU). Componentes
   como clases CSS `tz-*` (Button, StatusBadge, OrdersTable, StatTile, Field, Notice): su
-  `bundle.css` se copia a la web real. Estado: esperando revisión del usuario.
+  `bundle.css` se copia a la web real. Aprobado por el usuario.
+- Pantallas (canvas de Claude Design): https://claude.ai/artifact/TxLisYokWRD85qC63RVNH9
+  Tablero, Pedidos (filtro por estado), Detalle de pedido (aprobar con precio nuevo / rechazar
+  con motivo, historial), Productos y stock (sumar stock en la fila, editar producto),
+  Clientes (con detalle y pedidos) e Ingreso. Su `admin.css` (variables + estructura de página)
+  es la base del CSS de la web real. Estado: esperando revisión del usuario.
 
 Orden de trabajo:
 1. Diseño en Claude Design (Design System de Trazr + pantallas) → revisión del usuario.
