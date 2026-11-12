@@ -17,7 +17,7 @@ TFI de Administración de Recursos — UTN-FRT, comisión 4K1.
 | **Python 3.10+** | Ecosistema maduro para bots; fácil de leer y modificar. |
 | **python-telegram-bot 21** | Librería recomendada por Telegram, asíncrona, con botones inline. Usa *long polling*: no hace falta dominio ni abrir puertos. |
 | **SQLite** | Toda la información (catálogo, clientes, pedidos) en un solo archivo, sin servidor ni credenciales. Transacciones reales: un pedido se registra completo o no se registra. La propia base impide stock negativo y pedidos sin dirección. Viene incluida en Python. |
-| **Gemini como intérprete** (fase 1) | Entiende jerga y abreviaturas. Solo interpreta texto: precios, stock y estados salen de la base y de `rules.py`. Si falla, interpreta el parser por reglas. El módulo está en `ai_parser.py`; **`service.py` todavía usa `parser.parse_order`** (falta cambiar el import). |
+| **Gemini como intérprete** (fase 1) | Entiende jerga y abreviaturas. Solo interpreta texto: precios, stock y estados salen de la base y de `rules.py`. Si falla, interpreta el parser por reglas. Necesita `GEMINI_API_KEY` en el `.env`; al arrancar, el bot avisa si Gemini quedó apagado. |
 | **Parser por reglas** (respaldo) | Funciona sin claves ni costo. Tolera tildes, plurales, errores de tipeo, «x 3», «media docena», números en palabra. |
 
 ## 2. Regla «dentro de los parámetros»

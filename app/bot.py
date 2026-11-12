@@ -114,6 +114,11 @@ def main() -> None:
                         "(o --csv tu_catalogo.csv).")
     except StorageError as exc:
         raise SystemExit(f"No pude acceder a la base de datos: {exc}")
+    if settings.ai.usable:
+        log.info("Intérprete: Gemini (%s) con respaldo por reglas.", settings.ai.model)
+    else:
+        log.warning("Gemini APAGADO (falta GEMINI_API_KEY, AI_PARSER_ENABLED=false o falta "
+                    "la librería google-genai): los pedidos se interpretan solo por reglas.")
     if not settings.admin_chat_ids:
         log.warning("ADMIN_CHAT_IDS vacío: nadie es administrador. Escribile /miid al bot y "
                     "poné ese número en el .env.")

@@ -16,6 +16,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .ai_parser import AIConfig, load_ai_config
+
 
 class ConfigError(Exception):
     """Falta o es inválida una variable de configuración."""
@@ -86,6 +88,9 @@ class Settings:
     currency_symbol: str = "$"
     timezone: str = "UTC"
     rules: Rules = field(default_factory=Rules)
+    # Intérprete con Gemini. Apagado por defecto: load_settings() lo lee del .env.
+    # (Así los tests, que arman Settings a mano, nunca llaman a la API real.)
+    ai: AIConfig = field(default_factory=lambda: AIConfig(enabled=False))
 
 
 def load_settings(require_telegram: bool = True, env_file: str | None = None) -> Settings:
@@ -129,6 +134,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         currency_symbol=os.getenv("CURRENCY_SYMBOL", "$").strip() or "$",
         timezone=os.getenv("TIMEZONE", "UTC").strip() or "UTC",
         rules=rules,
+        ai=load_ai_config(),
     )
 
     return settings

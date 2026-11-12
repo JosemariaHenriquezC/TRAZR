@@ -7,7 +7,8 @@ si corresponde, avisos a los administradores o al cliente. Así la misma lógica
 se usa desde Telegram, desde el simulador de consola y desde los tests.
 
 Flujo de un pedido:
-  1. El cliente escribe su pedido en lenguaje natural → parser.parse_order()
+  1. El cliente escribe su pedido en lenguaje natural → ai_parser.parse_order()
+     (Gemini interpreta; si falla o no hay clave, interpreta el parser por reglas)
   2. Se lee el stock y precio vigentes en ese momento de la base de datos.
   3. Dirección obligatoria: si el cliente todavía no tiene una guardada, el
      pedido queda retenido (pedidos_pendientes) y se le pide la dirección.
@@ -32,7 +33,7 @@ from zoneinfo import ZoneInfo
 from .config import Settings
 from .models import (COSTO_ENVIO, ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION,
                      Customer, Order, OrderLine, ParsedItem, Product)
-from .parser import parse_order
+from .ai_parser import parse_order
 from .rules import evaluate
 from .storage.base import Repository, StorageError, to_date, to_number
 
@@ -64,9 +65,10 @@ def esc(value) -> str:
 
 
 class BotService:
-    def __init__(self, repo: Repository, settings: Settings):
+    def __init__(self, repo: Repository, settings: Settings, ai_client=None):
         self.repo = repo
         self.s = settings
+        self.ai_client = ai_client  # solo para tests: cliente de Gemini simulado
         self.tz = ZoneInfo(settings.timezone)
         # Un único candado para que dos pedidos simultáneos no descuenten
         # el mismo stock dos veces (el bot corre como un solo proceso).
@@ -483,27 +485,38 @@ class BotService:
         return msgs
 
     def process_order(self, user: User, text: str) -> list[Outgoing]:
+        # Etapa 1: interpretar el mensaje. Va FUERA del candado: Gemini puede
+        # tardar unos segundos y mientras tanto otros clientes pueden pedir.
+        try:
+            catalog = [p for p in self.repo.list_products() if p.active]
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "leer el catálogo para un pedido")
+        items = parse_order(text, catalog, self.s.rules.match_threshold, self.s.rules.max_qty_per_item,
+                            config=self.s.ai, client=self.ai_client)
+        if not items:
+            return [Outgoing(user.id,
+                             "No encontré un pedido en tu mensaje 🤔. Escribí productos y cantidades, "
+                             "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Mirá /catalogo.")]
+        problems = self._clarifications(items)
+        if problems:
+            return [Outgoing(user.id, "No pude registrar el pedido todavía:\n• " + "\n• ".join(problems)
+                             + "\n\nMandámelo de nuevo corregido, completo. 🙏")]
+
         with self._lock:
-            # Etapa 2: stock y precios en tiempo real (se leen en cada pedido).
+            # Etapa 2: stock y precios en tiempo real, releídos justo antes de decidir
+            # (pudieron cambiar mientras Gemini interpretaba).
             try:
-                products = self.repo.list_products()
+                current = {p.sku.upper(): p for p in self.repo.list_products()}
             except StorageError as exc:
                 return self._storage_failure(user, exc, "leer el stock para un pedido")
-
-            active = [p for p in products if p.active]
-            # Etapa 1: interpretar el mensaje.
-            items = parse_order(text, active, self.s.rules.match_threshold, self.s.rules.max_qty_per_item)
-            if not items:
-                return [Outgoing(user.id,
-                                 "No encontré un pedido en tu mensaje 🤔. Escribí productos y cantidades, "
-                                 "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Mirá /catalogo.")]
-            problems = self._clarifications(items)
-            if problems:
-                return [Outgoing(user.id, "No pude registrar el pedido todavía:\n• " + "\n• ".join(problems)
-                                 + "\n\nMandámelo de nuevo corregido, completo. 🙏")]
-
-            pairs = [(it.product, it.qty) for it in items if it.product and it.qty]
-            unknown = [it.unknown_name for it in items if it.error == "no_existe"]  # solo modo "review"
+            pairs, unknown = [], [it.unknown_name for it in items if it.error == "no_existe"]
+            for it in items:
+                if it.product and it.qty:
+                    fresh = current.get(it.product.sku.upper())
+                    if fresh is None or not fresh.active:
+                        unknown.append(it.product.name)  # lo dieron de baja recién
+                    else:
+                        pairs.append((fresh, it.qty))
 
             # Etapa 3: dirección obligatoria. Sin dirección no se registra nada:
             # el pedido queda retenido y se le pide la dirección al cliente.

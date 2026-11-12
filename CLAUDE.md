@@ -20,11 +20,12 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
   identifican por `canal` + `externo_id`.
 - Ningún pedido se registra sin dirección de envío. El envío siempre está incluido, sin costo.
 - Nunca commitear `.env`, `credentials.json` ni la base (`data/`).
-- Los tests no deben llamar a APIs reales. Correr con `python -m pytest -q`.
+- Los tests no deben llamar a APIs reales (`Settings.ai` viene apagado por defecto;
+  para probar con IA se pasa un cliente simulado a `BotService(ai_client=...)`). Correr con `python -m pytest -q`.
 
 ## Plan por fases
 0. Preparación — hecha
-1. Gemini como intérprete — hecha (falta que `service.py` importe `ai_parser.parse_order`)
+1. Gemini como intérprete — hecha y conectada en `service.py` (respaldo: reglas)
 2. SQLite + dirección obligatoria (envío siempre incluido, sin costo) — hecha
 3. Flujo de dirección en el bot (botones Sí/Cambiar)
 4. FastAPI + webhook de WhatsApp Cloud API
