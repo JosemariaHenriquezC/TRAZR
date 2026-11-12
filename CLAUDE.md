@@ -54,44 +54,42 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 
 ## Próxima sesión — empezar por acá
 
-### Fase 4: web de administración (NO empezar hasta que el usuario lo indique: va a sumar cosas)
-Decidido:
-- La revisión del admin (pedidos EN REVISION, aprobar/rechazar con motivo) sale del chat y
-  pasa a la web. Motivo: el chat es la conversación con el cliente; el admin no debe recibir
-  pedidos ni botones de aprobar ahí. Hoy eso vive en `checkout._notify_review`,
-  `service.approve/reject`, `cmd_pending` y los botones `ap:`/`rj:` de `bot.py`.
-- El cliente sigue confirmando su pedido en el chat; cuando el admin aprueba o rechaza en la
-  web, al cliente le llega el aviso por el chat (Telegram ahora, WhatsApp en la fase 5).
-- La lógica no se duplica: la web llama a los mismos métodos de `BotService` (approve, reject,
-  set_stock, set_price...). La web es otro «canal» del admin.
+### Fase 4: web de administración — EN CURSO
+Decisiones tomadas (usuario + consultor):
+- **Revisión del admin solo en la web.** El chat es solo para clientes: se QUITAN los comandos
+  de admin del chat (/stock, /setstock, /sumar, /precio, /revision, /pedido, /aprobar,
+  /rechazar) y los botones `ap:`/`rj:`. El admin no recibe nada por Telegram.
+- **Avisos al admin solo en la web:** lo que hoy manda `_admins()` (pedido en revisión, pedido
+  modificado, cambio fuera de término, falla de base) se guarda en una tabla `avisos` y se ve
+  en la web (contador + lista), no por chat.
+- **Varios admins:** tabla `admins` en SQLite (usuario, nombre, hash scrypt de la contraseña
+  con `hashlib`, activo). Script para crear admins. `Revisado_por` = admin logueado.
+- **Pantallas:** pedidos (filtro por estado) + detalle con aprobar/rechazar con motivo;
+  stock, precios y productos (alta/edición, reemplaza al CSV); clientes (dirección y pedidos);
+  tablero (ventas del día/semana, en revisión, poco stock, avisos).
+- **Un solo proceso:** FastAPI con el bot de Telegram dentro del lifespan
+  (`initialize/start/updater.start_polling`), un worker, sin --reload. Un comando levanta todo.
+- **Reutilizar lógica sin duplicar:** `approve/reject` devuelven un resultado (ok, mensaje,
+  pedido, avisos para el cliente); `set_stock/add_stock/set_price` reciben valores tipados;
+  `Outgoing` suma `channel`; un `Notifier` envía al canal del cliente (Telegram ahora,
+  WhatsApp en la fase 5). Validaciones de alta de productos en `BotService`, no en las rutas.
+- **Frontend:** FastAPI + Jinja2 server-rendered, formularios clásicos (POST + redirect) y CSS
+  propio; animaciones sutiles con CSS (transiciones, View Transitions). HTMX, si hace falta,
+  en una segunda pasada y puntual.
+- **Seguridad:** sesión con `SessionMiddleware` (cookie firmada, httponly, samesite=lax),
+  `SECRET_KEY` en `.env`, token CSRF en formularios. Dependencias nuevas: fastapi, uvicorn,
+  jinja2, python-multipart, itsdangerous.
+- **Tests:** `TestClient` con base temporal y notificador simulado. Playwright solo para
+  capturas/demo, no en la suite.
 
-Propuesta técnica (a confirmar): FastAPI + plantillas Jinja2 simples (sin framework de
-frontend), mismo archivo SQLite, bot de Telegram corriendo dentro del mismo proceso
-(un solo comando para levantar todo). Es la misma app que después recibe el webhook de
-WhatsApp (fase 5). Corre local (http://localhost) hasta la fase 5, que necesita URL pública.
+Orden de trabajo:
+1. Diseño en Claude Design (Design System de Trazr + pantallas) → revisión del usuario.
+2. Backend: quitar admin del chat, avisos y admins en la base, resultados tipados, Notifier.
+3. Web: login, pantallas según el diseño aprobado, tests.
+4. Capturas con Playwright para revisar y para el TFI.
 
-Pantallas propuestas: pedidos (filtro por estado), detalle con aprobar/rechazar, stock y
-precios (editar, sumar), alta/edición de productos (reemplaza al CSV), clientes, y un tablero
-simple (ventas del día, pedidos en revisión) útil para el TFI.
-
-Método de diseño (pedido por el usuario): partir de buenas referencias, usar skills de diseño
-y trabajar sobre un diseño real en vez de inventarlo.
-1. Diseño primero en Claude Design (artifacts tipo «Design System» y «Design»): armar el
-   sistema de diseño de Trazr (colores, tipografía, espaciado, componentes) y las pantallas
-   en el canvas; el usuario las revisa y recién después se programa a partir de eso.
-   Alternativa/complemento: diseño en Figma + plugin oficial de Figma (MCP) para leerlo.
-2. Skills al programar el frontend:
-   - `frontend-design` (oficial de Anthropic): criterio visual, evitar diseños genéricos.
-     Reemplaza a «Impeccable», que no está en el catálogo.
-   - `web-animation-design` y `emil-design-engineering` (basados en el curso de Emil
-     Kowalski, vienen en el plugin comunitario «audit-suite»): revisar animaciones y
-     microinteracciones de los componentes.
-3. Sin framework pesado: las páginas son HTML + CSS (Jinja2); animaciones con CSS.
-
-Falta decidir con el usuario antes de empezar:
-1. Login: ¿un solo usuario y contraseña en el `.env`, o varios admins?
-2. Avisos al admin: ¿nada fuera de la web, o un aviso corto por Telegram al admin
-   («hay un pedido en revisión, entrá a la web»), sin botones?
-3. Comandos de admin del chat (/stock, /precio, /aprobar...): ¿se quitan o quedan de respaldo?
-4. ¿Confirmar las pantallas de la lista? ¿Algo más (exportar a Excel, reportes)?
-5. Lo que el usuario dijo que le falta agregar.
+Método de diseño: partir de buenas referencias, skills de diseño y diseño real antes de programar.
+- Claude Design (artifacts «Design System» y «Design»); Figma como alternativa (el MCP de Figma
+  hoy no conecta: la red del entorno lo bloquea).
+- Skills: `frontend-design`; `web-animation-design` y `emil-design-engineering` (audit-suite);
+  `css-animations`/`ui-motion` (hzblj-skills). GSAP no hace falta para esta web.
