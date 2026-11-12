@@ -68,8 +68,10 @@ class Rules:
       1. Todos sus productos existen en el catálogo, están activos y tienen precio cargado.
       2. Hay stock suficiente (si no, el cliente NO puede confirmar: el bot le dice cuánto
          queda y ofrece ajustar; ver checkout.py).
-      3. El total no supera MAX_ORDER_TOTAL (0 = sin límite).
-    Si falla 3 (o un producto no tiene precio) → se registra "EN REVISION" y se avisa en la web.
+      3. El cliente ya está verificado: tiene al menos un pedido pagado
+         (REVISAR_CLIENTES_NUEVOS). El primer pedido de cada empresa va a revisión.
+      4. (Opcional) el total no supera MAX_ORDER_TOTAL (0 = sin límite, el valor por defecto).
+    Si falla 3 o 4 (o un producto no tiene precio) → "EN REVISION" y aviso en la web.
     Los precios no vencen: se cambian desde la web cuando hace falta.
     Si un producto no existe → depende de ON_UNKNOWN_PRODUCT:
         "ask"    (default) se le pide al cliente que corrija; no se registra.
@@ -80,7 +82,8 @@ class Rules:
     """
 
     require_stock: bool = True
-    max_order_total: float = 150000.0     # 0 = sin límite
+    max_order_total: float = 0.0          # 0 = sin límite (opcional: los pedidos B2B son grandes)
+    review_new_customers: bool = True     # el primer pedido de cada cliente va a revisión
     max_qty_per_item: int = 1000          # cantidades mayores se consideran inválidas
     on_unknown_product: str = "ask"       # "ask" | "review"
     match_threshold: float = 0.72         # similitud mínima para reconocer un producto (0-1)
@@ -165,7 +168,8 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
 
     rules = Rules(
         require_stock=_bool(os.getenv("RULE_REQUIRE_STOCK"), True),
-        max_order_total=_float("MAX_ORDER_TOTAL", 150000.0),
+        max_order_total=_float("MAX_ORDER_TOTAL", 0.0),
+        review_new_customers=_bool(os.getenv("REVISAR_CLIENTES_NUEVOS"), True),
         max_qty_per_item=_int("MAX_QTY_PER_ITEM", 1000),
         on_unknown_product=on_unknown,
         match_threshold=_float("MATCH_THRESHOLD", 0.72),

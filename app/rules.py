@@ -39,8 +39,13 @@ def merge_quantities(pairs: list[tuple[Product, int]]) -> list[tuple[Product, in
     return [(p, q) for p, q in merged.values()]
 
 
+NEW_CUSTOMER_REASON = "Primer pedido: lo revisa el equipo antes de confirmarlo"
+
+
 def evaluate(pairs: list[tuple[Product, int]], rules: Rules, today: date,
-             unknown_names: list[str] | None = None) -> Evaluation:
+             unknown_names: list[str] | None = None, new_customer: bool = False) -> Evaluation:
+    """`new_customer`: el cliente todavía no tiene ningún pedido pagado. Con
+    REVISAR_CLIENTES_NUEVOS, su pedido va a revisión para verificar la empresa una vez."""
     reasons: list[str] = []
     shortages: dict[str, float] = {}
     lines: list[OrderLine] = []
@@ -66,6 +71,8 @@ def evaluate(pairs: list[tuple[Product, int]], rules: Rules, today: date,
 
     if not lines:
         reasons.append("El pedido no tiene productos reconocidos")
+    if new_customer and rules.review_new_customers and lines:
+        reasons.insert(0, NEW_CUSTOMER_REASON)
 
     status = ESTADO_REVISION if reasons else ESTADO_CONFIRMADO
     return Evaluation(status=status, lines=lines, reasons=reasons, shortages=shortages)

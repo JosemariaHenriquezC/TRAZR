@@ -39,7 +39,7 @@
   <div class="remito__cell">
     <span class="remito__label">En revisión</span>
     <span class="remito__value" {% if d.pending %}style="color: var(--warn)"{% endif %}>{{ d.pending|length }}</span>
-    <span class="remito__hint">{{ 'superan el total máximo' if d.pending else 'nada pendiente' }}</span>
+    <span class="remito__hint">{{ 'esperan tu decisión' if d.pending else 'nada pendiente' }}</span>
   </div>
 </section>
 
@@ -95,7 +95,7 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="empty">No hay pedidos en revisión. Aparecen acá cuando un pedido supera el total máximo.</p>
+      <p class="empty">No hay pedidos en revisión. Acá aparece el primer pedido de cada empresa nueva, para que la verifiques.</p>
       {% endif %}
     </section>
 

@@ -327,6 +327,7 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             confirmed = [o for o in mine if o.status == ESTADO_CONFIRMADO]
             rows.append({"customer": cu, "key": f"{cu.channel}:{cu.external_id}", "orders": mine,
                          "count": len(mine), "spent": round(sum(o.total for o in confirmed), 2),
+                         "verified": any(o.is_paid for o in mine),
                          "last": mine[-1].created_at if mine else ""})
         rows.sort(key=lambda r: r["last"], reverse=True)
         q_norm = q.strip().lower()

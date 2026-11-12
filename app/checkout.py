@@ -202,6 +202,11 @@ class CheckoutMixin:
         """Lo que se le puede ofrecer al cliente: activo y con stock. Lo agotado ni se nombra."""
         return [p for p in self.repo.list_products() if p.active and p.stock > 0]
 
+    def _is_new_customer(self, user, exclude: str = "") -> bool:
+        """Cliente sin ningún pedido pagado todavía (para la revisión del primer pedido)."""
+        return not any(o.is_paid for o in self.repo.list_orders()
+                       if o.channel == user.channel and o.customer_id == user.id and o.order_id != exclude)
+
     def _shortages(self, pairs: list[tuple[Product, int]]) -> list[tuple[Product, int, int]]:
         """[(producto, pedido, disponible)] de lo que no alcanza."""
         if not self.s.rules.require_stock:
@@ -275,7 +280,7 @@ class CheckoutMixin:
         """Resumen del borrador con precios y total de la base, y los botones."""
         products = self._products_for(draft)
         pairs, unknown = self._resolve(draft, products)
-        ev = evaluate(pairs, self.s.rules, self.today(), unknown)
+        ev = evaluate(pairs, self.s.rules, self.today(), unknown, self._is_new_customer(user))
         if draft.modifies:
             head = f"✏️ <b>Así quedaría tu pedido</b> <code>{esc(draft.modifies)}</code>"
         else:
@@ -493,7 +498,7 @@ class CheckoutMixin:
                 return [Outgoing(user.id, NO_ORDER_MSG)]
             sold_out = bool(self._shortages(pairs))
             if not sold_out:
-                ev = evaluate(pairs, self.s.rules, self.today(), unknown)
+                ev = evaluate(pairs, self.s.rules, self.today(), unknown, self._is_new_customer(user))
                 now = self.stamp()
                 order = Order(order_id=self._new_order_id(), created_at=now, customer_id=user.id,
                               customer_name=user.name, original_text=draft.text, lines=ev.lines,
@@ -620,7 +625,8 @@ class CheckoutMixin:
                     if self._shortages(pairs):
                         sold_out = True
                         raise _SoldOut
-                    ev = evaluate(pairs, self.s.rules, self.today(), unknown)
+                    ev = evaluate(pairs, self.s.rules, self.today(), unknown,
+                                  self._is_new_customer(user, exclude=order.order_id))
                     taken = {l.sku.upper(): l.qty for l in ev.lines} if ev.status == ESTADO_CONFIRMADO else {}
                     net = {k: returned.get(k, 0) - taken.get(k, 0) for k in set(returned) | set(taken)}
                     net = {k: v for k, v in net.items() if v}

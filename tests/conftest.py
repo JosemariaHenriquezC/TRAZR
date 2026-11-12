@@ -24,7 +24,8 @@ def settings(tmp_path):
     return Settings(telegram_token="",
                     database_path=str(tmp_path / "trazr.db"), timezone="UTC",
                     # Tope bajo para probar la revisión: «1 fernet» ($ 12.000) la supera.
-                    rules=Rules(max_order_total=TOPE), ai_retry_delays=(0.0, 0.0))
+                    # La revisión del primer pedido se prueba aparte (test_clientes_nuevos.py).
+                    rules=Rules(max_order_total=TOPE, review_new_customers=False), ai_retry_delays=(0.0, 0.0))
 
 
 @pytest.fixture

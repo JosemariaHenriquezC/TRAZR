@@ -30,7 +30,11 @@ no se puede pedir. Al confirmar se vuelve a mirar (otro cliente pudo llevárselo
 Con stock suficiente, un pedido se **confirma automáticamente** si además:
 
 1. **Producto existente**: está en el catálogo, activo y con precio cargado.
-2. **Total**: no supera `MAX_ORDER_TOTAL` ($ 150.000 por defecto; 0 = sin límite).
+2. **Cliente verificado**: la empresa ya tiene al menos un pedido pagado. El **primer pedido** de
+   cada empresa nueva va a revisión para verificarla una vez (`REVISAR_CLIENTES_NUEVOS=true`);
+   desde que paga uno, los siguientes se confirman solos, sin importar el monto.
+3. *(Opcional)* el total no supera `MAX_ORDER_TOTAL` (0 = sin límite, el valor por defecto: los
+   pedidos de empresas son grandes).
 
 Los precios **no vencen**: se cambian desde la web cuando hace falta.
 
@@ -38,7 +42,7 @@ Los precios **no vencen**: se cambian desde la web cuando hace falta.
 |---|---|
 | Cumple todo | **CONFIRMADO**, se descuenta el stock, el cliente recibe el detalle. |
 | No alcanza el stock | No se puede confirmar: el bot dice cuánto queda y ofrece ajustar. No se registra nada. |
-| Supera el total máximo | **EN REVISION**, no se toca el stock, queda un aviso para el admin en la web, donde lo aprueba o rechaza. |
+| Primer pedido de una empresa nueva (o supera el total máximo, si está activado) | **EN REVISION**, no se toca el stock, queda un aviso para el admin en la web, donde lo aprueba o rechaza. |
 | Producto inexistente | Por defecto se le pide al cliente que corrija (no se registra). Con `ON_UNKNOWN_PRODUCT=review` se registra en revisión. |
 | Mensaje ambiguo, sin cantidad, cantidad inválida | Se pide aclaración. No se registra nada. |
 | El cliente no tiene dirección guardada | El pedido queda **retenido** y se le pide la dirección (ver §3). |

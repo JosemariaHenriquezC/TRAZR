@@ -25,8 +25,10 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
   salen de la base y de rules.py (`respuesta_segura` descarta textos con plata o "confirmado").
 - `service.py` no debe depender de Telegram: va a sumarse WhatsApp. Los clientes se
   identifican por `canal` + `externo_id`.
-- Los precios NO vencen (se sacó «vigente hasta» de todo). Revisión del admin solo si el total
-  supera MAX_ORDER_TOTAL (150000 por defecto) o un producto no tiene precio.
+- Los precios NO vencen (se sacó «vigente hasta» de todo).
+- Clientes = empresas (pedidos grandes). Revisión del admin: el PRIMER pedido de cada cliente
+  (REVISAR_CLIENTES_NUEVOS) hasta que tenga un pedido pagado; después todo se confirma solo.
+  MAX_ORDER_TOTAL queda opcional (0 = apagado, por defecto). Producto sin precio → revisión.
 - Los mensajes del chat NO se guardan en la base: la memoria de Gemini vive en RAM (12 h).
 - Si Gemini no contesta: «dame un momento» (on_wait), reintentos (AI_RETRY_DELAYS) y si no,
   le pide al cliente que escriba en unos minutos + aviso en la web. Sin clave → reglas.
@@ -39,7 +41,7 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - Stock: se verifica al armar el borrador y otra vez al confirmar. Si no alcanza, el cliente
   NO puede confirmar: el bot le dice la cantidad exacta que queda y ofrece ajustar
   (🔧 / «sí»). Al modificar, lo que el pedido ya tenía cuenta como disponible.
-  La revisión del admin queda solo para el total máximo.
+  La revisión del admin queda para el primer pedido de cada cliente.
 - Ningún pedido se registra sin dirección de envío ni sin confirmación del cliente.
   El envío siempre está incluido, sin costo.
 - La dirección guardada solo cambia si el cliente lo elige: tras un pedido a otra dirección,
@@ -64,7 +66,8 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 4. **Web de administración** (FastAPI) — SOLO para el admin
 5. WhatsApp Cloud API (webhook en la misma app FastAPI)
 6. Mercado Pago (link de pago + webhook idempotente)
-7. Faltantes del TFI: crédito, recompra, planes
+7. Faltantes del TFI: crédito, recompra, planes. CRÉDITO (decidido, opción E): límite de deuda
+   impaga por empresa; si un pedido lo supera, va a revisión o se pide pago anticipado.
 8. (A evaluar al final) web para clientes. Por ahora el canal del cliente es el chat.
 
 ## Próxima sesión — empezar por acá

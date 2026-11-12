@@ -20,7 +20,7 @@
       <tbody>
       {% for r in rows %}
         <tr {% if selected and r.key == selected.key %}class="is-selected"{% endif %}>
-          <td class="lead" data-label="Cliente"><a href="/clientes?c={{ r.key|urlq }}{{ '&q=' ~ q|urlq if q }}">{{ r.customer.name or 'Sin nombre' }}</a></td>
+          <td class="lead" data-label="Cliente"><a href="/clientes?c={{ r.key|urlq }}{{ '&q=' ~ q|urlq if q }}">{{ r.customer.name or 'Sin nombre' }}</a>{% if not r.verified %} <span class="tz-badge tz-badge--warn">Nuevo</span>{% endif %}</td>
           <td data-label="Canal">{{ 'Telegram' if r.customer.channel == 'telegram' else r.customer.channel|capitalize }}</td>
           <td data-label="Dirección">{% if r.customer.address %}{{ r.customer.address }}{% else %}<span class="muted">sin dirección todavía</span>{% endif %}</td>
           <td class="num" data-label="Pedidos">{{ r.count }}</td>
@@ -35,7 +35,7 @@
   {% if selected %}
   <section class="tz-panel">
     <div class="panel-head"><h2 class="section">{{ selected.customer.name or 'Sin nombre' }}</h2>
-      {% if selected.count %}<span class="tz-badge tz-badge--ok">Cliente activo</span>{% endif %}</div>
+      {% if selected.verified %}<span class="tz-badge tz-badge--ok">Verificado</span>{% else %}<span class="tz-badge tz-badge--warn">Nuevo: primer pedido a revisión</span>{% endif %}</div>
     <dl class="kv">
       <dt>Canal</dt><dd>{{ 'Telegram' if selected.customer.channel == 'telegram' else selected.customer.channel|capitalize }}</dd>
       <dt>Dirección</dt><dd>{{ selected.customer.address or '—' }}</dd>
