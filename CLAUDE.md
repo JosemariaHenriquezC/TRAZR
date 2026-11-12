@@ -82,6 +82,13 @@ Decisiones tomadas (usuario + consultor):
 - **Tests:** `TestClient` con base temporal y notificador simulado. Playwright solo para
   capturas/demo, no en la suite.
 
+Diseño:
+- Sistema de diseño «Trazr Admin» (Claude Design): https://claude.ai/artifact/DLtCSwjvKvMqwU2A3r53Qt
+  Verde `monte` (marca/acción) + amarillo `limon` (identidad, solo como fondo), estados
+  ok/warn/danger, Archivo (títulos) + Inter (texto) + IBM Plex Mono (IDs/SKU). Componentes
+  como clases CSS `tz-*` (Button, StatusBadge, OrdersTable, StatTile, Field, Notice): su
+  `bundle.css` se copia a la web real. Estado: esperando revisión del usuario.
+
 Orden de trabajo:
 1. Diseño en Claude Design (Design System de Trazr + pantallas) → revisión del usuario.
 2. Backend: quitar admin del chat, avisos y admins en la base, resultados tipados, Notifier.
