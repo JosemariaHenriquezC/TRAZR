@@ -36,8 +36,8 @@ a { color:var(--monte); } a:hover { color:var(--monte-hover); }
   background:var(--surface-sunken); border-right:1px solid var(--line); position:sticky; top:0; height:100vh; }
 .side__top { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
 .side__menu { display:flex; flex-direction:column; gap:var(--space-6); flex:1; min-height:0; }
-.brand { display:flex; align-items:center; gap:var(--space-2); font:700 22px/28px var(--font-display); letter-spacing:-.02em; color:var(--ink); text-decoration:none; padding:0 var(--space-2); }
-.brand__mark { width:18px; height:18px; border-radius:var(--radius-sm); background:var(--limon); }
+.brand { display:flex; align-items:center; gap:var(--space-2); font:800 24px/28px var(--font-display); letter-spacing:-.03em; text-transform:lowercase; color:var(--ink); text-decoration:none; padding:0 var(--space-2); }
+.brand__mark { width:30px; height:30px; flex:none; display:block; }
 .nav { display:flex; flex-direction:column; gap:2px; }
 .nav a { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:10px var(--space-3);
   border-radius:var(--radius-md); color:var(--ink); text-decoration:none; font-weight:500; transition:background-color .15s var(--ease); }

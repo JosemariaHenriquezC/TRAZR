@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ shop }} Admin{% endblock %}</title>
 <script>document.documentElement.classList.add("js");</script>
+<link rel="icon" href="/static/marca/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/marca/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/marca/apple-touch-icon.png">
+<meta name="theme-color" content="#1d5c44">
 <link rel="stylesheet" href="/static/components.css">
 <link rel="stylesheet" href="/static/admin.css">
 </head>
@@ -12,7 +16,7 @@
 <div class="app">
   <aside class="side" id="side">
     <div class="side__top">
-      <a class="brand" href="/"><span class="brand__mark"></span>{{ shop }}</a>
+      <a class="brand" href="/"><img class="brand__mark" src="/static/marca/trazr-simbolo.svg" alt="" width="30" height="30">{{ shop }}</a>
       <button class="menu-toggle" type="button" aria-controls="menu" aria-expanded="false" aria-label="Abrir menú">
         <span class="menu-toggle__bars" aria-hidden="true"></span>
         {% if pending_count %}<span class="menu-toggle__dot" aria-hidden="true"></span>{% endif %}
