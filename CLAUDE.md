@@ -82,7 +82,9 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
    Detalles: HTML del bot → *negrita* _cursiva_ `código`; botones → reply buttons (≤3, títulos
    ≤20; más de 3 → lista); resumen >1024 caracteres va aparte de los botones; Argentina: si Meta
    rechaza 549… (131030) se reintenta sin el 9 y se recuerda.
-3. Pendiente: túnel (cloudflared) + webhook en el panel de Meta (campo «messages») y prueba real.
+3. Túnel (cloudflared quick tunnel, la URL cambia al reiniciarlo) + webhook en Meta (campo
+   «messages») + suscripción de la app a la WABA (POST /<WABA_ID>/subscribed_apps). HECHO:
+   el bot contesta por WhatsApp. Falta probar el flujo completo (pedido → aprobar → pago).
 4. Pendiente: plantillas aprobadas para avisos fuera de la ventana de 24 h (error 131047:
    pedido aprobado, pago confirmado, transferencia vencida).
 5. Pendiente (producción): token permanente (usuario del sistema), número propio,

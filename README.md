@@ -231,6 +231,14 @@ confirmado) les llegan por WhatsApp.
    (por ejemplo `cloudflared tunnel --url http://127.0.0.1:8000`).
 4. En Meta, **Configuración → Webhook**: URL `https://<tu-túnel>/whatsapp/webhook`, el mismo
    token de verificación, y suscribite al campo **messages**.
+5. Si el webhook se verifica pero los mensajes reales no llegan, la app no quedó suscripta a la
+   cuenta de WhatsApp. Se suscribe una vez, con el «Identificador de la cuenta de mensajes»
+   (WABA) de «Paso 1. Pruébalo» (en PowerShell, desde la carpeta del proyecto):
+
+   ```powershell
+   $token = (Select-String -Path .env -Pattern '^WHATSAPP_TOKEN=(.*)$').Matches[0].Groups[1].Value.Trim()
+   Invoke-RestMethod -Method Post -Uri "https://graph.facebook.com/v25.0/<WABA_ID>/subscribed_apps" -Headers @{ Authorization = "Bearer $token" }
+   ```
 
 Cómo funciona: Meta avisa cada mensaje con un POST firmado; el bot comprueba la firma (clave
 secreta de la app), contesta enseguida y procesa el mensaje aparte. Si Meta repite un aviso, se
