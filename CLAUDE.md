@@ -67,6 +67,20 @@ Pantallas propuestas: pedidos (filtro por estado), detalle con aprobar/rechazar,
 precios (editar, sumar), alta/edición de productos (reemplaza al CSV), clientes, y un tablero
 simple (ventas del día, pedidos en revisión) útil para el TFI.
 
+Método de diseño (pedido por el usuario): partir de buenas referencias, usar skills de diseño
+y trabajar sobre un diseño real en vez de inventarlo.
+1. Diseño primero en Claude Design (artifacts tipo «Design System» y «Design»): armar el
+   sistema de diseño de Trazr (colores, tipografía, espaciado, componentes) y las pantallas
+   en el canvas; el usuario las revisa y recién después se programa a partir de eso.
+   Alternativa/complemento: diseño en Figma + plugin oficial de Figma (MCP) para leerlo.
+2. Skills al programar el frontend:
+   - `frontend-design` (oficial de Anthropic): criterio visual, evitar diseños genéricos.
+     Reemplaza a «Impeccable», que no está en el catálogo.
+   - `web-animation-design` y `emil-design-engineering` (basados en el curso de Emil
+     Kowalski, vienen en el plugin comunitario «audit-suite»): revisar animaciones y
+     microinteracciones de los componentes.
+3. Sin framework pesado: las páginas son HTML + CSS (Jinja2); animaciones con CSS.
+
 Falta decidir con el usuario antes de empezar:
 1. Login: ¿un solo usuario y contraseña en el `.env`, o varios admins?
 2. Avisos al admin: ¿nada fuera de la web, o un aviso corto por Telegram al admin
