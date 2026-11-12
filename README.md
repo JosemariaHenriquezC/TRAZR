@@ -155,6 +155,18 @@ stock (`VIN1`).
 
 ## 6. Puesta en marcha
 
+### Bajar o actualizar el proyecto
+
+En Windows (PowerShell), desde la carpeta del proyecto (o donde lo quieras bajar):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File actualizar.ps1
+```
+
+En Mac o Linux: `bash actualizar.sh`. Clonan el repo si no está, traen lo último de la rama
+`development`, crean el entorno virtual e instalan dependencias. No tocan tu `.env` ni tu base,
+y si tenés cambios sin guardar en git no hacen nada.
+
 ### Paso 0: probar sin Telegram
 
 ```bash
@@ -182,6 +194,9 @@ python -m scripts.crear_admin lucia "Lucía Fernández"
 
 Pide la contraseña sin mostrarla (mínimo 8 caracteres) y la guarda con hash, nunca en texto
 plano. Se pueden crear varios admins; en cada pedido queda quién lo aprobó o rechazó.
+Las contraseñas no se pueden ver (solo se guarda el hash): para cambiar una, se vuelve a crear
+el mismo usuario. Otras opciones: `--listar` (ver usuarios), `--desactivar usuario` (dar de
+baja sin borrar) y `--activar usuario`.
 
 ### Paso 3: ejecutar (web + bot juntos)
 
