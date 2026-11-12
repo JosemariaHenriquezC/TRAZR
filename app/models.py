@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 
 # Estados posibles de un pedido.
 ESTADO_CONFIRMADO = "CONFIRMADO"
@@ -21,14 +20,12 @@ class Product:
     aliases: list[str]
     stock: float
     price: float
-    valid_until: date | None
-    active: bool
+    active: bool = True
     category: str = ""        # Gaseosas, Aguas, Cervezas, Vinos, ...
 
-    def price_is_valid(self, today: date) -> bool:
-        if self.price is None or self.price <= 0:
-            return False
-        return self.valid_until is None or self.valid_until >= today
+    def has_price(self) -> bool:
+        """Los precios no vencen: solo hace falta que esté cargado (mayor a 0)."""
+        return self.price is not None and self.price > 0
 
 
 @dataclass

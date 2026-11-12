@@ -1,10 +1,8 @@
 """Acciones del admin para la web: login, productos, avisos y tablero."""
-from datetime import date
-
 from app.auth import hash_password, verify_password
 from app.models import Product
 
-from .conftest import ADMIN, CLIENT, pedir
+from .conftest import CLIENT, pedir
 
 
 def test_contrasenas_con_hash():
@@ -30,26 +28,23 @@ def test_crear_admin_y_login(svc, repo):
 
 
 def test_alta_y_edicion_de_producto(svc, repo):
-    nuevo = Product("pep1", "Pepsi 2.25L", ["pepsi"], 24, 2900, None, True, "Gaseosas")
+    nuevo = Product("pep1", "Pepsi 2.25L", ["pepsi"], 24, 2900, True, "Gaseosas")
     assert svc.save_product(nuevo, is_new=True).ok
     assert repo.get_product("PEP1").name == "Pepsi 2.25L"
-    assert "Ya existe" in svc.save_product(Product("COC1", "X", [], 1, 1, None, True), is_new=True).message
-    assert "No existe" in svc.save_product(Product("ZZZ", "X", [], 1, 1, None, True), is_new=False).message
-    assert not svc.save_product(Product("A B", "X", [], 1, 1, None, True), is_new=True).ok
-    assert not svc.save_product(Product("OK1", " ", [], 1, 1, None, True), is_new=True).ok
-    assert not svc.save_product(Product("OK1", "X", [], -1, 1, None, True), is_new=True).ok
-    editado = Product("PEP1", "Pepsi 2.25L", ["pepsi", "pecsi"], 24, 3100, date(2030, 1, 1), True, "Gaseosas")
+    assert "Ya existe" in svc.save_product(Product("COC1", "X", [], 1, 1), is_new=True).message
+    assert "No existe" in svc.save_product(Product("ZZZ", "X", [], 1, 1), is_new=False).message
+    assert not svc.save_product(Product("A B", "X", [], 1, 1), is_new=True).ok
+    assert not svc.save_product(Product("OK1", " ", [], 1, 1), is_new=True).ok
+    assert not svc.save_product(Product("OK1", "X", [], -1, 1), is_new=True).ok
+    editado = Product("PEP1", "Pepsi 2.25L", ["pepsi", "pecsi"], 24, 3100, True, "Gaseosas")
     r = svc.save_product(editado, is_new=False)
     assert r.ok and r.product.price == 3100 and r.product.aliases == ["pepsi", "pecsi"]
 
 
 def test_precio_validaciones(svc, repo):
-    assert not svc.set_price("COC1", 0).ok
-    assert "ya pasó" in svc.set_price("COC1", 100, date(2000, 1, 1)).message
+    assert not svc.set_price("COC1", 0).ok and not svc.set_price("COC1", -5).ok
     assert "No existe" in svc.set_price("NOPE", 100).message
-    pedir(svc, CLIENT, "1 fernet")
-    oid = repo.list_orders()[-1].order_id
-    assert "mayor a 0" in svc.approve(oid, ADMIN, {"FER1": -5}).message
+    assert svc.set_price("COC1", 3500).ok and repo.get_product("COC1").price == 3500
 
 
 def test_avisos_se_marcan_leidos(svc, repo):

@@ -10,7 +10,8 @@ def stock(repo, sku):
     return repo.get_product(sku).stock
 
 
-def test_modificar_productos_ajusta_el_stock(svc, repo):
+def test_modificar_productos_ajusta_el_stock(svc, repo, settings):
+    settings.rules.max_order_total = 0
     pedir(svc, CLIENT, "2 coca y 1 fanta")
     oid = repo.list_orders()[-1].order_id
     assert stock(repo, "COC1") == 48 and stock(repo, "FAN1") == 39
@@ -50,7 +51,8 @@ def test_modificar_solo_la_direccion(svc, repo):
     assert repo.get_customer("telegram", str(CLIENT.id)).address == CLIENT_ADDRESS
 
 
-def test_al_modificar_cuenta_lo_que_el_pedido_ya_tenia(svc, repo):
+def test_al_modificar_cuenta_lo_que_el_pedido_ya_tenia(svc, repo, settings):
+    settings.rules.max_order_total = 0
     pedir(svc, CLIENT, "2 cerveza")
     oid = repo.list_orders()[-1].order_id
     assert stock(repo, "CER1") == 3
@@ -68,12 +70,12 @@ def test_al_modificar_cuenta_lo_que_el_pedido_ya_tenia(svc, repo):
 def test_pedido_en_revision_que_al_modificar_entra(svc, repo):
     pedir(svc, CLIENT, "1 fernet")
     oid = repo.list_orders()[-1].order_id
-    assert repo.get_order(oid).status == ESTADO_REVISION
-    assert svc.set_price("FER1", 13000).ok
+    assert repo.get_order(oid).status == ESTADO_REVISION      # $ 12.000 supera el tope de $ 10.000
     svc.handle_message(CLIENT, "/modificar")
-    svc.handle_message(CLIENT, "2 fernet")
+    svc.handle_message(CLIENT, "3 coca")                       # $ 9.600: entra en el tope
     svc.handle_message(CLIENT, "si")
-    assert repo.get_order(oid).status == ESTADO_CONFIRMADO and stock(repo, "FER1") == 8
+    assert repo.get_order(oid).status == ESTADO_CONFIRMADO
+    assert stock(repo, "FER1") == 10 and stock(repo, "COC1") == 47
 
 
 def test_cambio_que_deja_el_pedido_en_revision(svc, repo):

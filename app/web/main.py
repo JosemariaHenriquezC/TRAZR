@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -29,7 +29,7 @@ from ..config import Settings
 from ..models import ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION, Product
 from ..notifier import Notifier
 from ..service import BotService
-from ..storage.base import StorageError, to_date, to_number
+from ..storage.base import StorageError, to_number
 
 log = logging.getLogger(__name__)
 HERE = Path(__file__).parent
@@ -104,6 +104,7 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             pending = sum(1 for o in svc.repo.list_orders() if o.status == ESTADO_REVISION)
         return templates.TemplateResponse(request, name, {
             "admin": admin, "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
+            "version": svc.version() if admin is not None else "",
             "unread": unread, "pending_count": pending, "shop": settings.business.name or "Trazr", **ctx})
 
     def back(url: str) -> RedirectResponse:
@@ -184,21 +185,15 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             flash(request, f"No encontré el pedido {order_id}.", ok=False)
             return back("/pedidos")
         products = {p.sku.upper(): p for p in svc.repo.list_products()}
-        today = svc.today()
         lines = []
         for l in order.lines:
             p = products.get(l.sku.upper())
-            lines.append({"line": l, "product": p,
-                          "price_ok": p is not None and p.price_is_valid(today),
-                          "stock_ok": p is not None and p.stock >= l.qty})
-        expired = [x for x in lines if x["product"] is not None and not x["price_ok"]]
-        # Mientras está en revisión, el total que se muestra no incluye los precios a confirmar.
-        known_total = round(sum(x["line"].subtotal for x in lines if x["price_ok"]), 2)
+            lines.append({"line": l, "product": p, "stock_ok": p is not None and p.stock >= l.qty})
         customer = next((c for c in svc.repo.list_customers()
                          if c.channel == order.channel and c.external_id == str(order.customer_id)), None)
         customer_orders = sum(1 for o in svc.repo.list_orders()
                               if o.customer_id == order.customer_id and o.channel == order.channel)
-        return render(request, "pedido.html", admin, order=order, lines=lines, expired=expired, known_total=known_total,
+        return render(request, "pedido.html", admin, order=order, lines=lines,
                       customer=customer, customer_orders=customer_orders, page="pedidos")
 
     @app.post("/pedidos/{order_id}/aprobar")
@@ -206,15 +201,7 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
         admin = current_admin(request)
         form = await request.form()
         check_csrf(request, str(form.get("csrf_token", "")))
-        prices = {}
-        for key, value in form.items():
-            if key.startswith("precio_") and str(value).strip():
-                price = to_number(value)
-                if price is None:
-                    flash(request, f"«{value}» no es un precio válido.", ok=False)
-                    return back(f"/pedidos/{order_id}")
-                prices[key[len("precio_"):]] = price
-        result = await run_in_threadpool(svc.approve, order_id, admin.name, prices)
+        result = await run_in_threadpool(svc.approve, order_id, admin.name)
         if result.ok:
             sent = await notifier.send(result.notify)
             msg = result.message if sent else result.message.replace("se avisó al cliente",
@@ -242,15 +229,11 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
     @app.get("/productos", response_class=HTMLResponse)
     def products(request: Request, filtro: str = "todos", q: str = "", editar: str = "", nuevo: int = 0):
         admin = current_admin(request)
-        today = svc.today()
         items = svc.repo.list_products()
         counts = {"poco": sum(1 for p in items if p.active and p.stock < LOW_STOCK),
-                  "vencido": sum(1 for p in items if p.active and not p.price_is_valid(today)),
                   "inactivos": sum(1 for p in items if not p.active)}
         if filtro == "poco":
             items = [p for p in items if p.active and p.stock < LOW_STOCK]
-        elif filtro == "vencido":
-            items = [p for p in items if p.active and not p.price_is_valid(today)]
         elif filtro == "inactivos":
             items = [p for p in items if not p.active]
         q_norm = q.strip().lower()
@@ -260,7 +243,7 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
         editing = svc.repo.get_product(editar) if editar else None
         categories = sorted({p.category for p in svc.repo.list_products() if p.category})
         return render(request, "productos.html", admin, products=items, filtro=filtro, q=q, counts=counts,
-                      total=len(svc.repo.list_products()), editing=editing, new=bool(nuevo), today=today,
+                      total=len(svc.repo.list_products()), editing=editing, new=bool(nuevo),
                       categories=categories, page="productos")
 
     @app.post("/productos/{sku}/sumar")
@@ -280,28 +263,22 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
     @app.post("/productos/guardar")
     def save_product(request: Request, csrf_token: str = Form(""), es_nuevo: str = Form("0"),
                      sku: str = Form(""), nombre: str = Form(""), alias: str = Form(""),
-                     categoria: str = Form(""), precio: str = Form(""), vigente_hasta: str = Form(""),
+                     categoria: str = Form(""), precio: str = Form(""),
                      stock: str = Form(""), activo: str = Form("1")):
         current_admin(request)
         check_csrf(request, csrf_token)
         is_new = es_nuevo == "1"
         price, qty = to_number(precio), to_number(stock)
-        try:
-            valid_until = to_date(vigente_hasta) if vigente_hasta.strip() else None
-        except ValueError:
-            valid_until = date.min
         error = None
         if price is None:
             error = "Escribí un precio válido (por ejemplo 3200 o 3.200,50)."
         elif qty is None:
             error = "Escribí el stock en unidades."
-        elif valid_until == date.min:
-            error = "La fecha de vigencia no es válida."
         if error:
             flash(request, error, ok=False)
             return back("/productos?nuevo=1" if is_new else f"/productos?editar={quote(sku)}")
         product = Product(sku=sku, name=nombre, aliases=alias.split(","), stock=qty, price=price,
-                          valid_until=valid_until, active=activo == "1", category=categoria.strip())
+                          active=activo == "1", category=categoria.strip())
         result = svc.save_product(product, is_new)
         flash(request, result.message, ok=result.ok)
         if not result.ok:
@@ -332,6 +309,13 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
                     counter[l.name] = counter.get(l.name, 0) + l.qty
             selected["top"] = [n for n, _ in sorted(counter.items(), key=lambda kv: -kv[1])[:3]]
         return render(request, "clientes.html", admin, rows=rows, q=q, selected=selected, page="clientes")
+
+    @app.get("/cambios")
+    def changes(request: Request) -> Response:
+        """Firma del estado actual: la página la consulta cada pocos segundos y se refresca sola
+        cuando cambia (entra un pedido, cambia el stock, llega un aviso)."""
+        current_admin(request)
+        return Response(svc.version(), media_type="text/plain", headers={"Cache-Control": "no-store"})
 
     @app.get("/salud")
     def health() -> Response:

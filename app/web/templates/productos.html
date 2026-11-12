@@ -26,7 +26,6 @@
       <div class="tz-field"><label for="e-alias">Alias (separados por coma)</label><input id="e-alias" name="alias" value="{{ p.aliases|join(', ') if p }}" placeholder="pepsi, pecsi"></div>
       <div class="tz-field"><label for="e-cat">Categoría</label><input id="e-cat" name="categoria" list="categorias" value="{{ p.category if p }}"><datalist id="categorias">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist></div>
       <div class="tz-field"><label for="e-precio">Precio ($)</label><input id="e-precio" name="precio" inputmode="decimal" required value="{{ ('%.2f'|format(p.price)).replace('.', ',') if p }}"></div>
-      <div class="tz-field"><label for="e-vig">Vigente hasta</label><input id="e-vig" name="vigente_hasta" type="date" value="{{ p.valid_until.isoformat() if p and p.valid_until }}"><span class="tz-field__hint">Vacío = sin vencimiento.</span></div>
       <div class="tz-field"><label for="e-stock">Stock (unidades)</label><input id="e-stock" name="stock" inputmode="numeric" required value="{{ p.stock|qty if p else '0' }}"></div>
       <div class="tz-field"><label for="e-act">Visible en el catálogo</label><select id="e-act" name="activo"><option value="1" {% if not p or p.active %}selected{% endif %}>Sí</option><option value="0" {% if p and not p.active %}selected{% endif %}>No</option></select></div>
     </div>
@@ -42,7 +41,6 @@
   <nav class="tabs" aria-label="Filtrar">
     <a href="/productos" {% if filtro == 'todos' %}aria-current="page"{% endif %}>Todos · {{ total }}</a>
     <a href="/productos?filtro=poco" {% if filtro == 'poco' %}aria-current="page"{% endif %}>Poco stock · {{ counts.poco }}</a>
-    <a href="/productos?filtro=vencido" {% if filtro == 'vencido' %}aria-current="page"{% endif %}>Precio vencido · {{ counts.vencido }}</a>
     <a href="/productos?filtro=inactivos" {% if filtro == 'inactivos' %}aria-current="page"{% endif %}>Ocultos · {{ counts.inactivos }}</a>
   </nav>
   <form class="search" method="get" action="/productos" role="search">
@@ -54,20 +52,18 @@
 
 <section class="tz-panel scroll">
   {% if products %}
-  <table class="tz-table">
+  <table class="tz-table cards">
     <thead>
-      <tr><th>SKU</th><th>Producto</th><th>Categoría</th><th class="num">Precio</th><th>Vigente hasta</th><th class="num">Stock</th><th>Sumar stock</th><th>Estado</th><th><span class="sr-only">Editar</span></th></tr>
+      <tr><th>Producto</th><th>Categoría</th><th class="num">Precio</th><th class="num">Stock</th><th>Sumar stock</th><th>Estado</th><th><span class="sr-only">Editar</span></th></tr>
     </thead>
     <tbody>
     {% for p in products %}
       <tr {% if editing and editing.sku == p.sku %}class="is-selected"{% endif %}>
-        <td class="id">{{ p.sku }}</td>
-        <td>{{ p.name }}</td>
-        <td>{{ p.category or '—' }}</td>
-        <td class="num">{{ p.price|money }}</td>
-        <td>{% if p.valid_until is none %}<span class="muted">sin vencimiento</span>{% elif not p.price_is_valid(today) %}<span style="color: var(--danger); font-weight: 600">venció {{ p.valid_until.strftime('%d/%m') }}</span>{% else %}{{ p.valid_until.strftime('%d/%m/%Y') }}{% endif %}</td>
-        <td class="num">{{ p.stock|qty }}</td>
-        <td>
+        <td class="lead" data-label="Producto">{{ p.name }} <span class="id muted">{{ p.sku }}</span></td>
+        <td data-label="Categoría">{{ p.category or '—' }}</td>
+        <td class="num" data-label="Precio">{{ p.price|money }}</td>
+        <td class="num" data-label="Stock">{{ p.stock|qty }}</td>
+        <td data-label="Sumar stock">
           <form class="inline-form" method="post" action="/productos/{{ p.sku }}/sumar">
             <input type="hidden" name="csrf_token" value="{{ csrf }}">
             <input type="hidden" name="volver" value="/productos?filtro={{ filtro }}">
@@ -76,14 +72,14 @@
             <button class="tz-btn tz-btn--secondary btn-sm" type="submit">Sumar</button>
           </form>
         </td>
-        <td>
+        <td data-label="Estado">
           {% if not p.active %}<span class="tz-badge tz-badge--danger">Oculto</span>
           {% elif p.stock <= 0 %}<span class="tz-badge tz-badge--danger">Sin stock</span>
-          {% elif not p.price_is_valid(today) %}<span class="tz-badge tz-badge--warn">Precio vencido</span>
+          {% elif not p.has_price() %}<span class="tz-badge tz-badge--warn">Sin precio</span>
           {% elif p.stock < LOW_STOCK %}<span class="tz-badge tz-badge--warn">Poco stock</span>
           {% else %}<span class="tz-badge tz-badge--ok">Con stock</span>{% endif %}
         </td>
-        <td class="right"><a href="/productos?editar={{ p.sku }}#editar">Editar</a></td>
+        <td class="right" data-label=""><a href="/productos?editar={{ p.sku }}#editar">Editar</a></td>
       </tr>
     {% endfor %}
     </tbody>

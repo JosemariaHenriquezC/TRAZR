@@ -24,31 +24,28 @@
 </div>
 {% endif %}
 
-<div class="grid-2" style="grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr)">
-  <div class="stack" style="gap: 24px">
+<div class="grid-main">
+  <div class="stack-lg">
     <section class="tz-panel scroll">
       <div class="panel-head"><h2 class="section">Productos</h2></div>
-      <table class="tz-table">
+      <table class="tz-table cards">
         <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Subtotal</th>{% if o.status == 'EN REVISION' %}<th>Stock hoy</th>{% endif %}</tr></thead>
         <tbody>
         {% for x in lines %}
           <tr>
-            <td>{{ x.line.name }} <span class="id muted">{{ x.line.sku }}</span></td>
-            <td class="num">{{ x.line.qty }}</td>
-            {% if o.status == 'EN REVISION' and not x.price_ok %}
-            <td class="num"><span style="color: var(--warn); font-weight: 600">a confirmar</span></td><td class="num">—</td>
-            {% else %}
-            <td class="num">{{ x.line.unit_price|money }}</td><td class="num">{{ x.line.subtotal|money }}</td>
-            {% endif %}
+            <td class="lead" data-label="Producto">{{ x.line.name }} <span class="id muted">{{ x.line.sku }}</span></td>
+            <td class="num" data-label="Cantidad">{{ x.line.qty }}</td>
+            <td class="num" data-label="Precio">{{ x.line.unit_price|money }}</td>
+            <td class="num" data-label="Subtotal">{{ x.line.subtotal|money }}</td>
             {% if o.status == 'EN REVISION' %}
-            <td>{% if x.product is none %}<span class="tz-badge tz-badge--danger">Ya no existe</span>{% elif x.stock_ok %}<span class="tz-badge tz-badge--ok">Alcanza</span>{% else %}<span class="tz-badge tz-badge--danger">Hay {{ x.product.stock|qty }}</span>{% endif %}</td>
+            <td data-label="Stock hoy">{% if x.product is none %}<span class="tz-badge tz-badge--danger">Ya no existe</span>{% elif x.stock_ok %}<span class="tz-badge tz-badge--ok">Alcanza</span>{% else %}<span class="tz-badge tz-badge--danger">Hay {{ x.product.stock|qty }}</span>{% endif %}</td>
             {% endif %}
           </tr>
         {% endfor %}
         </tbody>
         <tfoot>
           <tr><td colspan="3" class="right muted">Envío</td><td class="num">incluido</td>{% if o.status == 'EN REVISION' %}<td></td>{% endif %}</tr>
-          <tr><td colspan="3" class="right"><strong>Total</strong></td><td class="num"><strong>{{ (known_total if o.status == 'EN REVISION' and expired else o.total)|money }}</strong></td>{% if o.status == 'EN REVISION' %}<td class="muted">{{ 'sin los precios a confirmar' if expired }}</td>{% endif %}</tr>
+          <tr><td colspan="3" class="right"><strong>Total</strong></td><td class="num"><strong>{{ o.total|money }}</strong></td>{% if o.status == 'EN REVISION' %}<td></td>{% endif %}</tr>
         </tfoot>
       </table>
     </section>
@@ -67,7 +64,7 @@
     </section>
   </div>
 
-  <div class="stack" style="gap: 24px">
+  <div class="stack-lg">
     <section class="tz-panel">
       <div class="panel-head"><h2 class="section">Cliente</h2></div>
       <dl class="kv">
@@ -85,13 +82,7 @@
       <div class="stack panel-body" style="gap: 16px">
         <form method="post" action="/pedidos/{{ o.order_id }}/aprobar" class="stack" style="gap: 16px">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          {% for x in expired %}
-          <div class="tz-field">
-            <label for="precio_{{ x.product.sku }}">Precio de {{ x.product.name }} ($)</label>
-            <input id="precio_{{ x.product.sku }}" name="precio_{{ x.product.sku }}" inputmode="decimal" required placeholder="Último: {{ x.product.price|money }}">
-            <span class="tz-field__hint">Se guarda como precio vigente del producto.</span>
-          </div>
-          {% endfor %}
+          <p class="muted" style="margin:0">Se toma el precio actual de cada producto, se vuelve a mirar el stock, se descuenta y le avisamos al cliente por el chat.</p>
           <button class="tz-btn tz-btn--primary" type="submit" style="justify-content: center">Aprobar y avisar al cliente</button>
         </form>
         <form method="post" action="/pedidos/{{ o.order_id }}/rechazar" class="stack" style="gap: 16px">

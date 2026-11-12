@@ -8,9 +8,8 @@ Uso:
 
 El CSV lleva encabezado en la primera fila con estas columnas (el orden no importa;
 separador coma o punto y coma, así lo podés exportar desde Excel o Google Sheets):
-    SKU, Producto, Categoria, Alias, Stock, Precio, Vigente_hasta, Activo
+    SKU, Producto, Categoria, Alias, Stock, Precio, Activo
 - Alias: otras formas de nombrarlo, separadas por coma (poné la celda entre comillas).
-- Vigente_hasta: AAAA-MM-DD o DD/MM/AAAA; vacío = sin vencimiento.
 - Activo: SI / NO (vacío = SI).
 Si un SKU ya existe, se reemplazan sus datos. Nunca se borra nada.
 """
@@ -26,9 +25,9 @@ from app.config import ConfigError, load_settings
 from app.models import Product
 from app.sample_data import sample_products
 from app.storage import SQLiteRepository, StorageError
-from app.storage.base import to_bool, to_date, to_number
+from app.storage.base import to_bool, to_number
 
-CSV_COLUMNS = ["SKU", "Producto", "Categoria", "Alias", "Stock", "Precio", "Vigente_hasta", "Activo"]
+CSV_COLUMNS = ["SKU", "Producto", "Categoria", "Alias", "Stock", "Precio", "Activo"]
 
 
 def read_csv(path: str) -> list[Product]:
@@ -47,11 +46,6 @@ def read_csv(path: str) -> list[Product]:
         if not r["SKU"] and not r["Producto"]:
             continue  # fila vacía
         stock, price = to_number(r["Stock"]), to_number(r["Precio"])
-        try:
-            valid_until = to_date(r["Vigente_hasta"])
-        except ValueError:
-            errors.append(f"fila {n}: fecha inválida {r['Vigente_hasta']!r}")
-            continue
         if not r["SKU"] or not r["Producto"]:
             errors.append(f"fila {n}: falta SKU o Producto")
         elif stock is None or stock < 0 or not float(stock).is_integer():
@@ -62,7 +56,7 @@ def read_csv(path: str) -> list[Product]:
             products.append(Product(
                 sku=r["SKU"].upper(), name=r["Producto"],
                 aliases=[a.strip() for a in r["Alias"].split(",") if a.strip()],
-                stock=int(stock), price=round(price, 2), valid_until=valid_until,
+                stock=int(stock), price=round(price, 2),
                 active=to_bool(r["Activo"], default=True), category=r["Categoria"]))
     if errors:
         raise ValueError("revisá el CSV:\n  " + "\n  ".join(errors))

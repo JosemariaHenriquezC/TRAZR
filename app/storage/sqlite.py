@@ -16,7 +16,6 @@ import logging
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import date
 from pathlib import Path
 from typing import Iterator
 
@@ -37,7 +36,6 @@ CREATE TABLE IF NOT EXISTS productos (
     alias          TEXT NOT NULL DEFAULT '',          -- separados por coma
     stock          INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
     precio         REAL NOT NULL DEFAULT 0 CHECK (precio >= 0),
-    vigente_hasta  TEXT,                              -- AAAA-MM-DD; NULL = sin vencimiento
     activo         INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
     actualizado    TEXT NOT NULL DEFAULT ''
 );
@@ -82,16 +80,9 @@ CREATE TABLE IF NOT EXISTS pedido_items (
     PRIMARY KEY (pedido_id, renglon)
 );
 
--- Historial del chat: le da contexto a Gemini ("agregale una más", "no, mejor 3").
-CREATE TABLE IF NOT EXISTS mensajes (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    canal       TEXT NOT NULL,
-    externo_id  TEXT NOT NULL,
-    rol         TEXT NOT NULL CHECK (rol IN ('cliente', 'bot')),
-    texto       TEXT NOT NULL,
-    fecha       TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_mensajes_chat ON mensajes (canal, externo_id, id);
+-- Los mensajes del chat NO se guardan en la base (la memoria de Gemini vive en RAM).
+-- Bases creadas antes guardaban mensajes: se borran.
+DROP TABLE IF EXISTS mensajes;
 
 -- Avisos para el admin: se ven en la web (el admin no recibe nada por chat).
 CREATE TABLE IF NOT EXISTS avisos (
@@ -193,7 +184,6 @@ class SQLiteRepository(Repository):
             sku=r["sku"], name=r["producto"],
             aliases=[a.strip() for a in (r["alias"] or "").split(",") if a.strip()],
             stock=float(r["stock"]), price=float(r["precio"]),
-            valid_until=date.fromisoformat(r["vigente_hasta"]) if r["vigente_hasta"] else None,
             active=bool(r["activo"]), category=r["categoria"],
         )
 
@@ -209,16 +199,15 @@ class SQLiteRepository(Repository):
         with self._tx() as c:
             c.execute(
                 """INSERT INTO productos (sku, producto, categoria, alias, stock, precio,
-                                         vigente_hasta, activo, actualizado)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                         activo, actualizado)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT (sku) DO UPDATE SET
                      producto = excluded.producto, categoria = excluded.categoria,
                      alias = excluded.alias, stock = excluded.stock, precio = excluded.precio,
-                     vigente_hasta = excluded.vigente_hasta, activo = excluded.activo,
+                     activo = excluded.activo,
                      actualizado = excluded.actualizado""",
                 (p.sku.strip().upper(), p.name.strip(), p.category.strip(), ", ".join(p.aliases),
-                 int(p.stock), float(p.price),
-                 p.valid_until.isoformat() if p.valid_until else None, int(p.active), stamp))
+                 int(p.stock), float(p.price), int(p.active), stamp))
 
     def _require_product(self, sku: str) -> Product:
         p = self.get_product(sku)
@@ -241,11 +230,11 @@ class SQLiteRepository(Repository):
                 if cur.rowcount == 0:
                     raise StorageError(f"No existe el SKU {sku!r} en la base de datos.")
 
-    def set_price(self, sku: str, price: float, valid_until: date | None, stamp: str) -> Product:
+    def set_price(self, sku: str, price: float, stamp: str) -> Product:
         p = self._require_product(sku)
         with self._tx() as c:
-            c.execute("UPDATE productos SET precio = ?, vigente_hasta = ?, actualizado = ? WHERE sku = ?",
-                      (float(price), valid_until.isoformat() if valid_until else None, stamp, p.sku))
+            c.execute("UPDATE productos SET precio = ?, actualizado = ? WHERE sku = ?",
+                      (float(price), stamp, p.sku))
         return self._require_product(p.sku)
 
     # ------------------------------------------------------------- clientes
@@ -292,22 +281,6 @@ class SQLiteRepository(Repository):
         with self._tx() as c:
             c.execute("DELETE FROM pedidos_pendientes WHERE canal = ? AND externo_id = ?",
                       (channel, str(external_id)))
-
-    # --------------------------------------------------------- conversación
-    MAX_MESSAGES_PER_CHAT = 50  # se guarda solo lo reciente
-
-    def add_message(self, channel: str, external_id: str, role: str, text: str, stamp: str) -> None:
-        with self._tx() as c:
-            c.execute("INSERT INTO mensajes (canal, externo_id, rol, texto, fecha) VALUES (?, ?, ?, ?, ?)",
-                      (channel, str(external_id), role, text[:2000], stamp))
-            c.execute("DELETE FROM mensajes WHERE canal = ? AND externo_id = ? AND id NOT IN "
-                      "(SELECT id FROM mensajes WHERE canal = ? AND externo_id = ? ORDER BY id DESC LIMIT ?)",
-                      (channel, str(external_id), channel, str(external_id), self.MAX_MESSAGES_PER_CHAT))
-
-    def recent_messages(self, channel: str, external_id: str, limit: int = 10) -> list[tuple[str, str, str]]:
-        rows = self._query("SELECT rol, texto, fecha FROM mensajes WHERE canal = ? AND externo_id = ? "
-                           "ORDER BY id DESC LIMIT ?", (channel, str(external_id), limit))
-        return [(r["rol"], r["texto"], r["fecha"]) for r in reversed(rows)]
 
     # --------------------------------------------------------------- avisos
     def add_notice(self, kind: str, title: str, detail: str, order_id: str, stamp: str) -> None:

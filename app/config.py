@@ -49,22 +49,29 @@ def _float(name: str, default: float) -> float:
         raise ConfigError(f"{name} debe ser un número (valor actual: {raw!r})") from exc
 
 
+def _delays(name: str, default: tuple[float, ...]) -> tuple[float, ...]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return tuple(float(x) for x in raw.replace(";", ",").split(",") if x.strip())
+    except ValueError as exc:
+        raise ConfigError(f"{name} debe ser una lista de segundos, por ejemplo 4,8 (valor actual: {raw!r})") from exc
+
+
 @dataclass
 class Rules:
     """
     Regla mínima de "pedido dentro de los parámetros".
 
-    Un pedido se CONFIRMA AUTOMÁTICAMENTE solo si TODOS sus renglones cumplen:
-      1. El producto existe en el catálogo (base de datos) y está activo.
-      2. Tiene precio vigente: Precio > 0 y (Vigente_hasta vacío o >= hoy).
-      3. Hay stock suficiente: Stock >= cantidad pedida.
-    Y además, opcionalmente:
-      4. El total no supera MAX_ORDER_TOTAL (0 = sin límite).
-
-    Si falla 3 (stock), el pedido NO se puede confirmar: el bot le dice al cliente cuánto
-    queda y le ofrece ajustarlo (checkout.py). Si falla 2 o 4 → se registra "EN REVISIÓN"
-    y se deriva al admin.
-    Si falla 1 → depende de ON_UNKNOWN_PRODUCT:
+    Un pedido se CONFIRMA AUTOMÁTICAMENTE si:
+      1. Todos sus productos existen en el catálogo, están activos y tienen precio cargado.
+      2. Hay stock suficiente (si no, el cliente NO puede confirmar: el bot le dice cuánto
+         queda y ofrece ajustar; ver checkout.py).
+      3. El total no supera MAX_ORDER_TOTAL (0 = sin límite).
+    Si falla 3 (o un producto no tiene precio) → se registra "EN REVISION" y se avisa en la web.
+    Los precios no vencen: se cambian desde la web cuando hace falta.
+    Si un producto no existe → depende de ON_UNKNOWN_PRODUCT:
         "ask"    (default) se le pide al cliente que corrija; no se registra.
         "review" se registra en revisión igual.
 
@@ -72,9 +79,8 @@ class Rules:
     MAX_QTY_PER_ITEM) nunca se registran: el bot pide aclaración.
     """
 
-    require_price_valid: bool = True
     require_stock: bool = True
-    max_order_total: float = 0.0          # 0 = sin límite
+    max_order_total: float = 150000.0     # 0 = sin límite
     max_qty_per_item: int = 1000          # cantidades mayores se consideran inválidas
     on_unknown_product: str = "ask"       # "ask" | "review"
     match_threshold: float = 0.72         # similitud mínima para reconocer un producto (0-1)
@@ -106,6 +112,9 @@ class Business:
     min_order: str = ""          # pedido mínimo (texto libre)
     payment: str = ""            # formas de pago
     extra: str = ""              # cualquier otra info útil
+    open_hour: int = 9           # horario de atención (para el tablero «el día en reparto»)
+    close_hour: int = 20
+    cutoff_hour: int = 13        # lo confirmado antes de esta hora sale en el día
 
     def as_text(self) -> str:
         rows = [("Nombre", self.name), ("Días y horarios de entrega", self.delivery_hours),
@@ -129,6 +138,8 @@ class Settings:
     # (Así los tests, que arman Settings a mano, nunca llaman a la API real.)
     ai: AIConfig = field(default_factory=lambda: AIConfig(enabled=False))
     business: Business = field(default_factory=Business)
+    # Si Gemini no contesta: se le pide al cliente que espere y se reintenta tras estas pausas (s)
+    ai_retry_delays: tuple[float, ...] = (4.0, 8.0)
     # Web de administración
     secret_key: str = ""                  # firma la cookie de sesión (vacío = se genera al arrancar)
     web_host: str = "127.0.0.1"
@@ -150,9 +161,8 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         raise ConfigError("ON_UNKNOWN_PRODUCT debe ser 'ask' o 'review'.")
 
     rules = Rules(
-        require_price_valid=_bool(os.getenv("RULE_REQUIRE_PRICE_VALID"), True),
         require_stock=_bool(os.getenv("RULE_REQUIRE_STOCK"), True),
-        max_order_total=_float("MAX_ORDER_TOTAL", 0.0),
+        max_order_total=_float("MAX_ORDER_TOTAL", 150000.0),
         max_qty_per_item=_int("MAX_QTY_PER_ITEM", 1000),
         on_unknown_product=on_unknown,
         match_threshold=_float("MATCH_THRESHOLD", 0.72),
@@ -166,6 +176,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         timezone=os.getenv("TIMEZONE", "UTC").strip() or "UTC",
         rules=rules,
         ai=load_ai_config(),
+        ai_retry_delays=_delays("AI_RETRY_DELAYS", (4.0, 8.0)),
         secret_key=os.getenv("SECRET_KEY", "").strip(),
         web_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",
         web_port=_int("WEB_PORT", 8000),
@@ -176,6 +187,9 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             min_order=os.getenv("NEGOCIO_PEDIDO_MINIMO", TRAZR["NEGOCIO_PEDIDO_MINIMO"]).strip(),
             payment=os.getenv("NEGOCIO_PAGOS", TRAZR["NEGOCIO_PAGOS"]).strip(),
             extra=os.getenv("NEGOCIO_INFO", TRAZR["NEGOCIO_INFO"]).strip(),
+            open_hour=_int("NEGOCIO_HORA_APERTURA", 9),
+            close_hour=_int("NEGOCIO_HORA_CIERRE", 20),
+            cutoff_hour=_int("NEGOCIO_HORA_CORTE", 13),
         ),
     )
 

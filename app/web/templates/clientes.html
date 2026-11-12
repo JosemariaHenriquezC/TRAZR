@@ -13,19 +13,19 @@
 </div>
 
 {% if rows %}
-<div class="grid-2" style="grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr)">
+<div class="grid-main">
   <section class="tz-panel scroll">
-    <table class="tz-table">
+    <table class="tz-table cards">
       <thead><tr><th>Cliente</th><th>Canal</th><th>Dirección guardada</th><th class="num">Pedidos</th><th class="num">Comprado</th><th>Último pedido</th></tr></thead>
       <tbody>
       {% for r in rows %}
         <tr {% if selected and r.key == selected.key %}class="is-selected"{% endif %}>
-          <td><a href="/clientes?c={{ r.key|urlq }}{{ '&q=' ~ q|urlq if q }}">{{ r.customer.name or 'Sin nombre' }}</a></td>
-          <td>{{ 'Telegram' if r.customer.channel == 'telegram' else r.customer.channel|capitalize }}</td>
-          <td>{% if r.customer.address %}{{ r.customer.address }}{% else %}<span class="muted">sin dirección todavía</span>{% endif %}</td>
-          <td class="num">{{ r.count }}</td>
-          <td class="num">{{ r.spent|money }}</td>
-          <td>{{ r.last|fecha if r.last else '—' }}</td>
+          <td class="lead" data-label="Cliente"><a href="/clientes?c={{ r.key|urlq }}{{ '&q=' ~ q|urlq if q }}">{{ r.customer.name or 'Sin nombre' }}</a></td>
+          <td data-label="Canal">{{ 'Telegram' if r.customer.channel == 'telegram' else r.customer.channel|capitalize }}</td>
+          <td data-label="Dirección">{% if r.customer.address %}{{ r.customer.address }}{% else %}<span class="muted">sin dirección todavía</span>{% endif %}</td>
+          <td class="num" data-label="Pedidos">{{ r.count }}</td>
+          <td class="num" data-label="Comprado">{{ r.spent|money }}</td>
+          <td data-label="Último pedido">{{ r.last|fecha if r.last else '—' }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -43,11 +43,11 @@
       {% if selected.top %}<dt>Compra típica</dt><dd>{{ selected.top|join(', ') }}</dd>{% endif %}
     </dl>
     {% if selected.orders %}
-    <table class="tz-table">
+    <table class="tz-table cards">
       <thead><tr><th>Pedido</th><th>Fecha</th><th class="num">Total</th><th>Estado</th></tr></thead>
       <tbody>
       {% for o in selected.orders|reverse %}{% if loop.index <= 8 %}
-        <tr><td class="id"><a href="/pedidos/{{ o.order_id }}">{{ o.order_id }}</a></td><td>{{ o.created_at|fecha }}</td><td class="num">{{ o.total|money }}</td><td>{% include "_badge.html" %}</td></tr>
+        <tr><td class="id lead" data-label="Pedido"><a href="/pedidos/{{ o.order_id }}">{{ o.order_id }}</a></td><td data-label="Fecha">{{ o.created_at|fecha }}</td><td class="num" data-label="Total">{{ o.total|money }}</td><td data-label="Estado">{% include "_badge.html" %}</td></tr>
       {% endif %}{% endfor %}
       </tbody>
     </table>

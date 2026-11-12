@@ -83,7 +83,7 @@ def test_consulta_de_precio_los_numeros_los_pone_el_bot(repo, settings):
                           "consulta_skus": ["FER1", "VIN1", "INVENTADO"]})
     txt = plain(_svc(repo, settings, models).handle_message(CLIENT, "tenés fernet y vino? a cuánto?")[0].text)
     assert txt.startswith("¡Sí! Mirá:")
-    assert "Fernet 750ml — precio a confirmar ✅ disponible" in txt   # precio vencido en la base
+    assert "Fernet 750ml — $ 12.000,00 ✅ disponible" in txt
     assert "Vino Tinto Malbec 750ml — $ 6.500,00 ❌ sin stock por ahora" in txt
     assert "INVENTADO" not in txt and repo.list_orders() == []
 
@@ -176,12 +176,28 @@ def test_cambio_fuera_de_termino_avisa_al_admin(repo, settings):
     assert avisos(repo)[0].kind == "fuera_de_termino" and "3 cocas" in avisos(repo)[0].detail
 
 
-def test_si_gemini_falla_responde_el_bot_de_siempre(repo, settings):
+def test_si_gemini_no_contesta_pide_esperar_reintenta_y_si_no_pide_escribir_despues(repo, settings):
     models = _FakeModels(error=RuntimeError("503 UNAVAILABLE"))
     svc = _svc(repo, settings, models)
-    out = svc.handle_message(CLIENT, "2 coca")
-    assert "Revisá tu pedido" in plain(out[0].text) and len(models.prompts) == 1  # no reintenta aparte
-    assert "¡Pedido confirmado!" in plain(svc.handle_message(CLIENT, "si")[0].text)  # «sí» por reglas
+    esperas = []
+    out = svc.handle_message(CLIENT, "2 coca", on_wait=esperas.append)
+    assert len(esperas) == 1 and "Dame un momento" in esperas[0].text and esperas[0].chat_id == CLIENT.id
+    assert len(models.prompts) == 3              # 1 intento + 2 reintentos (settings.ai_retry_delays)
+    assert "Escribime de nuevo en unos minutos" in plain(out[0].text) and repo.list_orders() == []
+    assert any(n.kind == "falla" and "Gemini no responde" in n.title for n in repo.list_notices())
+
+
+def test_si_gemini_vuelve_en_un_reintento_sigue_normal(repo, settings):
+    class _Intermitente(_FakeModels):
+        async def generate_content(self, model, **kwargs):
+            if not self.prompts:
+                self.prompts.append("fallo")
+                raise RuntimeError("503")
+            return await super().generate_content(model, **kwargs)
+    models = _Intermitente(pedido([("COC1", "2 coca", 2)]))
+    esperas = []
+    out = _svc(repo, settings, models).handle_message(CLIENT, "2 coca", on_wait=esperas.append)
+    assert len(esperas) == 1 and "Revisá tu pedido" in plain(out[0].text)
 
 
 def test_stock_se_relee_despues_de_interpretar(repo, settings):
@@ -216,6 +232,7 @@ def test_tests_nunca_usan_gemini_real(settings):
 
 
 def test_falta_de_stock_charla_con_gemini(repo, settings):
+    settings.rules.max_order_total = 0
     models = _FakeModels(pedido([("CER1", "10 birras", 10)], "¡Dale!"),
                          intent("confirmar", "Dale, ajustalo"), intent("confirmar"))
     svc = _svc(repo, settings, models)

@@ -20,14 +20,14 @@ from app import ai_parser, parser as reglas  # noqa: E402
 from app.models import Product  # noqa: E402
 
 CATALOGO = [
-    Product("COC1", "Coca-Cola 2.25L", ["coca", "coca cola"], 50, 3200, None, True, "Gaseosas"),
-    Product("SPR1", "Sprite 2.25L", ["sprite"], 40, 3000, None, True, "Gaseosas"),
-    Product("AGU1", "Agua Mineral sin Gas 2L", ["agua sin gas"], 30, 1100, None, True, "Aguas"),
-    Product("AGU2", "Agua Mineral con Gas 2L", ["agua con gas"], 30, 1100, None, True, "Aguas"),
-    Product("CER1", "Cerveza Rubia 1L", ["cerveza", "birra"], 5, 2800, None, True, "Cervezas"),
-    Product("VIN1", "Vino Tinto Malbec 750ml", ["vino", "malbec"], 0, 6500, None, True, "Vinos"),
-    Product("FER1", "Fernet 750ml", ["fernet"], 10, 12000, None, True, "Aperitivos"),
-    Product("JUG1", "Jugo de Naranja 1L", ["jugo"], 25, 1500, None, True, "Jugos"),
+    Product("COC1", "Coca-Cola 2.25L", ["coca", "coca cola"], 50, 3200, True, "Gaseosas"),
+    Product("SPR1", "Sprite 2.25L", ["sprite"], 40, 3000, True, "Gaseosas"),
+    Product("AGU1", "Agua Mineral sin Gas 2L", ["agua sin gas"], 30, 1100, True, "Aguas"),
+    Product("AGU2", "Agua Mineral con Gas 2L", ["agua con gas"], 30, 1100, True, "Aguas"),
+    Product("CER1", "Cerveza Rubia 1L", ["cerveza", "birra"], 5, 2800, True, "Cervezas"),
+    Product("VIN1", "Vino Tinto Malbec 750ml", ["vino", "malbec"], 0, 6500, True, "Vinos"),
+    Product("FER1", "Fernet 750ml", ["fernet"], 10, 12000, True, "Aperitivos"),
+    Product("JUG1", "Jugo de Naranja 1L", ["jugo"], 25, 1500, True, "Jugos"),
 ]
 
 EJEMPLOS = [

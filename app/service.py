@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import secrets
 import threading
+from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -32,13 +33,16 @@ from zoneinfo import ZoneInfo
 from .admin import AdminMixin
 from .checkout import CheckoutMixin
 from .config import Settings
+from typing import Callable
+
 from .messages import Outgoing, esc, to_plain
 from .models import Order, ParsedItem
 from .storage.base import Repository, StorageError
 
 log = logging.getLogger(__name__)
 
-# Cuánta conversación previa ve Gemini.
+# Cuánta conversación previa ve Gemini. Vive en memoria (RAM): NO se guarda en la base,
+# y se pierde al reiniciar el bot.
 HISTORY_WINDOW = timedelta(hours=12)
 HISTORY_MESSAGES = 10
 
@@ -60,6 +64,9 @@ class BotService(CheckoutMixin, AdminMixin):
         # Un único candado para que dos pedidos simultáneos no descuenten
         # el mismo stock dos veces (el bot corre como un solo proceso).
         self._lock = threading.Lock()
+        # Memoria de la charla para Gemini: (canal, id) -> últimos mensajes [(rol, texto, fecha)]
+        self._chats: dict[tuple[str, str], deque] = {}
+        self._chats_lock = threading.Lock()
 
     # ------------------------------------------------------------------ utils
     def now(self) -> datetime:
@@ -116,7 +123,10 @@ class BotService(CheckoutMixin, AdminMixin):
         return "\n".join(lines)
 
     # ------------------------------------------------------------ entrada
-    def handle_message(self, user: User, text: str) -> list[Outgoing]:
+    def handle_message(self, user: User, text: str,
+                       on_wait: Callable[[Outgoing], None] | None = None) -> list[Outgoing]:
+        """`on_wait`: el canal lo pasa para mandar en el momento un «esperame» mientras se
+        reintenta con Gemini (el resto de las respuestas se devuelven al final)."""
         text = (text or "").strip()
         if not text:
             return [Outgoing(user.id, "Mandame tu pedido como texto, por ejemplo: <i>2 coca, 3 agua sin gas</i>.")]
@@ -132,26 +142,26 @@ class BotService(CheckoutMixin, AdminMixin):
         elif draft is not None and draft.waiting == "guardar_direccion":
             out = self.answer_which_address(user, text, draft)
         else:
-            out = self.converse(user, text, draft)
+            out = self.converse(user, text, draft, on_wait=on_wait)
         self._remember(user, text, out)
         return self._to_channel(user, out)
 
     # ------------------------------------------------------- conversación
     def _remember(self, user: User, text: str, out: list[Outgoing]) -> None:
-        """Guarda el mensaje y lo que se le respondió (memoria para Gemini)."""
-        try:
-            stamp = self.stamp()
-            self.repo.add_message(user.channel, str(user.id), "cliente", text, stamp)
-            reply = "\n\n".join(to_plain(m.text) for m in out if m.chat_id == user.id)
+        """Recuerda el mensaje y la respuesta, solo en memoria (contexto para Gemini)."""
+        now = self.now()
+        reply = "\n\n".join(to_plain(m.text) for m in out if m.chat_id == user.id)
+        with self._chats_lock:
+            chat = self._chats.setdefault((user.channel, str(user.id)), deque(maxlen=HISTORY_MESSAGES))
+            chat.append(("cliente", text[:2000], now))
             if reply:
-                self.repo.add_message(user.channel, str(user.id), "bot", reply, stamp)
-        except StorageError as exc:
-            log.warning("No pude guardar el historial del chat: %s", exc)
+                chat.append(("bot", reply[:2000], now))
 
     def _history(self, user: User) -> list[tuple[str, str]]:
-        since = (self.now() - HISTORY_WINDOW).strftime("%Y-%m-%d %H:%M:%S")
-        return [(rol, t) for rol, t, fecha in
-                self.repo.recent_messages(user.channel, str(user.id), HISTORY_MESSAGES) if fecha >= since]
+        since = self.now() - HISTORY_WINDOW
+        with self._chats_lock:
+            chat = list(self._chats.get((user.channel, str(user.id)), ()))
+        return [(rol, t) for rol, t, when in chat if when >= since]
 
     def _orders_summary(self, user: User) -> str:
         """Últimos pedidos del cliente para Gemini (sin precios ni totales)."""
@@ -219,14 +229,13 @@ class BotService(CheckoutMixin, AdminMixin):
             return self._storage_failure(user, exc, "mostrar el catálogo")
         if not products:
             return [Outgoing(user.id, "El catálogo está vacío por ahora.")]
-        today = self.today()
         rows = ["<b>Catálogo de bebidas</b>"]
         category = None
         for p in products:
             if p.category != category:
                 category = p.category
                 rows += ["", f"<b>{esc(category or 'Otras')}</b>"]
-            price = self.money(p.price) if p.price_is_valid(today) else "precio a confirmar"
+            price = self.money(p.price) if p.has_price() else "precio a confirmar"
             avail = "✅" if p.stock > 0 else "❌ sin stock"
             rows.append(f"• {esc(p.name)} — {price} {avail}")
         rows += ["", "🚚 Envío incluido, sin costo."]

@@ -1,6 +1,4 @@
 """Base de datos SQLite: persistencia, restricciones y carga del catálogo."""
-from datetime import date
-
 import pytest
 
 from app.models import ESTADO_CONFIRMADO, Order, OrderLine
@@ -57,9 +55,9 @@ def test_actualizar_estado_reescribe_renglones_y_total(repo):
         repo.update_order_status("NO", ESTADO_CONFIRMADO, "", "", "s")
 
 
-def test_set_price_y_vigencia(repo):
-    p = repo.set_price("fer1", 13000, date(2030, 1, 1), "s")
-    assert p.price == 13000 and p.valid_until == date(2030, 1, 1)
+def test_set_price(repo):
+    p = repo.set_price("fer1", 13000, "s")
+    assert p.price == 13000
     with pytest.raises(KeyError):
         repo.set_stock("XXX", 1, "s")
 
@@ -72,9 +70,9 @@ def test_importar_csv(tmp_path, repo):
     for p in read_csv(str(f)):
         repo.upsert_product(p, "s")
     coc = repo.get_product("COC1")
-    assert coc.stock == 80 and coc.price == 3400.5 and coc.valid_until == date(2030, 12, 31)
+    assert coc.stock == 80 and coc.price == 3400.5   # la columna Vigente_hasta, si viene, se ignora
     pep = repo.get_product("PEP1")
-    assert pep.active and pep.valid_until is None and pep.aliases == ["pepsi"]
+    assert pep.active and pep.aliases == ["pepsi"]
 
 
 def test_csv_con_errores_no_carga_nada(tmp_path):
@@ -83,3 +81,21 @@ def test_csv_con_errores_no_carga_nada(tmp_path):
                  "X1,Algo,Gaseosas,,-3,100,,SI\n", encoding="utf-8")
     with pytest.raises(ValueError, match="Stock"):
         read_csv(str(f))
+
+
+def test_los_mensajes_del_chat_no_se_guardan(tmp_path, svc, repo):
+    from .conftest import CLIENT
+    svc.handle_message(CLIENT, "hola, ¿tenés coca?")
+    tablas = {r[0] for r in repo._conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "mensajes" not in tablas
+    assert svc._history(CLIENT)  # la memoria para Gemini vive solo en RAM
+    # Una base vieja que guardaba mensajes: al abrirla se borran
+    import sqlite3
+    path = str(tmp_path / "vieja.db")
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE mensajes (id INTEGER PRIMARY KEY, texto TEXT)")
+    con.execute("INSERT INTO mensajes (texto) VALUES ('dato viejo')")
+    con.commit(); con.close()
+    vieja = SQLiteRepository(path)
+    assert "mensajes" not in {r[0] for r in vieja._conn.execute("SELECT name FROM sqlite_master")}
+    vieja.close()

@@ -1,7 +1,7 @@
 # Trazr — bot de pedidos de bebidas para Telegram
 
 Bot de Telegram que recibe pedidos de bebidas en lenguaje natural, consulta stock
-y precio vigente en tiempo real, confirma solo lo que está dentro de los
+y precio en tiempo real, confirma solo lo que está dentro de los
 parámetros, deriva el resto al administrador y registra todo en una base de datos
 SQLite. El envío está **siempre incluido, sin costo**, y cada pedido lleva la
 dirección de entrega del cliente.
@@ -29,30 +29,31 @@ no se puede pedir. Al confirmar se vuelve a mirar (otro cliente pudo llevárselo
 
 Con stock suficiente, un pedido se **confirma automáticamente** si además:
 
-1. **Producto existente**: está en el catálogo y activo.
-2. **Precio vigente**: `precio` > 0 y `vigente_hasta` vacío o igual/posterior a hoy.
-3. *(Opcional)* el total no supera `MAX_ORDER_TOTAL`.
+1. **Producto existente**: está en el catálogo, activo y con precio cargado.
+2. **Total**: no supera `MAX_ORDER_TOTAL` ($ 150.000 por defecto; 0 = sin límite).
+
+Los precios **no vencen**: se cambian desde la web cuando hace falta.
 
 | Situación | Qué pasa |
 |---|---|
 | Cumple todo | **CONFIRMADO**, se descuenta el stock, el cliente recibe el detalle. |
 | No alcanza el stock | No se puede confirmar: el bot dice cuánto queda y ofrece ajustar. No se registra nada. |
-| Precio vencido o supera el total máximo | **EN REVISION**, no se toca el stock, queda un aviso para el admin en la web, donde lo aprueba o rechaza. |
+| Supera el total máximo | **EN REVISION**, no se toca el stock, queda un aviso para el admin en la web, donde lo aprueba o rechaza. |
 | Producto inexistente | Por defecto se le pide al cliente que corrija (no se registra). Con `ON_UNKNOWN_PRODUCT=review` se registra en revisión. |
 | Mensaje ambiguo, sin cantidad, cantidad inválida | Se pide aclaración. No se registra nada. |
 | El cliente no tiene dirección guardada | El pedido queda **retenido** y se le pide la dirección (ver §3). |
 | Falla de la base de datos | Mensaje claro al cliente y aviso con el error para el admin en la web. No queda nada a medias. |
 
-Todo se ajusta en el `.env` (`RULE_REQUIRE_PRICE_VALID`, `RULE_REQUIRE_STOCK`,
+Todo se ajusta en el `.env` (`RULE_REQUIRE_STOCK`,
 `MAX_ORDER_TOTAL`, `MAX_QTY_PER_ITEM`, `ON_UNKNOWN_PRODUCT`, `MATCH_THRESHOLD`).
 
 **El chat es solo para clientes.** Todo lo del administrador (avisos, revisar, aprobar,
 rechazar, stock, precios, productos) se hace en la **web de administración** (fase 4). El admin
 no recibe nada por Telegram: los avisos quedan guardados y se ven en la web.
 
-**Al aprobar** un pedido en revisión se vuelve a verificar stock y precio **en ese momento**.
-Si falta stock o el precio sigue vencido, no aprueba y dice qué resolver; el precio nuevo se
-puede cargar al aprobar. Al rechazar, el motivo es obligatorio y le llega al cliente.
+**Al aprobar** un pedido en revisión se toma el precio actual de cada producto y se vuelve a
+verificar el stock **en ese momento**; si falta, no aprueba y dice qué resolver. Al rechazar,
+el motivo es obligatorio y le llega al cliente.
 
 ## 3. Confirmación, dirección y modificación de pedidos
 
@@ -62,9 +63,9 @@ puede cargar al aprobar. Al rechazar, el motivo es obligatorio y le llega al cli
    Si no alcanza el stock, se lo dice con la cantidad que queda y le ofrece ajustar (ver §2).
 2. Si el cliente no tiene dirección guardada, se la pide. Ningún pedido se registra sin
    dirección (lo valida el bot **y** la base de datos).
-3. Le muestra un **resumen** con los precios vigentes, el total, el envío (incluido, sin
-   costo) y la dirección guardada. Si el pedido va a quedar en revisión (precio vencido o
-   total máximo), se lo avisa antes. Debajo, tres botones:
+3. Le muestra un **resumen** con los precios actuales, el total, el envío (incluido, sin
+   costo) y la dirección guardada. Si el pedido va a quedar en revisión (supera el total
+   máximo), se lo avisa antes. Debajo, tres botones:
    **✅ Confirmar** · **📍 Cambiar dirección** · **❌ Cancelar**.
 4. Antes de confirmar puede cambiar lo que quiera: mandar la lista nueva («mejor 3 cocas y
    una sprite»), otra dirección, o cancelar. Cada cambio genera un resumen nuevo (los botones
@@ -93,8 +94,16 @@ vence a las 24 h.
 
 Con cada mensaje, Gemini recibe: el catálogo (código, nombre, alias, categoría y si hay o
 no stock, **sin precios**), los datos del negocio del `.env` (`NEGOCIO_*`), los últimos
-pedidos del cliente y la conversación de las últimas 12 horas (tabla `mensajes`). Devuelve
-la intención y un texto corto:
+pedidos del cliente y la conversación de las últimas 12 horas. Esa conversación vive **solo
+en memoria**: los mensajes del chat **no se guardan en la base** y se olvidan al reiniciar.
+Devuelve la intención y un texto corto.
+
+**Si Gemini no contesta** (fallan los dos modelos), el bot le dice al cliente «Dame un momento
+que estoy procesando tu mensaje», reintenta (`AI_RETRY_DELAYS`, por defecto a los 4 y 8 s) y,
+si sigue sin contestar, le pide que escriba de nuevo en unos minutos y deja un aviso en la web.
+Sin clave de Gemini (`GEMINI_API_KEY` vacía) interpreta el parser por reglas.
+
+| Intención | Qué hace el bot |
 
 | Intención | Qué hace el bot |
 |---|---|
@@ -110,12 +119,11 @@ solo. Para verlo o editarlo a mano: [DB Browser for SQLite](https://sqlitebrowse
 
 | Tabla | Contenido |
 |---|---|
-| `productos` | `sku` (PK), `producto`, `categoria` (Gaseosas, Aguas, Cervezas, Vinos, Aperitivos, Jugos, Energizantes), `alias` (separados por coma), `stock` (≥ 0), `precio`, `vigente_hasta` (AAAA-MM-DD o vacío), `activo`, `actualizado` |
+| `productos` | `sku` (PK), `producto`, `categoria` (Gaseosas, Aguas, Cervezas, Vinos, Aperitivos, Jugos, Energizantes), `alias` (separados por coma), `stock` (≥ 0), `precio`, `activo`, `actualizado` |
 | `clientes` | `canal` + `externo_id` (únicos; ej. `telegram` + ID del chat), `nombre`, `direccion`, `creado`, `actualizado` |
 | `pedidos` | `pedido_id` (PK, ej. `P261112-A3F1`), `fecha`, `canal`, `cliente_id`, `cliente_nombre`, `mensaje_original`, `direccion_envio` (obligatoria), `costo_envio`, `total`, `estado` (`CONFIRMADO` / `EN REVISION` / `RECHAZADO`), `motivo`, `actualizado`, `revisado_por` |
 | `pedido_items` | renglones de cada pedido: `sku`, `producto`, `cantidad`, `precio_unitario`, `subtotal` |
 | `pedidos_pendientes` | pedido retenido (ya interpretado) esperando la dirección del cliente |
-| `mensajes` | historial reciente de cada chat (memoria de Gemini; se guardan los últimos 50) |
 | `avisos` | avisos para el admin (pedido en revisión, modificado, cambio fuera de término, falla); se ven en la web |
 | `admins` | usuarios de la web: usuario, nombre, hash de la contraseña, activo |
 
@@ -126,10 +134,10 @@ python -m scripts.init_db --ejemplo           # 10 bebidas de ejemplo (si el cat
 python -m scripts.init_db --csv catalogo.csv  # alta/actualización desde un CSV
 ```
 
-El CSV lleva el encabezado `SKU,Producto,Categoria,Alias,Stock,Precio,Vigente_hasta,Activo`
+El CSV lleva el encabezado `SKU,Producto,Categoria,Alias,Stock,Precio,Activo`
 (coma o punto y coma; se puede exportar desde Excel). Si un SKU ya existe, se
-actualiza. Nunca se borra nada. Los ejemplos incluyen uno con precio vencido
-(`FER1`) y uno sin stock (`VIN1`) para probar las revisiones.
+actualiza. Nunca se borra nada. Los ejemplos incluyen uno con poco stock (`CER1`) y uno sin
+stock (`VIN1`).
 
 ## 6. Puesta en marcha
 
@@ -178,11 +186,16 @@ el chat. Sin `TELEGRAM_BOT_TOKEN` arranca solo la web. Poné una `SECRET_KEY` en
 
 | Pantalla | Qué hacés ahí |
 |---|---|
-| **Tablero** | Ventas del día, pedidos de hoy, cuántos esperan revisión, poco stock y los avisos. |
+| **Tablero** | Remito del día (vendido, pedidos, ticket promedio, en revisión), el día en reparto (pedidos por hora con el corte de las 13: qué sale hoy y qué el próximo día hábil), los pedidos que esperan tu decisión, lo que se está por acabar y los avisos. |
 | **Pedidos** | Todos los pedidos con filtro por estado y buscador. |
-| **Detalle** | Por qué quedó en revisión, stock de hoy, cliente y dirección. **Aprobar** (cargando el precio nuevo si estaba vencido) o **rechazar** con motivo: al cliente le llega por el chat. |
-| **Productos y stock** | Sumar stock en la fila, editar precio, vigencia, alias y visibilidad, dar de alta productos. |
+| **Detalle** | Por qué quedó en revisión, stock de hoy, cliente y dirección. **Aprobar** o **rechazar** con motivo: al cliente le llega por el chat. |
+| **Productos y stock** | Sumar stock en la fila, editar precio, alias y visibilidad, dar de alta productos. Lo que cambiás acá lo ve el bot al instante en el `/catalogo`. |
 | **Clientes** | Dirección guardada, pedidos, total comprado y compra típica de cada cliente. |
+
+La web **se refresca sola**: cada 10 segundos pregunta si cambió algo (entró un pedido,
+cambió el stock, llegó un aviso) y recarga; si estás escribiendo en un formulario, en vez de
+recargar muestra «Hay novedades». En el celular el menú va en un botón hamburguesa y las tablas
+se muestran como tarjetas.
 
 Seguridad: contraseñas con hash, sesión en cookie firmada (`httponly`, `samesite=lax`, 12 h),
 token CSRF en cada formulario y todo pide ingresar. Corre en tu PC (`127.0.0.1`); para
@@ -215,7 +228,7 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 | 3 | Cliente | `mandame 10 cervezas` | ⚠️ *No me alcanza el stock: Cerveza Rubia 1L: pediste 10, me quedan 5.* Botones 🔧 Ajustar / ❌ Cancelar, sin Confirmar. No se registra nada. |
 | 3b | Cliente | `sí` (o 🔧) y después `sí` | Ajusta a 5, muestra el resumen y confirma. CER1 5→0. |
 | 3c | Cliente | `2 vino` | *Vino Tinto Malbec 750ml: pediste 2, no me queda.* No se puede pedir. |
-| 4 | Cliente | `1 fernet` → `sí` | En revisión por `Precio no vigente: Fernet 750ml`. En la web: aprobar cargando el precio nuevo (13.000) → al cliente le llega ✅. O rechazar con motivo → le llega ❌ con el motivo. |
+| 4 | Cliente | un pedido de más de $ 150.000 → `sí` | En revisión: «El total ($ …) supera el máximo automático ($ 150.000,00)». En la web: aprobar → al cliente le llega ✅. O rechazar con motivo → le llega ❌ con el motivo. |
 | 6 | Cliente | `3 agua` | *¿cuál de estos? Agua Mineral con Gas 2L, Agua Mineral sin Gas 2L*. No se registra. |
 | 7 | Cliente | `2 whisky` | *«whisky»: no está en nuestro catálogo*. |
 | 8 | Cliente | `2,5 coca` / `-3 sprite` | *la cantidad debe ser un número entero entre 1 y 1000*. |
@@ -258,7 +271,7 @@ tests/            pruebas de punta a punta, dirección, base de datos e IA (sin 
 3. Un pedido en revisión **no reserva stock**; se descuenta recién al aprobar (y al aprobar
    se vuelve a verificar).
 4. El bot le muestra al cliente la cantidad exacta que queda de un producto cuando no le alcanza.
-5. Al aprobar se usa el precio vigente en ese momento.
+5. Los precios no vencen; al aprobar se usa el precio actual del producto.
 6. Cualquiera que escriba al bot puede pedir. Solo los admins de la web (usuario y contraseña) gestionan.
 7. El bot corre como **un solo proceso**; un candado interno evita descontar dos veces el mismo stock.
 8. Los clientes se identifican por canal + ID, así el mismo número en Telegram y WhatsApp (fase 5) no se mezcla.

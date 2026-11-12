@@ -8,9 +8,10 @@ Las reglas son las mismas de siempre: no se duplican en las rutas de la web.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import timedelta
 
 from .auth import MIN_PASSWORD_LEN, hash_password, verify_password
 from .messages import Outgoing, esc
@@ -62,11 +63,9 @@ class AdminMixin:
         return AdminResult(True, f"Admin «{username}» guardado.")
 
     # ------------------------------------------------------------- pedidos
-    def approve(self, order_id: str, admin_name: str,
-                new_prices: dict[str, float] | None = None) -> AdminResult:
-        """Aprueba un pedido EN REVISION: verifica stock y precio en ese momento, descuenta
-        el stock y avisa al cliente. `new_prices` = {sku: precio} actualiza antes los precios
-        vencidos (quedan vigentes sin vencimiento)."""
+    def approve(self, order_id: str, admin_name: str) -> AdminResult:
+        """Aprueba un pedido EN REVISION: verifica stock y precio en ese momento (toma el
+        precio actual del catálogo), descuenta el stock y avisa al cliente."""
         with self._lock:
             try:
                 order = self.repo.get_order(order_id)
@@ -78,17 +77,8 @@ class AdminMixin:
                 if not order.lines:
                     return AdminResult(False, "Ese pedido no tiene productos reconocidos: rechazalo con un motivo.",
                                        order)
-                for sku, price in (new_prices or {}).items():
-                    if price is None:
-                        continue
-                    if price <= 0:
-                        return AdminResult(False, "El precio debe ser mayor a 0.", order)
-                    try:
-                        self.repo.set_price(sku, round(price, 2), None, self.stamp())
-                    except KeyError:
-                        return AdminResult(False, f"No existe el producto {sku}.", order)
                 products = {p.sku.upper(): p for p in self.repo.list_products()}
-                today, blockers, new_lines = self.today(), [], []
+                blockers, new_lines = [], []
                 for l in order.lines:
                     p = products.get(l.sku.upper())
                     if p is None:
@@ -96,8 +86,8 @@ class AdminMixin:
                         continue
                     if p.stock < l.qty:
                         blockers.append(f"{p.name}: hay {self.qty(p.stock)}, se piden {l.qty}. Sumá stock en Productos.")
-                    if not p.price_is_valid(today):
-                        blockers.append(f"{p.name}: el precio no está vigente. Cargá el precio nuevo.")
+                    if not p.has_price():
+                        blockers.append(f"{p.name}: no tiene precio cargado. Cargalo en Productos.")
                     new_lines.append(OrderLine(p.sku, p.name, l.qty, float(p.price)))
                 if blockers:
                     return AdminResult(False, "No se puede aprobar todavía: " + " ".join(blockers), order)
@@ -172,14 +162,12 @@ class AdminMixin:
         sign = "+" if delta > 0 else ""
         return AdminResult(True, f"Stock de {p.name}: {self.qty(p.stock)} unidades ({sign}{int(delta)}).", product=p)
 
-    def set_price(self, sku: str, price: float, valid_until: date | None = None) -> AdminResult:
+    def set_price(self, sku: str, price: float) -> AdminResult:
         if price is None or price <= 0:
             return AdminResult(False, "El precio debe ser mayor a 0.")
-        if valid_until is not None and valid_until < self.today():
-            return AdminResult(False, "La fecha de vigencia ya pasó.")
         with self._lock:
             try:
-                p = self.repo.set_price(sku, round(price, 2), valid_until, self.stamp())
+                p = self.repo.set_price(sku, round(price, 2), self.stamp())
             except KeyError:
                 return AdminResult(False, f"No existe el producto {sku}.")
             except StorageError as exc:
@@ -218,6 +206,7 @@ class AdminMixin:
         """Números del tablero, calculados de la base (para la web)."""
         orders = self.repo.list_orders()
         products = [p for p in self.repo.list_products() if p.active]
+        b = self.s.business
         today = self.today().isoformat()
         yesterday = (self.today() - timedelta(days=1)).isoformat()
 
@@ -226,13 +215,44 @@ class AdminMixin:
                              if o.created_at.startswith(day) and o.status == ESTADO_CONFIRMADO), 2)
 
         todays = [o for o in orders if o.created_at.startswith(today)]
+        confirmed = [o for o in todays if o.status == ESTADO_CONFIRMADO]
         pending = [o for o in orders if o.status == ESTADO_REVISION]
+
+        def hour(o: Order) -> int:
+            try:
+                return int(o.created_at[11:13])
+            except ValueError:
+                return 0
+
+        # El día en reparto: pedidos por hora (sin los rechazados) y el corte de entrega.
+        first, last = min(b.open_hour, b.close_hour - 1), max(b.open_hour, b.close_hour - 1)
+        live = [o for o in todays if o.status != ESTADO_RECHAZADO]
+        hours = [{"hour": h, "count": sum(1 for o in live if hour(o) == h),
+                  "is_now": h == self.now().hour} for h in range(first, last + 1)]
+        top = max((x["count"] for x in hours), default=0) or 1
+        for x in hours:
+            x["pct"] = round(100 * x["count"] / top)
+        ship_today = [o for o in confirmed if hour(o) < b.cutoff_hour]
+        ship_next = [o for o in confirmed if hour(o) >= b.cutoff_hour]
         return {
             "sales_today": sales(today),
             "sales_yesterday": sales(yesterday),
             "orders_today": len(todays),
-            "auto_confirmed_today": sum(1 for o in todays if o.status == ESTADO_CONFIRMADO and not o.reviewed_by),
+            "auto_confirmed_today": sum(1 for o in confirmed if not o.reviewed_by),
+            "avg_ticket": round(sales(today) / len(confirmed), 2) if confirmed else 0.0,
             "pending": pending,
             "low_stock": sorted((p for p in products if p.stock < LOW_STOCK), key=lambda p: p.stock),
             "unread_notices": len(self.repo.list_notices(limit=500, unread_only=True)),
+            "hours": hours,
+            "cutoff_hour": b.cutoff_hour,
+            "ship_today": {"count": len(ship_today), "total": round(sum(o.total for o in ship_today), 2)},
+            "ship_next": {"count": len(ship_next), "total": round(sum(o.total for o in ship_next), 2)},
+            "past_cutoff": self.now().hour >= b.cutoff_hour,
         }
+
+    def version(self) -> str:
+        """Firma corta del estado (pedidos, stock, avisos): la web la consulta para refrescarse sola."""
+        parts = [f"{o.order_id}:{o.status}:{o.updated_at}" for o in self.repo.list_orders()]
+        parts += [f"{p.sku}:{p.stock}:{p.price}:{p.active}" for p in self.repo.list_products()]
+        parts.append(str(len(self.repo.list_notices(limit=500, unread_only=True))))
+        return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]

@@ -60,8 +60,8 @@ def test_botones_viejos_no_sirven(svc, repo):
 
 def test_resumen_avisa_si_va_a_quedar_en_revision(svc, repo):
     txt = plain(svc.handle_message(CLIENT, "1 fernet")[0].text)
-    assert "Fernet 750ml — precio a confirmar" in txt
-    assert "Si lo confirmás, queda en revisión" in txt and "Precio no vigente: Fernet 750ml" in txt
+    assert "1 × Fernet 750ml — $ 12.000,00" in txt
+    assert "Si lo confirmás, queda en revisión" in txt and "supera el máximo automático" in txt
 
 
 def test_falta_de_stock_se_avisa_antes_de_pedir_la_direccion(svc, repo):

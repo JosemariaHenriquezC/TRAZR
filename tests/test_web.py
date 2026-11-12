@@ -87,29 +87,31 @@ def test_tablero(admin, svc, repo):
     pedir(svc, CLIENT, "2 coca")
     pedir(svc, CLIENT, "1 fernet")
     t = text(admin.get("/"))
-    assert "Hay 1 pedido esperando tu revisión" in t
-    assert "$ 6.400,00" in t                                   # ventas de hoy
-    assert "Precio no vigente: Fernet 750ml" in t             # en «Para revisar» y en avisos
-    assert "Vino Tinto Malbec 750ml" in t and "Sin stock" in t  # poco stock
-    assert 'class="count"' in t                                # contador en el menú
+    assert "1 pedido espera tu decisión" in t
+    assert "Vendido hoy" in t and "$ 6.400,00" in t              # remito del día
+    assert "El día en reparto" in t and "corte" in t              # pedidos por hora y corte de entrega
+    assert "supera el máximo automático" in t                     # cola de decisiones y avisos
+    assert "Se está por acabar" in t and "Vino Tinto Malbec 750ml" in t and "Sin stock" in t
+    assert 'class="count"' in t and 'class="menu-toggle"' in t     # contador y hamburguesa
+    assert 'data-version="' in t
     page = admin.get("/").text
     admin.post("/avisos/leidos", data={"csrf_token": csrf(page)})
     assert repo.list_notices(unread_only=True) == []
 
 
 # ---------------------------------------------------------------- pedidos
-def test_aprobar_con_precio_nuevo_avisa_al_cliente(admin, svc, repo, tg):
+def test_aprobar_avisa_al_cliente(admin, svc, repo, tg):
     pedir(svc, CLIENT, "1 fernet")
     oid = repo.list_orders()[-1].order_id
     t = text(admin.get("/pedidos"))
     assert oid in t and "En revisión · 1" in t
     page = admin.get(f"/pedidos/{oid}").text
-    assert "Por qué está en revisión" in page and 'name="precio_FER1"' in page
-    assert re.search(r"Total</strong></td><td class=\"num\"><strong>\$ 0,00", page)  # sin el precio a confirmar
-    r = admin.post(f"/pedidos/{oid}/aprobar", data={"csrf_token": csrf(page), "precio_FER1": "13.000,00"})
+    assert "Por qué está en revisión" in page and "supera el máximo automático" in page
+    assert "precio_" not in page and "vigente" not in page.lower()   # ya no hay vencimiento de precios
+    r = admin.post(f"/pedidos/{oid}/aprobar", data={"csrf_token": csrf(page)})
     assert "aprobado: se descontó el stock y se avisó al cliente" in r.text
     o = repo.get_order(oid)
-    assert o.status == "CONFIRMADO" and o.reviewed_by == "Lucía Fernández" and o.total == 13000
+    assert o.status == "CONFIRMADO" and o.reviewed_by == "Lucía Fernández" and o.total == 12000
     assert len(tg.sent) == 1 and tg.sent[0].chat_id == CLIENT.id and "¡Tu pedido fue confirmado!" in tg.sent[0].text
     assert "Aprobado por Lucía Fernández" in r.text and "Aprobar y avisar" not in r.text
 
@@ -120,7 +122,7 @@ def test_aprobar_bloqueado_por_stock(admin, svc, repo, tg):
     svc.set_stock("FER1", 0)
     page = admin.get(f"/pedidos/{oid}").text
     assert "Hay 0" in page
-    r = admin.post(f"/pedidos/{oid}/aprobar", data={"csrf_token": csrf(page), "precio_FER1": "13000"})
+    r = admin.post(f"/pedidos/{oid}/aprobar", data={"csrf_token": csrf(page)})
     assert "No se puede aprobar todavía" in r.text and repo.get_order(oid).status == "EN REVISION"
     assert tg.sent == []
 
@@ -159,28 +161,31 @@ def test_sumar_stock_y_filtros(admin, repo):
     assert "Cerveza Rubia 1L: 29 unidades (+24)" in r.text and repo.get_product("CER1").stock == 29
     r = admin.post("/productos/CER1/sumar", data={"csrf_token": csrf(page), "cantidad": "2,5"})
     assert "cantidad entera" in r.text
-    assert "Fernet 750ml" in admin.get("/productos?filtro=vencido").text
-    assert "Coca-Cola" not in admin.get("/productos?filtro=vencido").text
+    poco = admin.get("/productos?filtro=poco").text
+    assert "Cerveza Rubia 1L" not in poco and "Vino Tinto Malbec 750ml" in poco   # la cerveza ya tiene 29
+    assert "Precio vencido" not in admin.get("/productos").text
 
 
-def test_alta_y_edicion_de_producto(admin, repo):
+def test_alta_y_edicion_de_producto(admin, svc, repo):
     page = admin.get("/productos?nuevo=1").text
     data = {"csrf_token": csrf(page), "es_nuevo": "1", "sku": "pep1", "nombre": "Pepsi 2.25L",
-            "alias": "pepsi, pecsi", "categoria": "Gaseosas", "precio": "2.900,50", "vigente_hasta": "",
+            "alias": "pepsi, pecsi", "categoria": "Gaseosas", "precio": "2.900,50",
             "stock": "24", "activo": "1"}
     r = admin.post("/productos/guardar", data=data)
     assert "Producto creado: Pepsi 2.25L" in r.text
     p = repo.get_product("PEP1")
-    assert p.price == 2900.5 and p.aliases == ["pepsi", "pecsi"] and p.valid_until is None
+    assert p.price == 2900.5 and p.aliases == ["pepsi", "pecsi"]
     r = admin.post("/productos/guardar", data=data)
     assert "Ya existe" in r.text
     page = admin.get("/productos?editar=PEP1").text
     assert "Editar Pepsi 2.25L" in page and 'value="2900,50"' in page
-    edit = dict(data, csrf_token=csrf(page), es_nuevo="0", sku="PEP1", precio="3100", activo="0",
-                vigente_hasta="2030-01-31")
+    edit = dict(data, csrf_token=csrf(page), es_nuevo="0", sku="PEP1", precio="3100", activo="0")
     assert "Cambios guardados" in admin.post("/productos/guardar", data=edit).text
     p = repo.get_product("PEP1")
-    assert p.price == 3100 and not p.active and p.valid_until.isoformat() == "2030-01-31"
+    assert p.price == 3100 and not p.active
+    # Lo que se cambia en la web lo ve el bot al instante: el producto oculto sale del catálogo
+    from app.service import User
+    assert "Pepsi" not in svc.handle_message(User(5, "X"), "/catalogo")[0].text
     bad = dict(edit, precio="mucho")
     assert "precio válido" in admin.post("/productos/guardar", data=bad).text
 
@@ -192,3 +197,18 @@ def test_clientes(admin, svc, repo):
     assert CLIENT.name in t and "Av. Mate de Luna 1234" in t and "$ 6.400,00" in t
     assert "Coca-Cola 2.25L" in t   # compra típica
     assert "No hay clientes que coincidan" in admin.get("/clientes?q=zzzz").text
+
+
+def test_cambios_para_refresco_automatico(admin, svc, repo):
+    v1 = admin.get("/cambios").text
+    assert v1 == admin.get("/cambios").text and len(v1) == 16          # sin cambios, misma firma
+    pedir(svc, CLIENT, "2 coca")                                        # entra un pedido por el chat
+    v2 = admin.get("/cambios").text
+    assert v2 != v1
+    svc.add_stock("CER1", 3)                                             # o cambia el stock
+    assert admin.get("/cambios").text != v2
+    assert admin.get("/cambios", headers={}).headers["cache-control"] == "no-store"
+
+
+def test_cambios_pide_ingresar(client):
+    assert client.get("/cambios", follow_redirects=False).status_code == 303

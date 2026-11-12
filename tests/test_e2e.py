@@ -5,7 +5,7 @@ Mismo código que corre en Telegram.
 from app.models import ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION
 from app.storage.base import StorageError
 
-from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, avisos, pedir, plain
+from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, MOTIVO_TOPE, avisos, pedir, plain
 
 
 def stock(repo, sku):
@@ -38,7 +38,8 @@ def test_pedido_confirmado(svc, repo):
 
 
 # 2) Falta stock → el cliente NO puede confirmar: se le dice cuánto queda y se ajusta
-def test_faltante_no_se_puede_pedir_y_se_ajusta(svc, repo):
+def test_faltante_no_se_puede_pedir_y_se_ajusta(svc, repo, settings):
+    settings.rules.max_order_total = 0  # sin tope: este caso es solo de stock
     out = svc.handle_message(CLIENT, "mandame 10 cervezas y 2 coca")
     txt = plain(out[0].text)
     assert "No me alcanza el stock" in txt and "Cerveza Rubia 1L: pediste 10, me quedan 5." in txt
@@ -58,13 +59,13 @@ def test_faltante_no_se_puede_pedir_y_se_ajusta(svc, repo):
     assert "Cerveza Rubia 1L: pediste 1, no me queda." in txt and "No me queda nada de lo que pediste" in txt
 
 
-# 2b) Admin: pedido en revisión (precio) que al aprobar ya no tiene stock
+# 2b) Admin: pedido en revisión (supera el total máximo) que al aprobar ya no tiene stock
 def test_aprobar_revisa_stock_y_precio(svc, repo):
     out = pedir(svc, CLIENT, "1 fernet")
     assert len(out) == 1 and out[0].chat_id == CLIENT.id  # al admin no le llega nada por chat
     order_id = last_order(repo).order_id
     aviso = avisos(repo)[0]
-    assert aviso.kind == "revision" and aviso.order_id == order_id and "Precio no vigente: Fernet 750ml" in aviso.detail
+    assert aviso.kind == "revision" and aviso.order_id == order_id and MOTIVO_TOPE in aviso.detail
     assert last_order(repo).status == ESTADO_REVISION and stock(repo, "FER1") == 10
 
     assert svc.set_stock("FER1", 0).ok
@@ -79,15 +80,20 @@ def test_aprobar_revisa_stock_y_precio(svc, repo):
     assert "ya está confirmado" in svc.approve(order_id, ADMIN).message
 
 
-# 3) Precio vencido → revisión → admin actualiza precio y aprueba con el precio nuevo
-def test_precio_no_vigente(svc, repo):
+# 3) Los precios no vencen; al aprobar se toma el precio actual del catálogo
+def test_aprobar_toma_el_precio_actual(svc, repo):
     pedir(svc, CLIENT, "1 fernet")
     oid = last_order(repo).order_id
-    assert "el precio no está vigente" in svc.approve(oid, ADMIN).message
-    r = svc.approve(oid, ADMIN, {"FER1": 13000})  # aprobar cargando el precio nuevo (como en la web)
+    assert last_order(repo).total == 12000
+    assert svc.set_price("FER1", 13000).ok      # el admin lo actualiza en la web
+    r = svc.approve(oid, ADMIN)
     assert r.ok and "Total: $ 13.000,00" in plain(r.notify[0].text)
     assert last_order(repo).total == 13000 and stock(repo, "FER1") == 9
-    assert repo.get_product("FER1").price == 13000 and repo.get_product("FER1").valid_until is None
+    # Un producto sin precio cargado no se aprueba
+    pedir(svc, CLIENT, "1 fernet")
+    oid2 = last_order(repo).order_id
+    repo.set_price("FER1", 0, "s")
+    assert "no tiene precio cargado" in svc.approve(oid2, ADMIN).message
 
 
 # 4) Rechazo con motivo
@@ -166,7 +172,8 @@ def test_regla_total_maximo(svc, repo, settings):
     assert last_order(repo).status == ESTADO_REVISION and stock(repo, "COC1") == 50
 
 
-def test_mismo_producto_dos_veces_se_suma(svc, repo):
+def test_mismo_producto_dos_veces_se_suma(svc, repo, settings):
+    settings.rules.max_order_total = 0
     pedir(svc, CLIENT, "2 coca, 3 coca")
     o = last_order(repo)
     assert [(l.sku, l.qty) for l in o.lines] == [("COC1", 5)] and stock(repo, "COC1") == 45
@@ -176,6 +183,6 @@ def test_comandos_cliente(svc, repo):
     pedir(svc, CLIENT, "1 sprite")
     assert "Tus últimos pedidos" in svc.handle_message(CLIENT, "/mispedidos")[0].text
     cat = plain(svc.handle_message(CLIENT, "/catalogo")[0].text)
-    assert "Vino Tinto Malbec 750ml — $ 6.500,00 ❌ sin stock" in cat and "Fernet 750ml — precio a confirmar" in cat
+    assert "Vino Tinto Malbec 750ml — $ 6.500,00 ❌ sin stock" in cat and "Fernet 750ml — $ 12.000,00 ✅" in cat
     assert "Gaseosas" in cat and "Envío incluido, sin costo" in cat
 

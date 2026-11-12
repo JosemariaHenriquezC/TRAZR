@@ -4,31 +4,80 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ shop }} Admin{% endblock %}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<script>document.documentElement.classList.add("js");</script>
 <link rel="stylesheet" href="/static/components.css">
 <link rel="stylesheet" href="/static/admin.css">
 </head>
-<body>
+<body data-version="{{ version }}">
 <div class="app">
-  <aside class="side">
-    <a class="brand" href="/"><span class="brand__mark"></span>{{ shop }}</a>
-    <nav class="nav" aria-label="Secciones">
-      <a href="/" {% if page == 'tablero' %}aria-current="page"{% endif %}>Tablero</a>
-      <a href="/pedidos" {% if page == 'pedidos' %}aria-current="page"{% endif %}>Pedidos {% if pending_count %}<span class="count" aria-label="{{ pending_count }} en revisión">{{ pending_count }}</span>{% endif %}</a>
-      <a href="/productos" {% if page == 'productos' %}aria-current="page"{% endif %}>Productos y stock</a>
-      <a href="/clientes" {% if page == 'clientes' %}aria-current="page"{% endif %}>Clientes</a>
-    </nav>
-    <div class="side__foot">
-      <strong>{{ admin.name }}</strong><span>Administración</span>
-      <form method="post" action="/salir"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Salir</button></form>
+  <aside class="side" id="side">
+    <div class="side__top">
+      <a class="brand" href="/"><span class="brand__mark"></span>{{ shop }}</a>
+      <button class="menu-toggle" type="button" aria-controls="menu" aria-expanded="false" aria-label="Abrir menú">
+        <span class="menu-toggle__bars" aria-hidden="true"></span>
+        {% if pending_count %}<span class="menu-toggle__dot" aria-hidden="true"></span>{% endif %}
+      </button>
+    </div>
+    <div class="side__menu" id="menu">
+      <nav class="nav" aria-label="Secciones">
+        <a href="/" {% if page == 'tablero' %}aria-current="page"{% endif %}>Tablero</a>
+        <a href="/pedidos" {% if page == 'pedidos' %}aria-current="page"{% endif %}>Pedidos {% if pending_count %}<span class="count" aria-label="{{ pending_count }} en revisión">{{ pending_count }}</span>{% endif %}</a>
+        <a href="/productos" {% if page == 'productos' %}aria-current="page"{% endif %}>Productos y stock</a>
+        <a href="/clientes" {% if page == 'clientes' %}aria-current="page"{% endif %}>Clientes</a>
+      </nav>
+      <div class="side__foot">
+        <strong>{{ admin.name }}</strong><span>Administración</span>
+        <form method="post" action="/salir"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Salir</button></form>
+      </div>
     </div>
   </aside>
   <main class="main">
+    <div class="tz-notice live-banner" id="live-banner" hidden role="status">
+      <strong>Hay novedades</strong><span>Entraron pedidos o cambió el stock. <a href="" id="live-reload">Actualizar la página</a></span>
+    </div>
     {% if flash %}
     <div class="tz-notice flash {{ 'flash--ok' if flash.ok else 'tz-notice--error' }}" role="status"><strong>{{ flash.message }}</strong></div>
     {% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>
+<script>
+(function () {
+  // Menú del celular
+  var side = document.getElementById("side");
+  var toggle = side.querySelector(".menu-toggle");
+  toggle.addEventListener("click", function () {
+    var open = side.classList.toggle("is-open");
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.setAttribute("aria-label", open ? "Cerrar menú" : "Abrir menú");
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && side.classList.contains("is-open")) { toggle.click(); toggle.focus(); }
+  });
+
+  // Se refresca sola: cada 10 s pregunta si cambió algo (pedidos, stock, avisos).
+  // Si estás escribiendo en un formulario no recarga: muestra «Hay novedades».
+  var version = document.body.dataset.version;
+  var editing = false;
+  document.addEventListener("input", function () { editing = true; });
+  var banner = document.getElementById("live-banner");
+  document.getElementById("live-reload").addEventListener("click", function (e) { e.preventDefault(); location.reload(); });
+  function check() {
+    if (document.hidden || !version) return;
+    fetch("/cambios", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (v) {
+        if (!v || v === version) return;
+        var el = document.activeElement;
+        var typing = el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+        if (editing || typing) { banner.hidden = false; }
+        else { location.reload(); }
+      })
+      .catch(function () {});
+  }
+  setInterval(check, 10000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) check(); });
+})();
+</script>
 </body>
 </html>

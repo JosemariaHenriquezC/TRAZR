@@ -13,11 +13,11 @@ from app import ai_parser
 from app.models import Product
 
 PRODUCTOS = [
-    Product("YER1", "Yerba Mate 1kg", ["yerba", "mate"], 50, 4500, None, True),
-    Product("AZU1", "Azúcar 1kg", ["azucar"], 30, 1200, None, True),
-    Product("GAL1", "Galletitas Dulces 300g", ["galletitas dulces"], 20, 900, None, True),
-    Product("GAL2", "Galletitas Saladas 300g", ["galletitas saladas"], 20, 900, None, True),
-    Product("VIE1", "Producto Viejo", [], 5, 100, None, False),  # inactivo
+    Product("YER1", "Yerba Mate 1kg", ["yerba", "mate"], 50, 4500, True),
+    Product("AZU1", "Azúcar 1kg", ["azucar"], 30, 1200, True),
+    Product("GAL1", "Galletitas Dulces 300g", ["galletitas dulces"], 20, 900, True),
+    Product("GAL2", "Galletitas Saladas 300g", ["galletitas saladas"], 20, 900, True),
+    Product("VIE1", "Producto Viejo", [], 5, 100, False),  # inactivo
 ]
 
 OK = json.dumps({"items": [

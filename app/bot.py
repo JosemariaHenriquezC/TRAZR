@@ -59,7 +59,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = _user(update)
     text = update.effective_message.text or ""
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
-    out = await asyncio.to_thread(service.handle_message, user, text)
+    loop = asyncio.get_running_loop()
+    send = telegram_sender(context.bot)
+
+    def on_wait(m: Outgoing) -> None:
+        # Se llama desde el hilo de trabajo: el envío corre en el bucle del bot.
+        asyncio.run_coroutine_threadsafe(send(m), loop).result(timeout=15)
+
+    out = await asyncio.to_thread(service.handle_message, user, text, on_wait)
     await _send(context, out)
 
 

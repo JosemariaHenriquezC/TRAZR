@@ -25,10 +25,15 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
   salen de la base y de rules.py (`respuesta_segura` descarta textos con plata o "confirmado").
 - `service.py` no debe depender de Telegram: va a sumarse WhatsApp. Los clientes se
   identifican por `canal` + `externo_id`.
+- Los precios NO vencen (se sacó «vigente hasta» de todo). Revisión del admin solo si el total
+  supera MAX_ORDER_TOTAL (150000 por defecto) o un producto no tiene precio.
+- Los mensajes del chat NO se guardan en la base: la memoria de Gemini vive en RAM (12 h).
+- Si Gemini no contesta: «dame un momento» (on_wait), reintentos (AI_RETRY_DELAYS) y si no,
+  le pide al cliente que escriba en unos minutos + aviso en la web. Sin clave → reglas.
 - Stock: se verifica al armar el borrador y otra vez al confirmar. Si no alcanza, el cliente
   NO puede confirmar: el bot le dice la cantidad exacta que queda y ofrece ajustar
   (🔧 / «sí»). Al modificar, lo que el pedido ya tenía cuenta como disponible.
-  La revisión del admin queda solo para precio vencido y total máximo.
+  La revisión del admin queda solo para el total máximo.
 - Ningún pedido se registra sin dirección de envío ni sin confirmación del cliente.
   El envío siempre está incluido, sin costo.
 - La dirección guardada solo cambia si el cliente lo elige: tras un pedido a otra dirección,
@@ -105,6 +110,10 @@ Orden de trabajo:
 3. Web: login, pantallas según el diseño aprobado, tests. HECHO (tests/test_web.py).
 4. Capturas con Playwright para revisar. HECHO (para el TFI se pueden repetir a escala 2).
 Pendiente de la fase 4: crear los usuarios reales en la PC del usuario (scripts/crear_admin.py).
+
+Ajustes posteriores (hechos): web que se refresca sola (/cambios), menú hamburguesa y tablas
+como tarjetas en el celular, tablero propio de Trazr (remito del día, el día en reparto con el
+corte de las 13, cola de decisiones, se está por acabar).
 
 Método de diseño: partir de buenas referencias, skills de diseño y diseño real antes de programar.
 - Claude Design (artifacts «Design System» y «Design»); Figma como alternativa (el MCP de Figma

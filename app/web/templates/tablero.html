@@ -1,81 +1,141 @@
 {% extends "base.html" %}
 {% block title %}Tablero · {{ shop }}{% endblock %}
 {% block content %}
+{% set n = d.hours|length %}
+{% set first_hour = d.hours[0].hour if n else 0 %}
 <div class="head">
   <div>
     <span class="eyebrow">{{ today_label }}</span>
     <h1>{{ greeting }}, {{ admin.name.split(' ')[0] }}</h1>
     {% if d.pending %}
-    <p>Hay {{ d.pending|length }} pedido{{ 's' if d.pending|length != 1 }} esperando tu revisión. El más viejo entró {{ d.pending[0].created_at|fecha }}.</p>
+    <p>{{ d.pending|length }} pedido{{ 's' if d.pending|length != 1 }} espera{{ 'n' if d.pending|length != 1 }} tu decisión. Lo demás entró dentro de los parámetros y se confirmó solo.</p>
     {% else %}
-    <p>No hay pedidos esperando revisión. Los que entran dentro de los parámetros se confirman solos.</p>
+    <p>Nada espera tu decisión. Los pedidos de hoy entraron dentro de los parámetros y se confirmaron solos.</p>
     {% endif %}
   </div>
-  {% if d.pending %}<a class="tz-btn tz-btn--primary" href="/pedidos?estado=revision">Revisar pedidos</a>{% endif %}
 </div>
 
-<section class="grid-4" aria-label="Resumen del día">
-  <div class="tz-panel tz-stat"><span class="tz-stat__label">Ventas de hoy</span><span class="tz-stat__value">{{ d.sales_today|money }}</span><span class="tz-stat__hint">ayer: {{ d.sales_yesterday|money }}</span></div>
-  <div class="tz-panel tz-stat"><span class="tz-stat__label">Pedidos de hoy</span><span class="tz-stat__value">{{ d.orders_today }}</span><span class="tz-stat__hint">{{ d.auto_confirmed_today }} confirmado{{ 's' if d.auto_confirmed_today != 1 }} solo{{ 's' if d.auto_confirmed_today != 1 }}</span></div>
-  <div class="tz-panel tz-stat tz-stat--key"><span class="tz-stat__label">En revisión</span><span class="tz-stat__value">{{ d.pending|length }}</span><span class="tz-stat__hint">{{ 'esperan tu decisión' if d.pending else 'nada pendiente' }}</span></div>
-  <div class="tz-panel tz-stat"><span class="tz-stat__label">Poco stock</span><span class="tz-stat__value">{{ d.low_stock|length }}</span><span class="tz-stat__hint">menos de {{ LOW_STOCK }} unidades</span></div>
+<section class="remito" aria-label="Remito del día">
+  <div class="remito__cell">
+    <span class="remito__label">Vendido hoy</span>
+    <span class="remito__value">{{ d.sales_today|money }}</span>
+    <span class="remito__hint">
+      {% if d.sales_yesterday %}
+        {% set diff = ((d.sales_today - d.sales_yesterday) / d.sales_yesterday * 100)|round|int %}
+        <span class="{{ 'up' if diff >= 0 else 'down' }}">{{ '+' if diff >= 0 }}{{ diff }}%</span> contra ayer ({{ d.sales_yesterday|money }})
+      {% else %}ayer no hubo ventas confirmadas{% endif %}
+    </span>
+  </div>
+  <div class="remito__cell">
+    <span class="remito__label">Pedidos de hoy</span>
+    <span class="remito__value">{{ d.orders_today }}</span>
+    <span class="remito__hint">{{ d.auto_confirmed_today }} confirmado{{ 's' if d.auto_confirmed_today != 1 }} solo{{ 's' if d.auto_confirmed_today != 1 }}, sin tocar nada</span>
+  </div>
+  <div class="remito__cell">
+    <span class="remito__label">Ticket promedio</span>
+    <span class="remito__value">{{ d.avg_ticket|money }}</span>
+    <span class="remito__hint">envío incluido en todos</span>
+  </div>
+  <div class="remito__cell">
+    <span class="remito__label">En revisión</span>
+    <span class="remito__value" {% if d.pending %}style="color: var(--warn)"{% endif %}>{{ d.pending|length }}</span>
+    <span class="remito__hint">{{ 'superan el total máximo' if d.pending else 'nada pendiente' }}</span>
+  </div>
 </section>
 
-<div class="grid-2">
-  <section class="tz-panel">
-    <div class="panel-head"><h2 class="section">Para revisar</h2><a href="/pedidos?estado=revision">Ver todos</a></div>
-    {% if d.pending %}
-    <div class="scroll">
-      <table class="tz-table">
-        <thead><tr><th>Pedido</th><th>Cliente</th><th>Motivo</th><th class="num">Total</th><th><span class="sr-only">Acción</span></th></tr></thead>
-        <tbody>
-        {% for o in d.pending[:6] %}
-          <tr><td class="id">{{ o.order_id }}</td><td>{{ o.customer_name }}</td><td>{{ o.reason }}</td><td class="num">{{ o.total|money }}</td>
-              <td class="right"><a class="tz-btn tz-btn--secondary btn-sm" href="/pedidos/{{ o.order_id }}">Revisar</a></td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="empty">Nada para revisar por ahora.</p>
-    {% endif %}
-  </section>
-
-  <div class="stack" style="gap: 24px">
-    <section class="tz-panel">
+<div class="grid-main">
+  <div class="stack-lg">
+    <section class="tz-panel" aria-labelledby="reparto-t">
       <div class="panel-head">
-        <h2 class="section">Avisos</h2>
+        <h2 class="section" id="reparto-t">El día en reparto</h2>
+        <span class="muted">{{ 'Ya pasó el corte: lo que entra ahora sale el próximo día hábil.' if d.past_cutoff else 'Lo que se confirma antes de las ' ~ d.cutoff_hour ~ ' sale hoy.' }}</span>
+      </div>
+      <div class="reparto">
+        {% if n %}
+        <div>
+          <div class="hours" style="--n: {{ n }}" role="img" aria-label="Pedidos por hora de hoy, de {{ first_hour }} a {{ first_hour + n - 1 }} h; corte de entrega a las {{ d.cutoff_hour }}">
+            {% for h in d.hours %}
+            <div class="hours__col">
+              {% if h.count %}<span class="hours__count">{{ h.count }}</span>{% endif %}
+              <span class="hours__bar {{ 'is-after' if h.hour >= d.cutoff_hour }} {{ 'is-empty' if not h.count }}" style="height: {{ [h.pct, 3]|max }}%; animation-delay: {{ loop.index0 * 30 }}ms"></span>
+            </div>
+            {% endfor %}
+            {% if d.cutoff_hour >= first_hour and d.cutoff_hour < first_hour + n %}
+            <div class="cutoff" style="left: calc({{ ((d.cutoff_hour - first_hour) / n * 100)|round(2) }}% - 3px)" aria-hidden="true"><span>{{ d.cutoff_hour }}:00 · corte</span></div>
+            {% endif %}
+          </div>
+          <div class="hours__labels" style="--n: {{ n }}" aria-hidden="true">
+            {% for h in d.hours %}<span class="{{ 'is-now' if h.is_now }}">{{ h.hour }}</span>{% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        <div class="ship">
+          <div class="ship__box is-today"><span class="eyebrow">Sale hoy</span><strong>{{ d.ship_today.count }} pedido{{ 's' if d.ship_today.count != 1 }}</strong><span class="muted">{{ d.ship_today.total|money }} confirmados antes de las {{ d.cutoff_hour }}</span></div>
+          <div class="ship__box"><span class="eyebrow">Próximo día hábil</span><strong>{{ d.ship_next.count }} pedido{{ 's' if d.ship_next.count != 1 }}</strong><span class="muted">{{ d.ship_next.total|money }} confirmados después del corte</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tz-panel" aria-labelledby="cola-t">
+      <div class="panel-head"><h2 class="section" id="cola-t">Esperan tu decisión</h2>{% if d.pending %}<a href="/pedidos?estado=revision">Ver en pedidos</a>{% endif %}</div>
+      {% if d.pending %}
+      <ul class="queue">
+        {% for o in d.pending[:6] %}
+        <li class="queue__item">
+          <div>
+            <div class="queue__who"><strong>{{ o.customer_name }}</strong><span class="queue__id">{{ o.order_id }} · {{ o.created_at|fecha }}</span></div>
+            <div class="queue__what">{% for l in o.lines %}{{ l.qty }} × {{ l.name }}{{ ', ' if not loop.last }}{% endfor %}</div>
+            <span class="reason">{{ o.reason }}</span>
+          </div>
+          <div class="queue__side">
+            <span class="queue__total">{{ o.total|money }}</span>
+            <a class="tz-btn tz-btn--primary btn-sm" href="/pedidos/{{ o.order_id }}">Decidir</a>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">No hay pedidos en revisión. Aparecen acá cuando un pedido supera el total máximo.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="stack-lg">
+    <section class="tz-panel" aria-labelledby="low-t">
+      <div class="panel-head"><h2 class="section" id="low-t">Se está por acabar</h2><a href="/productos?filtro=poco">Sumar stock</a></div>
+      {% if d.low_stock %}
+      <ul class="low">
+        {% for p in d.low_stock %}
+        <li class="low__item">
+          <span class="low__name">{{ p.name }} <span class="queue__id">{{ p.sku }}</span></span>
+          {% if p.stock <= 0 %}<span class="tz-badge tz-badge--danger">Sin stock</span>{% else %}<span class="queue__total">{{ p.stock|qty }} u.</span>{% endif %}
+          <span class="meter" aria-hidden="true"><span class="meter__fill {{ 'is-zero' if p.stock <= 0 }}" style="width: {{ (p.stock / LOW_STOCK * 100)|round|int }}%"></span></span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">Todo el catálogo tiene {{ LOW_STOCK }} unidades o más.</p>
+      {% endif %}
+    </section>
+
+    <section class="tz-panel" aria-labelledby="avisos-t">
+      <div class="panel-head">
+        <h2 class="section" id="avisos-t">Avisos</h2>
         {% if unread %}
         <form method="post" action="/avisos/leidos"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Marcar {{ unread }} como leído{{ 's' if unread != 1 }}</button></form>
         {% endif %}
       </div>
-      <div class="stack panel-body">
-        {% for n in notices %}
-        <div class="tz-notice {{ 'tz-notice--unread' if not n.read }} {{ 'tz-notice--error' if n.kind == 'falla' }}">
-          <strong>{% if n.order_id %}<a href="/pedidos/{{ n.order_id }}">{{ n.title }}</a>{% else %}{{ n.title }}{% endif %}</strong>
-          {% if n.detail %}<span>{{ n.detail }}</span>{% endif %}
-          <span class="tz-notice__meta">{{ n.created_at|fecha }}</span>
+      <div class="notice-feed">
+        {% for n_ in notices %}
+        <div class="tz-notice {{ 'tz-notice--unread' if not n_.read }} {{ 'tz-notice--error' if n_.kind == 'falla' }}">
+          <strong>{% if n_.order_id %}<a href="/pedidos/{{ n_.order_id }}">{{ n_.title }}</a>{% else %}{{ n_.title }}{% endif %}</strong>
+          {% if n_.detail %}<span>{{ n_.detail }}</span>{% endif %}
+          <span class="tz-notice__meta">{{ n_.created_at|fecha }}</span>
         </div>
         {% else %}
-        <p class="empty" style="padding: 16px 0">Sin avisos.</p>
+        <p class="empty" style="padding: 8px 0 16px">Sin avisos.</p>
         {% endfor %}
       </div>
-    </section>
-
-    <section class="tz-panel">
-      <div class="panel-head"><h2 class="section">Poco stock</h2><a href="/productos?filtro=poco">Ir a productos</a></div>
-      {% if d.low_stock %}
-      <table class="tz-table">
-        <tbody>
-        {% for p in d.low_stock %}
-          <tr><td>{{ p.name }} <span class="id muted">{{ p.sku }}</span></td><td class="num">{{ p.stock|qty }} u.</td>
-              <td class="right">{% if p.stock <= 0 %}<span class="tz-badge tz-badge--danger">Sin stock</span>{% else %}<span class="tz-badge tz-badge--warn">Poco stock</span>{% endif %}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="empty">Todo el catálogo tiene stock suficiente.</p>
-      {% endif %}
     </section>
   </div>
 </div>

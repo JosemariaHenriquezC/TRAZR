@@ -11,7 +11,7 @@ Flujo de un pedido nuevo (_next_step decide el paso siguiente):
          [✅ Confirmar] [📍 Cambiar dirección] [❌ Cancelar]
   El cliente confirma (botón, «sí», /confirmar) → se vuelve a mirar el stock (otro
   cliente pudo llevárselo) y recién ahí se evalúa la regla y se registra
-  CONFIRMADO o EN REVISION (revisión: solo precio vencido o total máximo; el admin la ve en la web).
+  CONFIRMADO o EN REVISION (revisión: solo si supera el total máximo; el admin la ve en la web).
 
 Modificar un pedido ya hecho (productos y/o dirección): mientras no esté
 rechazado y dentro de Rules.modify_minutes desde que se hizo. Se arma un
@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+import time
 import unicodedata
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
@@ -61,6 +62,10 @@ NO = {"no", "nop", "cancelar", "cancela", "cancelo", "no gracias", "deja", "deja
 
 NO_ORDER_MSG = ("No encontré un pedido en tu mensaje 🤔. Escribí productos y cantidades, "
                 "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Mirá /catalogo.")
+WAIT_AI_MSG = ("Dame un momento que estoy procesando tu mensaje 🙏 "
+               "Hay mucha demanda y tardo un poquito más de lo normal.")
+AI_DOWN_MSG = ("Uy, ahora no puedo procesar tu mensaje 😕. "
+               "Escribime de nuevo en unos minutos, por favor.")
 ASK_ADDRESS = ("📍 ¿A qué dirección te lo enviamos? <b>El envío está incluido, sin costo.</b>\n"
                "Respondé con calle, número y localidad, por ejemplo:\n"
                "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n"
@@ -260,7 +265,6 @@ class CheckoutMixin:
         products = self._products_for(draft)
         pairs, unknown = self._resolve(draft, products)
         ev = evaluate(pairs, self.s.rules, self.today(), unknown)
-        today = self.today()
         if draft.modifies:
             head = f"✏️ <b>Así quedaría tu pedido</b> <code>{esc(draft.modifies)}</code>"
         else:
@@ -268,7 +272,7 @@ class CheckoutMixin:
         rows = ([esc(intro), ""] if intro else []) + ([note, ""] if note else []) + [head, ""]
         for l in ev.lines:
             p = products.get(l.sku.upper())
-            if p is not None and not p.price_is_valid(today):
+            if p is not None and not p.has_price():
                 rows.append(f"• {l.qty} × {esc(l.name)} — precio a confirmar")
             else:
                 rows.append(f"• {l.qty} × {esc(l.name)} — {self.money(l.unit_price)} c/u = "
@@ -641,8 +645,10 @@ class CheckoutMixin:
                                config=self.s.ai, client=self.ai_client)
         return rules_parser.parse_order(text, catalog, r.match_threshold, r.max_qty_per_item)
 
-    def converse(self, user, text: str, draft: Draft | None = None) -> list:
-        """Gemini entiende el mensaje en contexto y redacta; los datos los pone el bot."""
+    def converse(self, user, text: str, draft: Draft | None = None, on_wait=None) -> list:
+        """Gemini entiende el mensaje en contexto y redacta; los datos los pone el bot.
+        Si Gemini (los dos modelos) no contesta, se le pide al cliente que espere y se
+        reintenta; si sigue sin contestar, se le pide que escriba más tarde."""
         if self.ai_client is None and not self.s.ai.usable:
             return self._converse_rules(user, text, draft)
         try:
@@ -653,11 +659,29 @@ class CheckoutMixin:
         except StorageError as exc:
             return self._storage_failure(user, exc, "leer el catálogo para un pedido")
         r = self.s.rules
-        reply = conversar(text, catalog, historial=history, pedidos=orders, borrador=draft_txt,
-                          negocio=self.s.business.as_text(), nombre_negocio=self.s.business.name,
-                          max_qty=r.max_qty_per_item, config=self.s.ai, client=self.ai_client)
-        if reply is None:  # Gemini no respondió: reglas, sin volver a llamarlo
-            return self._converse_rules(user, text, draft, catalog)
+        def ask():
+            return conversar(text, catalog, historial=history, pedidos=orders, borrador=draft_txt,
+                             negocio=self.s.business.as_text(), nombre_negocio=self.s.business.name,
+                             max_qty=r.max_qty_per_item, config=self.s.ai, client=self.ai_client)
+
+        reply = ask()
+        if reply is None and self.s.ai_retry_delays:
+            if on_wait is not None:
+                try:
+                    on_wait(Outgoing(user.id, WAIT_AI_MSG, channel=user.channel))
+                except Exception:  # no poder avisar no frena el reintento
+                    log.exception("No pude mandar el aviso de espera")
+            for delay in self.s.ai_retry_delays:
+                time.sleep(delay)
+                reply = ask()
+                if reply is not None:
+                    break
+        if reply is None:
+            log.error("Gemini no respondió tras %d reintentos", len(self.s.ai_retry_delays))
+            self.notify_admins("falla", "Gemini no responde",
+                               f"No se pudo atender un mensaje de {user.name}: «{text[:200]}». "
+                               "Se le pidió que escriba de nuevo en unos minutos.")
+            return [Outgoing(user.id, AI_DOWN_MSG)]
 
         def parsed():
             items = items_a_parsed(reply.items, catalog, r.match_threshold, r.max_qty_per_item)
@@ -684,11 +708,10 @@ class CheckoutMixin:
                                            address=reply.direccion, intro=reply.respuesta, text=text)
         if intent == "consulta" and reply.consulta_skus:
             by_sku = {p.sku: p for p in catalog}
-            today = self.today()
             facts = []
             for sku in reply.consulta_skus:
                 p = by_sku[sku]
-                price = self.money(p.price) if p.price_is_valid(today) else "precio a confirmar"
+                price = self.money(p.price) if p.has_price() else "precio a confirmar"
                 avail = "✅ disponible" if p.stock > 0 else "❌ sin stock por ahora"
                 facts.append(f"• {esc(p.name)} — {price} {avail}")
             head = esc(reply.respuesta) if reply.respuesta else "Esto es lo que tengo:"

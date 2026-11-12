@@ -11,6 +11,8 @@ from app.storage.sqlite import SQLiteRepository
 ADMIN = "Lucía Fernández"   # admin de la web (ya no es un usuario del chat)
 CLIENT = User(2002, "Juana Pérez")
 CLIENT_ADDRESS = "Av. Mate de Luna 1234, San Miguel de Tucumán"
+TOPE = 10000.0          # total máximo en los tests (más que esto → EN REVISION)
+MOTIVO_TOPE = "supera el máximo automático"
 
 
 def plain(text: str) -> str:
@@ -20,7 +22,9 @@ def plain(text: str) -> str:
 @pytest.fixture
 def settings(tmp_path):
     return Settings(telegram_token="",
-                    database_path=str(tmp_path / "trazr.db"), timezone="UTC", rules=Rules())
+                    database_path=str(tmp_path / "trazr.db"), timezone="UTC",
+                    # Tope bajo para probar la revisión: «1 fernet» ($ 12.000) la supera.
+                    rules=Rules(max_order_total=TOPE), ai_retry_delays=(0.0, 0.0))
 
 
 @pytest.fixture
