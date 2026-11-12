@@ -215,6 +215,31 @@ el chat. Sin `TELEGRAM_BOT_TOKEN` arranca solo la web. Poné una `SECRET_KEY` en
 
 (`python -m app.bot` sigue funcionando para correr solo el bot, sin web.)
 
+### Paso 4: WhatsApp (Cloud API de Meta)
+
+El mismo bot atiende también por WhatsApp: mismos pedidos, mismos botones, misma base. Los
+clientes de WhatsApp se identifican por su número; los avisos de la web (pedido aprobado, pago
+confirmado) les llegan por WhatsApp.
+
+1. En **developers.facebook.com** creá una app con el caso de uso «Conectarte con clientes a
+   través de WhatsApp» y, en **Paso 1. Pruébalo**, agregá tu celular como destinatario
+   (+54 sin 0 ni 15) y mandá el mensaje de prueba.
+2. Completá en el `.env` los cuatro `WHATSAPP_*` (ver `.env.example`): el token, el
+   *Phone Number ID*, la clave secreta de la app (Configuración de la app → Básica) y una
+   palabra de verificación que inventás vos.
+3. Meta tiene que poder llegar a tu web: abrí un túnel HTTPS hacia `127.0.0.1:8000`
+   (por ejemplo `cloudflared tunnel --url http://127.0.0.1:8000`).
+4. En Meta, **Configuración → Webhook**: URL `https://<tu-túnel>/whatsapp/webhook`, el mismo
+   token de verificación, y suscribite al campo **messages**.
+
+Cómo funciona: Meta avisa cada mensaje con un POST firmado; el bot comprueba la firma (clave
+secreta de la app), contesta enseguida y procesa el mensaje aparte. Si Meta repite un aviso, se
+contesta una sola vez. Los botones pasan a botones de respuesta de WhatsApp (hasta 3).
+Limitaciones: con el número de prueba solo se puede escribir a 5 números cargados en Meta; el
+token temporal vence a las 24 h; y pasadas 24 h desde el último mensaje del cliente, WhatsApp
+solo permite escribirle con plantillas aprobadas (los avisos de la web que caigan fuera de esa
+ventana quedan en el registro como no enviados).
+
 ### La web de administración
 
 | Pantalla | Qué hacés ahí |
@@ -231,8 +256,9 @@ recargar muestra «Hay novedades». En el celular el menú va en un botón hambu
 se muestran como tarjetas.
 
 Seguridad: contraseñas con hash, sesión en cookie firmada (`httponly`, `samesite=lax`, 12 h),
-token CSRF en cada formulario y todo pide ingresar. Corre en tu PC (`127.0.0.1`); para
-publicarla en internet hace falta HTTPS (fase 5).
+token CSRF en cada formulario y todo pide ingresar (salvo `/whatsapp/webhook`, que en vez de
+sesión exige la firma de Meta). Corre en tu PC (`127.0.0.1`); para publicarla en internet hace
+falta HTTPS.
 
 El simulador de consola también tiene las acciones de admin
 (`:avisos`, `:revision`, `:aprobar ID [SKU=precio]`, `:rechazar ID motivo`, `:sumar SKU cantidad`).
@@ -273,6 +299,7 @@ Con las bebidas de ejemplo. Todo está automatizado en `tests/` (`python -m pyte
 app/
   server.py       arranca la web y el bot juntos (un proceso)
   bot.py          capa de Telegram (handlers, botones, arranque); sin lógica de negocio
+  whatsapp.py     canal WhatsApp: webhook de Meta (firma, sin duplicados), envío por la Graph API
   web/            web de administración: main.py (rutas FastAPI), templates/ (Jinja2), static/ (CSS del diseño)
   service.py      BotService: entrada de mensajes, comandos y revisión del admin (independiente del canal)
   checkout.py     borrador, resumen, confirmación, dirección y modificación de pedidos

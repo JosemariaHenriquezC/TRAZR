@@ -1,5 +1,5 @@
 """
-Lógica central del bot, independiente de Telegram.
+Lógica central del bot, independiente del canal (Telegram, WhatsApp).
 
 `BotService.handle_message()` recibe (quién escribe, qué escribió) y devuelve
 una lista de mensajes a enviar (`Outgoing`) al cliente. Así la misma lógica se
@@ -133,13 +133,14 @@ class BotService(CheckoutMixin, AdminMixin):
         reintenta con Gemini (el resto de las respuestas se devuelven al final)."""
         text = (text or "").strip()
         if not text:
-            return [Outgoing(user.id, "Mandame tu pedido como texto, por ejemplo: <i>2 coca, 3 agua sin gas</i>.")]
+            return self._to_channel(user, [Outgoing(user.id, "Mandame tu pedido como texto, por ejemplo: "
+                                                             "<i>2 coca, 3 agua sin gas</i>.")])
         if text.startswith("/"):
             return self._to_channel(user, self._handle_command(user, text))
         try:
             draft = self._get_draft(user, include_save_question=True)
         except StorageError as exc:
-            return self._storage_failure(user, exc, "leer un pedido pendiente")
+            return self._to_channel(user, self._storage_failure(user, exc, "leer un pedido pendiente"))
         if draft is not None and draft.waiting == "direccion":
             # Le pedimos la dirección: este mensaje es la dirección.
             out = self.receive_address(user, text, draft)

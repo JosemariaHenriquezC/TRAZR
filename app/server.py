@@ -1,12 +1,15 @@
 """
-Arranca todo junto: la web de administración y el bot de Telegram, en un proceso.
+Arranca todo junto: la web de administración, el bot de Telegram y el canal de
+WhatsApp, en un proceso.
 
     python -m app.server
 
 La web queda en http://127.0.0.1:8000 (WEB_HOST / WEB_PORT en el .env). El bot
 corre dentro del mismo proceso (mismo BotService, mismo candado, misma base), y
 cuando el admin aprueba o rechaza en la web, el aviso al cliente sale por el bot.
-Sin TELEGRAM_BOT_TOKEN arranca solo la web (útil para probarla).
+Sin TELEGRAM_BOT_TOKEN no arranca el bot de Telegram. WhatsApp se activa cuando
+están los cuatro WHATSAPP_* del .env: Meta avisa cada mensaje en /whatsapp/webhook
+(para eso la web tiene que ser accesible desde internet: túnel o servidor).
 
 Correr siempre con UN solo proceso (no usar --workers ni --reload): dos bots
 leyendo el mismo token chocan en Telegram.
@@ -25,6 +28,7 @@ from .notifier import Notifier
 from .service import BotService
 from .storage import StorageError, build_repository
 from .web.main import create_app
+from .whatsapp import WhatsAppClient, build_router
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +37,9 @@ def build(settings: Settings):
     repo = build_repository(settings)
     svc = BotService(repo, settings)
     notifier = Notifier()
+    wa = WhatsAppClient(settings.whatsapp) if settings.whatsapp.enabled else None
+    if wa is not None:
+        notifier.register("whatsapp", wa.send)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -47,7 +54,11 @@ def build(settings: Settings):
             me = await tg.bot.get_me()
             log.info("Bot @%s en marcha junto con la web.", me.username)
         else:
-            log.warning("Sin TELEGRAM_BOT_TOKEN: arranca solo la web (no se pueden avisar clientes).")
+            log.warning("Sin TELEGRAM_BOT_TOKEN: el bot de Telegram no arranca.")
+        if wa is not None:
+            log.info("WhatsApp activo: Meta tiene que avisar a <dirección pública>/whatsapp/webhook.")
+        elif any((settings.whatsapp.token, settings.whatsapp.phone_number_id)):
+            log.warning("WhatsApp apagado: faltan %s en el .env.", ", ".join(settings.whatsapp.missing()))
 
         async def expire_loop():
             # Cada 5 minutos: cancela transferencias sin pagar pasadas PAGO_HORAS y avisa al cliente.
@@ -63,12 +74,17 @@ def build(settings: Settings):
             yield
         finally:
             expirer.cancel()
+            if wa is not None:
+                await wa.close()
             if tg is not None:
                 await tg.updater.stop()
                 await tg.stop()
                 await tg.shutdown()
 
-    return create_app(svc, notifier, settings, lifespan=lifespan), svc
+    app = create_app(svc, notifier, settings, lifespan=lifespan)
+    if wa is not None:
+        app.include_router(build_router(svc, settings.whatsapp, wa))
+    return app, svc
 
 
 def main() -> None:

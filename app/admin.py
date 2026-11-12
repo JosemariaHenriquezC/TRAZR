@@ -3,7 +3,7 @@ Acciones del administrador (las usa la web; el chat es solo para clientes).
 
 Cada acción devuelve un `AdminResult`: si salió bien, un mensaje en texto plano para
 mostrar en la web y, si corresponde, los avisos para el cliente (`notify`), que el
-Notifier manda por el canal de ese cliente (Telegram ahora, WhatsApp después).
+Notifier manda por el canal de ese cliente (Telegram o WhatsApp).
 Las reglas son las mismas de siempre: no se duplican en las rutas de la web.
 """
 from __future__ import annotations

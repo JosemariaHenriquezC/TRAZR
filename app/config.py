@@ -132,6 +132,24 @@ class Business:
 
 
 @dataclass
+class WhatsAppConfig:
+    token: str = ""             # token de acceso (temporal de 24 h para probar; después, uno permanente)
+    phone_number_id: str = ""   # «Phone Number ID» del número que usa el bot
+    app_secret: str = ""        # clave secreta de la app: firma los avisos de Meta
+    verify_token: str = ""      # palabra que inventás vos y repetís en el panel de Meta
+    api_version: str = "v25.0"
+
+    @property
+    def enabled(self) -> bool:
+        return all((self.token, self.phone_number_id, self.app_secret, self.verify_token))
+
+    def missing(self) -> list[str]:
+        names = {"WHATSAPP_TOKEN": self.token, "WHATSAPP_PHONE_NUMBER_ID": self.phone_number_id,
+                 "WHATSAPP_APP_SECRET": self.app_secret, "WHATSAPP_VERIFY_TOKEN": self.verify_token}
+        return [k for k, v in names.items() if not v]
+
+
+@dataclass
 class Settings:
     telegram_token: str
     # Base de datos SQLite (un archivo; se crea solo si no existe)
@@ -150,6 +168,8 @@ class Settings:
     secret_key: str = ""                  # firma la cookie de sesión (vacío = se genera al arrancar)
     web_host: str = "127.0.0.1"
     web_port: int = 8000
+    # Canal WhatsApp (fase 5): apagado si falta algún dato
+    whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
 
 
 def load_settings(require_telegram: bool = True, env_file: str | None = None) -> Settings:
@@ -188,6 +208,13 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         secret_key=os.getenv("SECRET_KEY", "").strip(),
         web_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",
         web_port=_int("WEB_PORT", 8000),
+        whatsapp=WhatsAppConfig(
+            token=os.getenv("WHATSAPP_TOKEN", "").strip(),
+            phone_number_id=os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip(),
+            app_secret=os.getenv("WHATSAPP_APP_SECRET", "").strip(),
+            verify_token=os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip(),
+            api_version=os.getenv("WHATSAPP_API_VERSION", "v25.0").strip() or "v25.0",
+        ),
         business=Business(
             name=os.getenv("NEGOCIO_NOMBRE", TRAZR["NEGOCIO_NOMBRE"]).strip(),
             delivery_hours=os.getenv("NEGOCIO_HORARIOS", TRAZR["NEGOCIO_HORARIOS"]).strip(),

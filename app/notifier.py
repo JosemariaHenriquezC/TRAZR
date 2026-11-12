@@ -1,5 +1,5 @@
 """
-Envía mensajes a los clientes por su canal (Telegram ahora, WhatsApp en la fase 5).
+Envía mensajes a los clientes por su canal (Telegram o WhatsApp).
 
 La lógica (BotService) solo arma `Outgoing` con su `channel`; quién los manda es
 el Notifier, con una función de envío registrada por canal. Así la web puede

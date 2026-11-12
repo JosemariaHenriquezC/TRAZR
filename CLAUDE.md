@@ -8,6 +8,8 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - `app/server.py` — `python -m app.server`: web + bot de Telegram en un proceso
 - `app/web/` — web de admin: `main.py` (rutas FastAPI, login, CSRF), `templates/` (Jinja2), `static/` (CSS del diseño)
 - `app/bot.py` — capa de Telegram, sin lógica de negocio
+- `app/whatsapp.py` — canal WhatsApp (Cloud API): webhook `/whatsapp/webhook` (firma
+  X-Hub-Signature-256, sin duplicados, procesa en segundo plano) y envío por la Graph API
 - `app/service.py` — `BotService`: entrada de mensajes, comandos, revisión del admin (independiente del canal)
 - `app/checkout.py` — borrador → resumen → confirmación; dirección; modificar pedidos hechos
 - `app/messages.py` — `Outgoing` (texto + botones + canal)
@@ -64,13 +66,27 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 2. SQLite + dirección obligatoria (envío siempre incluido, sin costo) — hecha
 3. Confirmación del pedido y de la dirección (botones), modificación de pedidos hechos — hecha
 4. **Web de administración** (FastAPI) — SOLO para el admin
-5. WhatsApp Cloud API (webhook en la misma app FastAPI)
+5. **WhatsApp Cloud API** (webhook en la misma app FastAPI) — EN CURSO (ver abajo)
 6. Mercado Pago (link de pago + webhook idempotente)
 7. Faltantes del TFI: crédito, recompra, planes. CRÉDITO (decidido, opción E): límite de deuda
    impaga por empresa; si un pedido lo supera, va a revisión o se pide pago anticipado.
 8. (A evaluar al final) web para clientes. Por ahora el canal del cliente es el chat.
 
 ## Próxima sesión — empezar por acá
+
+### Fase 5: WhatsApp — en curso
+1. App de Meta creada (caso de uso WhatsApp) con número de prueba; el «Hello World» llegó. HECHO.
+2. Canal programado: `app/whatsapp.py`, `WhatsAppConfig` en config (WHATSAPP_TOKEN,
+   WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN), registrado en el
+   Notifier y en `server.py`; tests en `tests/test_whatsapp.py`. HECHO.
+   Detalles: HTML del bot → *negrita* _cursiva_ `código`; botones → reply buttons (≤3, títulos
+   ≤20; más de 3 → lista); resumen >1024 caracteres va aparte de los botones; Argentina: si Meta
+   rechaza 549… (131030) se reintenta sin el 9 y se recuerda.
+3. Pendiente: túnel (cloudflared) + webhook en el panel de Meta (campo «messages») y prueba real.
+4. Pendiente: plantillas aprobadas para avisos fuera de la ventana de 24 h (error 131047:
+   pedido aprobado, pago confirmado, transferencia vencida).
+5. Pendiente (producción): token permanente (usuario del sistema), número propio,
+   verificación del negocio, servidor con HTTPS.
 
 ### Fase 4: web de administración — HECHA (falta crear los usuarios reales)
 Decisiones tomadas (usuario + consultor):
