@@ -5,7 +5,7 @@ Mismo código que corre en Telegram.
 from app.models import ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION
 from app.storage.base import StorageError
 
-from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, MOTIVO_TOPE, avisos, pedir, plain
+from .conftest import ADMIN, CLIENT, CLIENT_ADDRESS, MOTIVO_TOPE, avisos, pagar, pedir, plain
 
 
 def stock(repo, sku):
@@ -21,7 +21,7 @@ def test_pedido_confirmado(svc, repo):
     out = pedir(svc, CLIENT, "Hola, quiero 2 coca y 3 agua sin gas")
     assert len(out) == 1 and out[0].chat_id == CLIENT.id
     txt = plain(out[0].text)
-    assert "¡Pedido confirmado!" in txt
+    assert "¡Pedido completado! Queda pendiente de pago." in txt and "Pago: Efectivo al recibir · pendiente" in txt
     assert "2 × Coca-Cola 2.25L — $ 3.200,00 c/u = $ 6.400,00" in txt
     assert "3 × Agua Mineral sin Gas 2L — $ 1.100,00 c/u = $ 3.300,00" in txt
     assert "Envío: incluido, sin costo" in txt
@@ -51,12 +51,13 @@ def test_faltante_no_se_puede_pedir_y_se_ajusta(svc, repo, settings):
     assert "lo ajusté a lo que hay" in plain(out[0].text) and "Revisá tu pedido" in plain(out[0].text)
     assert repo.list_orders() == []
     svc.handle_message(CLIENT, "si")  # ahora sí confirma
+    pagar(svc, CLIENT)                 # y elige cómo paga
     o = last_order(repo)
     assert o.status == ESTADO_CONFIRMADO and [(l.sku, l.qty) for l in o.lines] == [("CER1", 5), ("COC1", 2)]
     assert stock(repo, "CER1") == 0
-    # Sin stock, ni siquiera se ofrece: no se puede pedir
+    # Sin stock, ni siquiera se nombra: no se puede pedir
     txt = plain(svc.handle_message(CLIENT, "1 cerveza")[0].text)
-    assert "Cerveza Rubia 1L: pediste 1, no me queda." in txt and "No me queda nada de lo que pediste" in txt
+    assert "No tengo eso ahora" in txt and "Cerveza" not in txt
 
 
 # 2b) Admin: pedido en revisión (supera el total máximo) que al aprobar ya no tiene stock
@@ -75,7 +76,8 @@ def test_aprobar_revisa_stock_y_precio(svc, repo):
     assert svc.add_stock("FER1", 4).ok
     r = svc.approve(order_id, ADMIN)
     assert r.ok and r.notify[0].chat_id == CLIENT.id and r.notify[0].channel == "telegram"
-    assert "¡Tu pedido fue confirmado!" in plain(r.notify[0].text) and "Total: $ 13.000,00" in plain(r.notify[0].text)
+    assert "¡Tu pedido fue aprobado! Queda pendiente de pago." in plain(r.notify[0].text)
+    assert "Total: $ 13.000,00" in plain(r.notify[0].text) and "efectivo" in plain(r.notify[0].text)
     assert stock(repo, "FER1") == 3 and last_order(repo).reviewed_by == ADMIN
     assert "ya está confirmado" in svc.approve(order_id, ADMIN).message
 
@@ -125,18 +127,31 @@ def test_actualizacion_de_stock(svc, repo):
 def test_errores_de_interpretacion(svc, repo):
     cases = {
         "3 agua": "¿cuál de estos? Agua Mineral con Gas 2L, Agua Mineral sin Gas 2L",
-        "2 whisky": "«whisky»: no está en nuestro catálogo",
+        "2 whisky": "No tengo eso ahora",
+        "2 vino": "No tengo eso ahora",              # agotado: ni lo nombra
         "2,5 coca": "la cantidad debe ser un número entero entre 1 y 1000",
         "-3 sprite": "la cantidad debe ser un número entero",
         "5000 sprite": "entre 1 y 1000",
         "quiero coca": "¿cuántas unidades de Coca-Cola 2.25L?",
         "hola": "No encontré un pedido en tu mensaje",
-        "2 coca y 1 whisky": "«whisky»: no está en nuestro catálogo",
     }
     for msg, expected in cases.items():
         out = pedir(svc, CLIENT, msg)
         assert expected in plain(out[0].text), (msg, out[0].text)
+        assert "whisky" not in plain(out[0].text).lower() and "vino" not in plain(out[0].text).lower()
     assert repo.list_orders() == [] and stock(repo, "COC1") == 50
+
+
+# 6b) Lo que no hay no se nombra: se sigue con lo que sí hay
+def test_lo_agotado_no_se_nombra(svc, repo):
+    txt = plain(svc.handle_message(CLIENT, "2 vino y 3 coca")[0].text)
+    assert "3 × Coca-Cola 2.25L" in txt and "Del resto que pediste no tengo ahora." in txt
+    assert "Vino" not in txt and "vino" not in txt
+    txt = plain(svc.handle_message(CLIENT, "2 coca y 1 whisky")[0].text)
+    assert "2 × Coca-Cola 2.25L" in txt and "Del resto que pediste no tengo ahora." in txt and "whisky" not in txt
+    # Agotado a medias: lo que queda sí se nombra, con la cantidad
+    txt = plain(svc.handle_message(CLIENT, "8 cerveza y 2 vino")[0].text)
+    assert "Cerveza Rubia 1L: pediste 8, me quedan 5." in txt and "Vino" not in txt
 
 
 # 7) Falla de la base de datos: mensaje claro al cliente, alerta al admin, nada a medias
@@ -183,6 +198,6 @@ def test_comandos_cliente(svc, repo):
     pedir(svc, CLIENT, "1 sprite")
     assert "Tus últimos pedidos" in svc.handle_message(CLIENT, "/mispedidos")[0].text
     cat = plain(svc.handle_message(CLIENT, "/catalogo")[0].text)
-    assert "Vino Tinto Malbec 750ml — $ 6.500,00 ❌ sin stock" in cat and "Fernet 750ml — $ 12.000,00 ✅" in cat
+    assert "Vino Tinto Malbec" not in cat and "sin stock" not in cat and "Fernet 750ml — $ 12.000,00" in cat
     assert "Gaseosas" in cat and "Envío incluido, sin costo" in cat
 

@@ -39,8 +39,8 @@ from datetime import datetime, timedelta
 
 from . import parser as rules_parser
 from .ai_parser import conversar, items_a_parsed, parse_order
-from .models import (COSTO_ENVIO, ESTADO_CONFIRMADO, ESTADO_REVISION, Customer, Order,
-                     ParsedItem, Product)
+from .models import (COSTO_ENVIO, ESTADO_CONFIRMADO, ESTADO_REVISION, PAGO_PENDIENTE,
+                     Customer, Order, ParsedItem, Product)
 from .rules import evaluate
 from .messages import Outgoing, esc
 from .storage.base import StorageError
@@ -49,6 +49,7 @@ log = logging.getLogger(__name__)
 
 WAIT_CONFIRM = "confirmacion"
 WAIT_ADDRESS = "direccion"
+WAIT_PAYMENT = "pago"             # confirmó el resumen: falta elegir el medio de pago
 WAIT_STOCK = "stock"              # no alcanza el stock: se espera que ajuste o cambie el pedido
 WAIT_SAVE = "guardar_direccion"   # pedido hecho a otra dirección: ¿cuál queda guardada?
 PENDING_TTL = timedelta(hours=24)
@@ -66,6 +67,8 @@ WAIT_AI_MSG = ("Dame un momento que estoy procesando tu mensaje 🙏 "
                "Hay mucha demanda y tardo un poquito más de lo normal.")
 AI_DOWN_MSG = ("Uy, ahora no puedo procesar tu mensaje 😕. "
                "Escribime de nuevo en unos minutos, por favor.")
+NOT_AVAILABLE_NOTE = "Del resto que pediste no tengo ahora."
+NOTHING_AVAILABLE = "No tengo eso ahora 😕. Mirá /catalogo para ver lo que hay hoy."
 ASK_ADDRESS = ("📍 ¿A qué dirección te lo enviamos? <b>El envío está incluido, sin costo.</b>\n"
                "Respondé con calle, número y localidad, por ejemplo:\n"
                "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n"
@@ -87,6 +90,7 @@ class Draft:
     unknown: list[str] = field(default_factory=list)          # productos no reconocidos (modo "review")
     address: str = ""
     modifies: str = ""                              # ID del pedido que se modifica ("" = pedido nuevo)
+    payment: str = ""                               # medio de pago elegido (efectivo | transferencia)
     waiting: str = WAIT_CONFIRM                     # qué se espera del cliente
     token: str = field(default_factory=lambda: secrets.token_hex(3))  # invalida botones viejos
 
@@ -152,6 +156,7 @@ class CheckoutMixin:
         items = ", ".join(f"{q} x {names.get(s, s)} ({s})" for s, q in (draft.items or []))
         kind = f"modificación del pedido {draft.modifies}" if draft.modifies else "pedido nuevo"
         wait = {WAIT_ADDRESS: "esperando la dirección",
+                WAIT_PAYMENT: "confirmado: falta que elija cómo paga (efectivo o transferencia)",
                 WAIT_STOCK: "no alcanza el stock: se le ofreció ajustar a lo que hay (si dice que sí, "
                             "es 'confirmar'; si pide otra cosa, es 'pedido' con la lista completa)",
                 }.get(draft.waiting, "esperando confirmación")
@@ -193,6 +198,10 @@ class CheckoutMixin:
                 products = {k: replace(p, stock=p.stock + held.get(k, 0)) for k, p in products.items()}
         return products
 
+    def _sellable(self) -> list[Product]:
+        """Lo que se le puede ofrecer al cliente: activo y con stock. Lo agotado ni se nombra."""
+        return [p for p in self.repo.list_products() if p.active and p.stock > 0]
+
     def _shortages(self, pairs: list[tuple[Product, int]]) -> list[tuple[Product, int, int]]:
         """[(producto, pedido, disponible)] de lo que no alcanza."""
         if not self.s.rules.require_stock:
@@ -217,17 +226,19 @@ class CheckoutMixin:
     def _stock_message(self, user, draft: Draft, pairs, short, intro: str = "", note: str = "") -> list:
         """Le cuenta al cliente qué no alcanza (con lo que queda) y ofrece ajustar."""
         rows = ([esc(intro), ""] if intro else []) + ([note, ""] if note else [])
-        rows += ["⚠️ <b>No me alcanza el stock para tu pedido:</b>"]
-        for p, asked, avail in short:
-            rows.append(f"• {esc(p.name)}: pediste {asked}, " +
-                        ("no me queda." if avail == 0 else f"me quedan {avail}."))
         missing = {p.sku for p, _, _ in short}
         adjusted = [(p, q if p.sku not in missing else min(q, max(int(p.stock), 0))) for p, q in pairs]
         adjusted = [(p, q) for p, q in adjusted if q > 0]
         if not adjusted:
             self._clear_draft(user)
-            rows += ["", "No me queda nada de lo que pediste 😕. Mirá /catalogo o pedime otra cosa."]
-            return [Outgoing(user.id, "\n".join(rows))]
+            return [Outgoing(user.id, "\n".join(rows + [NOTHING_AVAILABLE]))]
+        # Solo se nombra lo que todavía tiene stock; lo agotado no se menciona.
+        partial = [(p, asked, avail) for p, asked, avail in short if avail > 0]
+        if partial:
+            rows += ["⚠️ <b>No me alcanza el stock para todo:</b>"]
+            rows += [f"• {esc(p.name)}: pediste {asked}, me quedan {avail}." for p, asked, avail in partial]
+        if len(partial) < len(short):
+            rows += [NOT_AVAILABLE_NOTE]
         draft.waiting = WAIT_STOCK
         self._save_draft(user, draft)
         rows += ["", "¿Querés que lo ajuste a lo que hay? Quedaría:"]
@@ -294,12 +305,22 @@ class CheckoutMixin:
         """Arma (o reemplaza) el borrador con lo que pidió el cliente y muestra el resumen."""
         if not items:
             return [Outgoing(user.id, esc(intro) if intro else NO_ORDER_MSG)]
-        problems = self._clarifications(items)
+        ask_mode = self.s.rules.on_unknown_product == "ask"
+        problems = self._clarifications([it for it in items if not (ask_mode and it.error == "no_existe")])
         if problems:
             return [Outgoing(user.id, "No pude armar el pedido todavía:\n• " + "\n• ".join(problems)
                              + "\n\nMandámelo de nuevo corregido, completo. 🙏")]
         pairs = self._merge(items)
-        unknown = [it.unknown_name for it in items if it.error == "no_existe"]  # solo modo "review"
+        note = ""
+        if ask_mode:
+            # Lo que no tenemos (o está agotado) no se nombra: se sigue con lo que sí hay.
+            unknown = []
+            if any(it.error == "no_existe" for it in items):
+                if not pairs:
+                    return [Outgoing(user.id, (f"{esc(intro)}\n\n" if intro else "") + NOTHING_AVAILABLE)]
+                note = NOT_AVAILABLE_NOTE
+        else:
+            unknown = [it.unknown_name for it in items if it.error == "no_existe"]  # modo "review"
         try:
             previous = self._get_draft(user)
             draft = Draft(text=text, items=pairs, unknown=unknown)
@@ -309,7 +330,7 @@ class CheckoutMixin:
                 customer = self.repo.get_customer(*self._key(user))
                 draft.address = (previous.address if previous and previous.address
                                  else customer.address if customer else "")
-            return self._next_step(user, draft, intro)
+            return self._next_step(user, draft, intro, note)
         except StorageError as exc:
             return self._storage_failure(user, exc, "armar el pedido")
 
@@ -393,7 +414,58 @@ class CheckoutMixin:
             return self.adjust_to_stock(user)
         if draft.modifies:
             return self._apply_modification(user, draft)
+        if draft.waiting == WAIT_PAYMENT:
+            return self._ask_payment(user, draft)
+        try:
+            # Antes de preguntar cómo paga, se vuelve a mirar el stock (otro cliente pudo llevárselo).
+            pairs, _ = self._resolve(draft, self._products_for(draft))
+            if self._shortages(pairs):
+                return self._next_step(user, draft, note="Uy, justo se vendió parte del stock 😕")
+            draft.waiting = WAIT_PAYMENT
+            self._save_draft(user, draft)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "confirmar el pedido")
+        return self._ask_payment(user, draft)
+
+    # ------------------------------------------------------------- pago
+    def _ask_payment(self, user, draft: Draft) -> list:
+        t = draft.token
+        return [Outgoing(user.id, "💳 ¿Cómo lo vas a pagar?\n"
+                                  "• <b>Efectivo</b> cuando te llega el pedido.\n"
+                                  "• <b>Transferencia</b>: te paso el alias y lo confirmamos cuando se acredite.",
+                         [("💵 Efectivo al recibir", f"pe:{t}"), ("🏦 Transferencia", f"pt:{t}"),
+                          ("❌ Cancelar", f"cx:{t}")])]
+
+    def choose_payment(self, user, method: str, token: str | None = None) -> list:
+        try:
+            draft = self._get_draft(user)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "elegir el medio de pago")
+        if draft is None or (token and token != draft.token) or draft.waiting != WAIT_PAYMENT:
+            return self._stale(user)
+        draft.payment = method
         return self._place_order(user, draft)
+
+    def answer_payment(self, user, text: str, draft: Draft) -> list:
+        """Respuesta escrita a «¿cómo lo vas a pagar?»."""
+        words = set(_norm(text).split())
+        if words & {"efectivo", "cash", "contado", "billete", "billetes", "plata"}:
+            return self.choose_payment(user, "efectivo")
+        if words & {"transferencia", "transfiero", "transferir", "transfer", "alias", "cbu", "banco", "mp", "mercadopago"}:
+            return self.choose_payment(user, "transferencia")
+        if _norm(text) in NO:
+            return self.cancel_draft(user)
+        return [Outgoing(user.id, "Decime si pagás en <b>efectivo</b> al recibir o por <b>transferencia</b> "
+                                  "(o tocá un botón). Para descartar el pedido: /cancelar")]
+
+    def _payment_text(self, order: Order) -> str:
+        """Qué tiene que hacer el cliente para pagar (sin inventar nada: sale de la config)."""
+        if order.payment_method == "transferencia":
+            b = self.s.business
+            return (f"\n\n🏦 <b>Transferí {self.money(order.total)}</b> al alias <code>{esc(b.transfer_alias)}</code>"
+                    f", a nombre de {esc(b.transfer_holder)}. Cuando se acredite te aviso por acá.\n"
+                    f"Si no recibimos el pago en {self.s.rules.payment_hours} h, el pedido se cancela.")
+        return "\n\n💵 Lo pagás en efectivo cuando te llega. Cuando lo cobremos te aviso por acá."
 
     def cancel_draft(self, user, token: str | None = None) -> list:
         try:
@@ -426,7 +498,8 @@ class CheckoutMixin:
                 order = Order(order_id=self._new_order_id(), created_at=now, customer_id=user.id,
                               customer_name=user.name, original_text=draft.text, lines=ev.lines,
                               status=ev.status, reason="; ".join(ev.reasons), updated_at=now,
-                              address=draft.address, shipping_cost=COSTO_ENVIO, channel=user.channel)
+                              address=draft.address, shipping_cost=COSTO_ENVIO, channel=user.channel,
+                          payment_method=draft.payment or "efectivo", payment_status=PAGO_PENDIENTE)
                 try:
                     if order.status == ESTADO_CONFIRMADO:
                         self._confirm_and_record(order)
@@ -448,11 +521,12 @@ class CheckoutMixin:
 
         tail = f"\n\n✏️ Si necesitás cambiar algo, avisame en los próximos {self.s.rules.modify_minutes} minutos."
         if order.status == ESTADO_CONFIRMADO:
-            out = [Outgoing(user.id, self.format_order(order, "✅ <b>¡Pedido confirmado!</b>") + tail)]
+            out = [Outgoing(user.id, self.format_order(order, "✅ <b>¡Pedido completado!</b> Queda pendiente de pago.")
+                            + self._payment_text(order) + tail)]
         else:
             out = [Outgoing(user.id, self.format_order(order, "🟡 <b>Recibimos tu pedido</b>")
-                            + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva."
-                            + tail)]
+                            + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva"
+                            " y ahí te digo cómo pagarlo." + tail)]
             self._notify_review(order, f"Pedido {order.order_id} en revisión")
         return out + self._ask_which_address(user, order.address)
 
@@ -468,7 +542,7 @@ class CheckoutMixin:
         if not mine:
             return None
         last = mine[-1]
-        if last.status not in (ESTADO_CONFIRMADO, ESTADO_REVISION):
+        if last.status not in (ESTADO_CONFIRMADO, ESTADO_REVISION) or last.is_paid:
             return None
         try:
             created = datetime.strptime(last.created_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=self.tz)
@@ -638,7 +712,7 @@ class CheckoutMixin:
 
     # ---------------------------------------------------------- conversación
     def _interpret(self, text: str, catalog: list[Product] | None = None, use_ai: bool = True):
-        catalog = catalog if catalog is not None else [p for p in self.repo.list_products() if p.active]
+        catalog = catalog if catalog is not None else self._sellable()
         r = self.s.rules
         if use_ai:
             return parse_order(text, catalog, r.match_threshold, r.max_qty_per_item,
@@ -652,7 +726,7 @@ class CheckoutMixin:
         if self.ai_client is None and not self.s.ai.usable:
             return self._converse_rules(user, text, draft)
         try:
-            catalog = [p for p in self.repo.list_products() if p.active]
+            catalog = self._sellable()   # lo agotado no se le muestra a Gemini: no lo puede ofrecer
             history = self._history(user)
             orders = self._orders_summary(user)
             draft_txt = self._draft_for_ai(draft)

@@ -32,9 +32,9 @@
     <span class="remito__hint">{{ d.auto_confirmed_today }} confirmado{{ 's' if d.auto_confirmed_today != 1 }} solo{{ 's' if d.auto_confirmed_today != 1 }}, sin tocar nada</span>
   </div>
   <div class="remito__cell">
-    <span class="remito__label">Ticket promedio</span>
-    <span class="remito__value">{{ d.avg_ticket|money }}</span>
-    <span class="remito__hint">envío incluido en todos</span>
+    <span class="remito__label">Por cobrar</span>
+    <span class="remito__value">{{ d.unpaid_total|money }}</span>
+    <span class="remito__hint">{{ d.unpaid|length }} pedido{{ 's' if d.unpaid|length != 1 }} esperando el pago</span>
   </div>
   <div class="remito__cell">
     <span class="remito__label">En revisión</span>
@@ -96,6 +96,31 @@
       </ul>
       {% else %}
       <p class="empty">No hay pedidos en revisión. Aparecen acá cuando un pedido supera el total máximo.</p>
+      {% endif %}
+    </section>
+
+    <section class="tz-panel" aria-labelledby="cobro-t">
+      <div class="panel-head"><h2 class="section" id="cobro-t">Por cobrar</h2>{% if d.unpaid %}<a href="/pedidos?estado=por_cobrar">Ver todos</a>{% endif %}</div>
+      {% if d.unpaid %}
+      <ul class="queue">
+        {% for o in d.unpaid[:6] %}
+        <li class="queue__item">
+          <div>
+            <div class="queue__who"><a href="/pedidos/{{ o.order_id }}"><strong>{{ o.customer_name }}</strong></a><span class="queue__id">{{ o.order_id }} · {{ o.created_at|fecha }}</span></div>
+            <div class="queue__what">{{ o.payment_label }}{% if o.payment_method == 'transferencia' %} · se cancela sola si no se acredita{% endif %}</div>
+          </div>
+          <div class="queue__side">
+            <span class="queue__total">{{ o.total|money }}</span>
+            <form method="post" action="/pedidos/{{ o.order_id }}/pago">
+              <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="volver" value="/">
+              <button class="tz-btn tz-btn--secondary btn-sm" type="submit">Pago recibido</button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">No hay pagos pendientes.</p>
       {% endif %}
     </section>
   </div>

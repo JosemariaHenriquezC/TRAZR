@@ -26,7 +26,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from ..admin import LOW_STOCK
 from ..config import Settings
-from ..models import ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION, Product
+from ..models import ESTADO_CANCELADO, ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION, Product
 from ..notifier import Notifier
 from ..service import BotService
 from ..storage.base import StorageError, to_number
@@ -34,7 +34,13 @@ from ..storage.base import StorageError, to_number
 log = logging.getLogger(__name__)
 HERE = Path(__file__).parent
 
-ESTADOS = {"revision": ESTADO_REVISION, "confirmados": ESTADO_CONFIRMADO, "rechazados": ESTADO_RECHAZADO}
+# Filtros de la lista de pedidos (pestañas)
+FILTROS = {
+    "revision": lambda o: o.status == ESTADO_REVISION,
+    "por_cobrar": lambda o: o.awaiting_payment,
+    "pagados": lambda o: o.status == ESTADO_CONFIRMADO and o.payment_status != "pendiente",
+    "rechazados": lambda o: o.status in (ESTADO_RECHAZADO, ESTADO_CANCELADO),
+}
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre",
          "octubre", "noviembre", "diciembre"]
 DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
@@ -168,8 +174,9 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
     def orders(request: Request, estado: str = "revision", q: str = ""):
         admin = current_admin(request)
         all_orders = list(reversed(svc.repo.list_orders()))
-        counts = {k: sum(1 for o in all_orders if o.status == v) for k, v in ESTADOS.items()}
-        rows = all_orders if estado == "todos" else [o for o in all_orders if o.status == ESTADOS.get(estado)]
+        counts = {k: sum(1 for o in all_orders if f(o)) for k, f in FILTROS.items()}
+        keep = FILTROS.get(estado)
+        rows = [o for o in all_orders if keep(o)] if keep else all_orders
         q_norm = q.strip().lower()
         if q_norm:
             rows = [o for o in rows if q_norm in o.order_id.lower() or q_norm in o.customer_name.lower()
@@ -194,6 +201,7 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
         customer_orders = sum(1 for o in svc.repo.list_orders()
                               if o.customer_id == order.customer_id and o.channel == order.channel)
         return render(request, "pedido.html", admin, order=order, lines=lines,
+                      payment_hours=settings.rules.payment_hours,
                       customer=customer, customer_orders=customer_orders, page="pedidos")
 
     @app.post("/pedidos/{order_id}/aprobar")
@@ -224,6 +232,29 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
         else:
             flash(request, result.message, ok=False)
         return back(f"/pedidos/{order_id}")
+
+    async def _admin_action(request: Request, order_id: str, fn, *args, volver: str = ""):
+        """Corre una acción de admin, avisa al cliente por su canal y deja el resultado en pantalla."""
+        result = await run_in_threadpool(fn, *args)
+        if result.ok:
+            sent = await notifier.send(result.notify)
+            flash(request, result.message if sent or not result.notify
+                  else result.message + " (No se pudo avisar al cliente por el chat.)", ok=True)
+        else:
+            flash(request, result.message, ok=False)
+        return back(volver if volver in ("/", "/pedidos?estado=por_cobrar") else f"/pedidos/{order_id}")
+
+    @app.post("/pedidos/{order_id}/pago")
+    async def confirm_payment(request: Request, order_id: str, csrf_token: str = Form(""), volver: str = Form("")):
+        admin = current_admin(request)
+        check_csrf(request, csrf_token)
+        return await _admin_action(request, order_id, svc.confirm_payment, order_id, admin.name, volver=volver)
+
+    @app.post("/pedidos/{order_id}/cancelar")
+    async def cancel_unpaid(request: Request, order_id: str, motivo: str = Form(""), csrf_token: str = Form("")):
+        admin = current_admin(request)
+        check_csrf(request, csrf_token)
+        return await _admin_action(request, order_id, svc.cancel_unpaid, order_id, admin.name, motivo)
 
     # ------------------------------------------------------------ productos
     @app.get("/productos", response_class=HTMLResponse)

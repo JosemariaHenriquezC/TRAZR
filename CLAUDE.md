@@ -30,6 +30,12 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - Los mensajes del chat NO se guardan en la base: la memoria de Gemini vive en RAM (12 h).
 - Si Gemini no contesta: «dame un momento» (on_wait), reintentos (AI_RETRY_DELAYS) y si no,
   le pide al cliente que escriba en unos minutos + aviso en la web. Sin clave → reglas.
+- Pago: tras confirmar, el bot pregunta el medio (efectivo / transferencia) → pedido CONFIRMADO con
+  pago «pendiente» (stock reservado) → el admin confirma el pago en la web → el bot avisa.
+  Transferencia impaga se cancela sola a las PAGO_HORAS (estado CANCELADO, vuelve el stock).
+  Pago = columnas pago_* en `pedidos`, aparte del estado. Mercado Pago (fase 6) llamará a
+  `confirm_payment` igual que el botón de la web.
+- Lo agotado no se nombra: catálogo, Gemini y el parser solo ven productos con stock (`_sellable`).
 - Stock: se verifica al armar el borrador y otra vez al confirmar. Si no alcanza, el cliente
   NO puede confirmar: el bot le dice la cantidad exacta que queda y ofrece ajustar
   (🔧 / «sí»). Al modificar, lo que el pedido ya tenía cuenta como disponible.

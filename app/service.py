@@ -116,8 +116,12 @@ class BotService(CheckoutMixin, AdminMixin):
         lines += ["", f"<b>Envío:</b> {shipping}"]
         if order.address:
             lines.append(f"<b>Dirección:</b> {esc(order.address)}")
-        lines += [f"<b>Total: {self.money(order.total)}</b>",
-                  f"<b>Estado:</b> {esc(order.status)}"]
+        status = ("Pendiente de pago" if order.awaiting_payment else
+                  "Pagado" if order.is_paid else order.status.capitalize())
+        lines += [f"<b>Total: {self.money(order.total)}</b>", f"<b>Estado:</b> {esc(status)}"]
+        if order.payment_method:
+            paid = "pagado ✅" if order.is_paid else "pendiente"
+            lines.append(f"<b>Pago:</b> {esc(order.payment_label)} · {paid}")
         if order.reason:
             lines.append(f"<b>Motivo:</b> {esc(order.reason)}")
         return "\n".join(lines)
@@ -139,6 +143,8 @@ class BotService(CheckoutMixin, AdminMixin):
         if draft is not None and draft.waiting == "direccion":
             # Le pedimos la dirección: este mensaje es la dirección.
             out = self.receive_address(user, text, draft)
+        elif draft is not None and draft.waiting == "pago":
+            out = self.answer_payment(user, text, draft)
         elif draft is not None and draft.waiting == "guardar_direccion":
             out = self.answer_which_address(user, text, draft)
         else:
@@ -177,6 +183,8 @@ class BotService(CheckoutMixin, AdminMixin):
         client = {"cf": (self.confirm_draft, "Confirmar"), "cd": (self.ask_new_address, "Cambiar dirección"),
                   "cx": (self.cancel_draft, "Cancelar"),
                   "aj": (self.adjust_to_stock, "Ajustar a lo que hay"),
+                  "pe": (lambda u, t: self.choose_payment(u, "efectivo", t), "Efectivo al recibir"),
+                  "pt": (lambda u, t: self.choose_payment(u, "transferencia", t), "Transferencia"),
                   "dk": (lambda u, t: self.choose_address(u, True, t), "La de siempre"),
                   "dn": (lambda u, t: self.choose_address(u, False, t), "La nueva")}
         if action in client:
@@ -224,11 +232,11 @@ class BotService(CheckoutMixin, AdminMixin):
 
     def cmd_catalog(self, user, args):
         try:
-            products = [p for p in self.repo.list_products() if p.active]
+            products = self._sellable()   # solo lo que hay: lo agotado no se muestra
         except StorageError as exc:
             return self._storage_failure(user, exc, "mostrar el catálogo")
         if not products:
-            return [Outgoing(user.id, "El catálogo está vacío por ahora.")]
+            return [Outgoing(user.id, "Por ahora no tengo nada para ofrecerte 😕. Probá más tarde.")]
         rows = ["<b>Catálogo de bebidas</b>"]
         category = None
         for p in products:
@@ -236,8 +244,7 @@ class BotService(CheckoutMixin, AdminMixin):
                 category = p.category
                 rows += ["", f"<b>{esc(category or 'Otras')}</b>"]
             price = self.money(p.price) if p.has_price() else "precio a confirmar"
-            avail = "✅" if p.stock > 0 else "❌ sin stock"
-            rows.append(f"• {esc(p.name)} — {price} {avail}")
+            rows.append(f"• {esc(p.name)} — {price}")
         rows += ["", "🚚 Envío incluido, sin costo."]
         return [Outgoing(user.id, "\n".join(rows))]
 

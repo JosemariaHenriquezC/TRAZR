@@ -57,7 +57,9 @@ def test_entiende_jerga_y_responde_como_persona(repo, settings):
     assert "Revisá tu pedido" in txt and "2 × Coca-Cola 2.25L" in txt and "1 × Cerveza Rubia 1L" in txt
     assert repo.list_orders() == []
     out = svc.handle_message(CLIENT, "joya, mandalo")  # Gemini entiende que confirma
-    assert "¡Pedido confirmado!" in plain(out[0].text)
+    assert "¿Cómo lo vas a pagar?" in plain(out[0].text)
+    out = svc.handle_message(CLIENT, "en efectivo")
+    assert "¡Pedido completado!" in plain(out[0].text)
     assert "BORRADOR ACTUAL" in models.prompts[1] and "2 x Coca-Cola 2.25L (COC1)" in models.prompts[1]
     # Gemini ve el catálogo de la base, pero sin precios
     assert "COC1 | Coca-Cola 2.25L" in models.prompts[0] and "3200" not in models.prompts[0]
@@ -84,7 +86,7 @@ def test_consulta_de_precio_los_numeros_los_pone_el_bot(repo, settings):
     txt = plain(_svc(repo, settings, models).handle_message(CLIENT, "tenés fernet y vino? a cuánto?")[0].text)
     assert txt.startswith("¡Sí! Mirá:")
     assert "Fernet 750ml — $ 12.000,00 ✅ disponible" in txt
-    assert "Vino Tinto Malbec 750ml — $ 6.500,00 ❌ sin stock por ahora" in txt
+    assert "Vino" not in txt and "sin stock" not in txt   # lo agotado ni se nombra (no se le pasa a Gemini)
     assert "INVENTADO" not in txt and repo.list_orders() == []
 
 
@@ -120,6 +122,7 @@ def test_cambio_de_pedido_ya_hecho(repo, settings):
     svc = _svc(repo, settings, models)
     svc.handle_message(CLIENT, "2 coca y 1 fanta")
     svc.handle_message(CLIENT, "si")
+    svc.handle_message(CLIENT, "efectivo")
     oid = repo.list_orders()[-1].order_id
     out = svc.handle_message(CLIENT, "che, cambiame la fanta por una sprite")
     txt = plain(out[0].text)
@@ -140,6 +143,7 @@ def test_cambiar_direccion_por_chat(repo, settings):
     out = svc.handle_message(CLIENT, "mandalo a lo de mi vieja, Belgrano 300, Tafí Viejo")
     assert "Dirección: Belgrano 300, Tafí Viejo" in plain(out[0].text)
     svc.handle_message(CLIENT, "si")
+    svc.handle_message(CLIENT, "efectivo")
     assert repo.list_orders()[-1].address == "Belgrano 300, Tafí Viejo"
 
 
@@ -241,4 +245,5 @@ def test_falta_de_stock_charla_con_gemini(repo, settings):
     out = svc.handle_message(CLIENT, "bueno, mandame las que tengas")
     assert "no alcanza el stock" in models.prompts[1]  # Gemini sabe en qué paso estamos
     assert "5 × Cerveza Rubia 1L" in plain(out[0].text) and "Revisá tu pedido" in plain(out[0].text)
-    assert "¡Pedido confirmado!" in plain(svc.handle_message(CLIENT, "dale")[0].text)
+    assert "¿Cómo lo vas a pagar?" in plain(svc.handle_message(CLIENT, "dale")[0].text)
+    assert "¡Pedido completado!" in plain(svc.handle_message(CLIENT, "por transferencia")[0].text)

@@ -73,7 +73,7 @@ def evaluate(pairs: list[tuple[Product, int]], rules: Rules, today: date,
 
 def _ars(value: float) -> str:
     """$ 56.400,00 (formato argentino)."""
-    return "$ " + f"{value:,.2f}".replace(",", "§").replace(".", ",").replace("§", ".")
+    return "$\u00a0" + f"{value:,.2f}".replace(",", "§").replace(".", ",").replace("§", ".")
 
 
 def _fmt_qty(value: float) -> str:

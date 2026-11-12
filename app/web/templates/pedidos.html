@@ -12,8 +12,9 @@
   <nav class="tabs" aria-label="Filtrar por estado">
     <a href="/pedidos?estado=todos" {% if estado == 'todos' %}aria-current="page"{% endif %}>Todos · {{ total }}</a>
     <a href="/pedidos?estado=revision" {% if estado == 'revision' %}aria-current="page"{% endif %}>En revisión · {{ counts.revision }}</a>
-    <a href="/pedidos?estado=confirmados" {% if estado == 'confirmados' %}aria-current="page"{% endif %}>Confirmados · {{ counts.confirmados }}</a>
-    <a href="/pedidos?estado=rechazados" {% if estado == 'rechazados' %}aria-current="page"{% endif %}>Rechazados · {{ counts.rechazados }}</a>
+    <a href="/pedidos?estado=por_cobrar" {% if estado == 'por_cobrar' %}aria-current="page"{% endif %}>Por cobrar · {{ counts.por_cobrar }}</a>
+    <a href="/pedidos?estado=pagados" {% if estado == 'pagados' %}aria-current="page"{% endif %}>Pagados · {{ counts.pagados }}</a>
+    <a href="/pedidos?estado=rechazados" {% if estado == 'rechazados' %}aria-current="page"{% endif %}>Rechazados y cancelados · {{ counts.rechazados }}</a>
   </nav>
   <form class="search" method="get" action="/pedidos" role="search">
     <input type="hidden" name="estado" value="{{ estado }}">
@@ -26,7 +27,7 @@
   {% if orders %}
   <table class="tz-table cards">
     <thead>
-      <tr><th>Pedido</th><th>Fecha</th><th>Cliente</th><th>Productos</th><th>Motivo</th><th class="num">Total</th><th>Estado</th><th><span class="sr-only">Acción</span></th></tr>
+      <tr><th>Pedido</th><th>Fecha</th><th>Cliente</th><th>Productos</th><th>Motivo</th><th>Pago</th><th class="num">Total</th><th>Estado</th><th><span class="sr-only">Acción</span></th></tr>
     </thead>
     <tbody>
     {% for o in orders %}
@@ -34,16 +35,17 @@
         <td class="id" data-label="Pedido">{{ o.order_id }}</td><td data-label="Fecha">{{ o.created_at|fecha }}</td><td data-label="Cliente">{{ o.customer_name }}</td>
         <td data-label="Productos">{% for l in o.lines %}{{ l.qty }} × {{ l.name }}{{ ', ' if not loop.last }}{% endfor %}</td>
         <td data-label="Motivo">{{ o.reason or '—' }}</td>
+        <td data-label="Pago">{{ o.payment_label }}</td>
         <td class="num" data-label="Total">{{ o.total|money }}</td>
         <td data-label="Estado">{% include "_badge.html" %}</td>
-        <td class="right" data-label=""><a class="tz-btn tz-btn--secondary btn-sm" href="/pedidos/{{ o.order_id }}">{{ 'Revisar' if o.status == 'EN REVISION' else 'Ver' }}</a></td>
+        <td class="right" data-label=""><a class="tz-btn tz-btn--secondary btn-sm" href="/pedidos/{{ o.order_id }}">{{ 'Revisar' if o.status == 'EN REVISION' else ('Cobrar' if o.awaiting_payment else 'Ver') }}</a></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="empty">{% if q %}No hay pedidos que coincidan con «{{ q }}».{% elif estado == 'revision' %}No hay pedidos en revisión.{% else %}Todavía no hay pedidos acá.{% endif %}</p>
+  <p class="empty">{% if q %}No hay pedidos que coincidan con «{{ q }}».{% elif estado == 'revision' %}No hay pedidos en revisión.{% elif estado == 'por_cobrar' %}No hay pedidos por cobrar.{% else %}Todavía no hay pedidos acá.{% endif %}</p>
   {% endif %}
 </section>
-<p class="muted" style="margin: 0">Mostrando {{ orders|length }} pedido{{ 's' if orders|length != 1 }}. Los confirmados solos no necesitan acción.</p>
+<p class="muted" style="margin: 0">Mostrando {{ orders|length }} pedido{{ 's' if orders|length != 1 }}. Los pedidos «Por cobrar» esperan que confirmes el pago.</p>
 {% endblock %}

@@ -33,14 +33,22 @@ def test_mensaje_y_botones(svc: BotService, repo):
     rows = call["reply_markup"].inline_keyboard
     assert [r[0].text for r in rows] == ["✅ Confirmar", "📍 Cambiar dirección", "❌ Cancelar"]
 
-    # 2) Toca Confirmar: se quitan los botones; queda en revisión y el aviso va a la web, no al chat
+    # 2) Toca Confirmar: le pregunta cómo paga (efectivo / transferencia)
     ctx2 = make_context(svc)
     upd = make_update(CLIENT, data=rows[0][0].callback_data)
     asyncio.run(tg.on_button(upd, ctx2))
     upd.callback_query.edit_message_reply_markup.assert_awaited()
+    pay = ctx2.bot.send_message.call_args_list[0].kwargs["reply_markup"].inline_keyboard
+    assert [r[0].text for r in pay] == ["💵 Efectivo al recibir", "🏦 Transferencia", "❌ Cancelar"]
+
+    # 3) Elige transferencia: queda en revisión y el aviso va a la web, no al chat
+    ctx2 = make_context(svc)
+    upd = make_update(CLIENT, data=pay[1][0].callback_data)
+    asyncio.run(tg.on_button(upd, ctx2))
     assert {c.kwargs["chat_id"] for c in ctx2.bot.send_message.call_args_list} == {CLIENT.id}
     order = repo.list_orders()[-1]
     assert order.status == "EN REVISION" and avisos(repo)[0].order_id == order.order_id
+    assert order.payment_method == "transferencia" and order.payment_status == "pendiente"
 
     # 3) El admin lo rechaza en la web: el Notifier le manda el aviso al cliente por Telegram
     result = svc.reject(order.order_id, ADMIN, "Sin Fernet hasta el lunes")

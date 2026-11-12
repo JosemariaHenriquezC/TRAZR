@@ -85,6 +85,7 @@ class Rules:
     on_unknown_product: str = "ask"       # "ask" | "review"
     match_threshold: float = 0.72         # similitud mínima para reconocer un producto (0-1)
     modify_minutes: int = 60              # minutos que tiene el cliente para modificar su pedido
+    payment_hours: int = 24               # una transferencia sin pagar se cancela pasado este tiempo
 
 
 # Tienda ficticia de ejemplo: se usa si el .env no define los NEGOCIO_*.
@@ -112,6 +113,8 @@ class Business:
     min_order: str = ""          # pedido mínimo (texto libre)
     payment: str = ""            # formas de pago
     extra: str = ""              # cualquier otra info útil
+    transfer_alias: str = "TRAZR.BEBIDAS.TUC"          # alias para transferencias (de ejemplo)
+    transfer_holder: str = "Trazr Distribuidora (cuenta de ejemplo)"
     open_hour: int = 9           # horario de atención (para el tablero «el día en reparto»)
     close_hour: int = 20
     cutoff_hour: int = 13        # lo confirmado antes de esta hora sale en el día
@@ -167,6 +170,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         on_unknown_product=on_unknown,
         match_threshold=_float("MATCH_THRESHOLD", 0.72),
         modify_minutes=_int("MODIFICACION_MINUTOS", 60),
+        payment_hours=_int("PAGO_HORAS", 24),
     )
 
     settings = Settings(
@@ -187,6 +191,8 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             min_order=os.getenv("NEGOCIO_PEDIDO_MINIMO", TRAZR["NEGOCIO_PEDIDO_MINIMO"]).strip(),
             payment=os.getenv("NEGOCIO_PAGOS", TRAZR["NEGOCIO_PAGOS"]).strip(),
             extra=os.getenv("NEGOCIO_INFO", TRAZR["NEGOCIO_INFO"]).strip(),
+            transfer_alias=os.getenv("NEGOCIO_ALIAS", "TRAZR.BEBIDAS.TUC").strip(),
+            transfer_holder=os.getenv("NEGOCIO_TITULAR", "Trazr Distribuidora (cuenta de ejemplo)").strip(),
             open_hour=_int("NEGOCIO_HORA_APERTURA", 9),
             close_hour=_int("NEGOCIO_HORA_CIERRE", 20),
             cutoff_hour=_int("NEGOCIO_HORA_CORTE", 13),

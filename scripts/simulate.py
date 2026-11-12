@@ -11,6 +11,7 @@ Acciones del admin (las mismas que hace la web):
     :revision                   → pedidos en revisión
     :aprobar ID [SKU=precio]    → aprobar (opcional: precio nuevo, ej. FER1=13000)
     :rechazar ID motivo         → rechazar con motivo
+    :pago ID                    → confirmar que se recibió el pago
     :sumar SKU cantidad         → sumar (o restar) stock
     :salir
 """
@@ -56,10 +57,12 @@ def admin(svc: BotService, text: str) -> None:
         r = svc.approve(args[0], "Admin (simulador)", prices)
     elif cmd == "rechazar" and len(args) >= 2:
         r = svc.reject(args[0], "Admin (simulador)", " ".join(args[1:]))
+    elif cmd == "pago" and args:
+        r = svc.confirm_payment(args[0], "Admin (simulador)")
     elif cmd == "sumar" and len(args) == 2 and to_number(args[1]) is not None:
         r = svc.add_stock(args[0], int(to_number(args[1])))
     else:
-        print("  Uso: :avisos | :revision | :aprobar ID [SKU=precio] | :rechazar ID motivo | :sumar SKU cantidad")
+        print("  Uso: :avisos | :revision | :aprobar ID [SKU=precio] | :rechazar ID motivo | :pago ID | :sumar SKU cantidad")
         return
     print(f"  [admin] {'✔' if r.ok else '✘'} {r.message}")
     show(r.notify)
@@ -79,7 +82,7 @@ def main() -> None:
             break
         if text == ":salir":
             break
-        if re.match(r"^:(cf|cd|cx|aj|dk|dn) ", text):
+        if re.match(r"^:(cf|cd|cx|aj|dk|dn|pe|pt) ", text):
             show(svc.handle_callback(CLIENT, f"{text[1:3]}:{text[4:].strip()}"))
         elif text.startswith(":"):
             admin(svc, text)

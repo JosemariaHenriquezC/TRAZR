@@ -54,8 +54,17 @@ def button(out, prefix):
     return next((d for m in out for _, d in m.buttons if d.startswith(prefix)), None)
 
 
-def pedir(svc, user, text):
-    """Manda el pedido y, si el bot muestra el resumen, lo confirma (como tocar ✅)."""
+def pedir(svc, user, text, pago="efectivo"):
+    """Manda el pedido y, si el bot muestra el resumen, lo confirma (✅) y elige el medio de pago."""
     out = svc.handle_message(user, text)
     data = button(out, "cf:")
+    if not data:
+        return out
+    out = svc.handle_callback(user, data)
+    data = button(out, "pe:" if pago == "efectivo" else "pt:")
     return svc.handle_callback(user, data) if data else out
+
+
+def pagar(svc, user, medio="efectivo"):
+    """Responde «¿cómo lo vas a pagar?» escribiendo, como haría el cliente."""
+    return svc.handle_message(user, medio)

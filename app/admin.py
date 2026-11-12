@@ -15,8 +15,10 @@ from datetime import timedelta
 
 from .auth import MIN_PASSWORD_LEN, hash_password, verify_password
 from .messages import Outgoing, esc
-from .models import (ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION, Admin, Order,
-                     OrderLine, Product)
+from datetime import datetime
+
+from .models import (ESTADO_CANCELADO, ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION,
+                     PAGO_PAGADO, Admin, Order, OrderLine, Product)
 from .storage.base import StorageError
 
 log = logging.getLogger(__name__)
@@ -104,8 +106,9 @@ class AdminMixin:
             except StorageError as exc:
                 log.error("Fallo al aprobar %s: %s", order_id, exc)
                 return AdminResult(False, f"No pude acceder a la base de datos: {exc}")
-        msg = Outgoing(order.customer_id, self.format_order(order, "✅ <b>¡Tu pedido fue confirmado!</b>"),
-                       channel=order.channel)
+        msg = Outgoing(order.customer_id,
+                       self.format_order(order, "✅ <b>¡Tu pedido fue aprobado!</b> Queda pendiente de pago.")
+                       + self._payment_text(order), channel=order.channel)
         return AdminResult(True, f"Pedido {order.order_id} aprobado: se descontó el stock y se avisó al cliente.",
                            order, notify=[msg])
 
@@ -132,6 +135,82 @@ class AdminMixin:
                        channel=order.channel)
         return AdminResult(True, f"Pedido {order.order_id} rechazado: le avisamos al cliente el motivo.",
                            order, notify=[msg])
+
+    # ------------------------------------------------------------- pagos
+    def confirm_payment(self, order_id: str, admin_name: str) -> AdminResult:
+        """El admin confirma que recibió el pago (efectivo cobrado o transferencia acreditada)."""
+        with self._lock:
+            try:
+                order = self.repo.get_order(order_id)
+                if order is None:
+                    return AdminResult(False, f"No encontré el pedido {order_id}.")
+                if order.is_paid:
+                    return AdminResult(False, f"El pedido {order.order_id} ya figura como pagado.", order)
+                if order.status != ESTADO_CONFIRMADO:
+                    return AdminResult(False, f"El pedido {order.order_id} está {order.status.lower()}: "
+                                              "solo se registra el pago de pedidos confirmados.", order)
+                order.payment_status, order.paid_at, order.paid_by = PAGO_PAGADO, self.stamp(), admin_name
+                order.updated_at = order.paid_at
+                order = self.repo.update_order(order)
+            except StorageError as exc:
+                return AdminResult(False, f"No pude acceder a la base de datos: {exc}")
+        msg = Outgoing(order.customer_id,
+                       f"💰 <b>¡Recibimos tu pago!</b>\nTu pedido <code>{esc(order.order_id)}</code> "
+                       f"({self.money(order.total)}, {esc(order.payment_label.lower())}) quedó pagado. ¡Gracias!",
+                       channel=order.channel)
+        return AdminResult(True, f"Pago del pedido {order.order_id} registrado: le avisamos al cliente.",
+                           order, notify=[msg])
+
+    def cancel_unpaid(self, order_id: str, admin_name: str, reason: str = "") -> AdminResult:
+        """Cancela un pedido confirmado que no se pagó: devuelve el stock y avisa al cliente."""
+        reason = (reason or "").strip() or "No recibimos el pago"
+        with self._lock:
+            try:
+                order = self.repo.get_order(order_id)
+                if order is None:
+                    return AdminResult(False, f"No encontré el pedido {order_id}.")
+                if not order.awaiting_payment:
+                    return AdminResult(False, f"El pedido {order.order_id} no está pendiente de pago.", order)
+                stamp = self.stamp()
+                self.repo.apply_stock_deltas({l.sku: l.qty for l in order.lines}, stamp)
+                order.status, order.reason, order.updated_at, order.reviewed_by = (
+                    ESTADO_CANCELADO, reason, stamp, admin_name)
+                try:
+                    order = self.repo.update_order(order)
+                except StorageError:
+                    self.repo.apply_stock_deltas({l.sku: -l.qty for l in order.lines}, self.stamp())
+                    raise
+            except StorageError as exc:
+                return AdminResult(False, f"No pude acceder a la base de datos: {exc}")
+        msg = Outgoing(order.customer_id,
+                       f"❌ Cancelamos tu pedido <code>{esc(order.order_id)}</code>.\n<b>Motivo:</b> {esc(reason)}"
+                       "\n\nSi todavía lo querés, mandame el pedido de nuevo 🙏", channel=order.channel)
+        return AdminResult(True, f"Pedido {order.order_id} cancelado: volvió el stock y le avisamos al cliente.",
+                           order, notify=[msg])
+
+    def expire_unpaid(self) -> list[Outgoing]:
+        """Cancela las transferencias sin pagar pasadas PAGO_HORAS (el efectivo se cobra al
+        entregar: no vence). Devuelve los avisos para los clientes. La llama el servidor
+        cada unos minutos."""
+        limit = timedelta(hours=self.s.rules.payment_hours)
+        out: list[Outgoing] = []
+        for o in self.repo.list_orders():
+            if not o.awaiting_payment or o.payment_method != "transferencia":
+                continue
+            try:
+                since = datetime.strptime(o.updated_at or o.created_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=self.tz)
+            except ValueError:
+                continue
+            if self.now() - since <= limit:
+                continue
+            r = self.cancel_unpaid(o.order_id, "Automático",
+                                   f"No recibimos la transferencia en {self.s.rules.payment_hours} h")
+            if r.ok:
+                out += r.notify
+                self.notify_admins("pago_vencido", f"Pedido {o.order_id} cancelado por falta de pago",
+                                   f"{o.customer_name}: transferencia de {self.money(o.total)} sin acreditar.",
+                                   o.order_id)
+        return out
 
     # ------------------------------------------------------- stock y precios
     def set_stock(self, sku: str, quantity: int) -> AdminResult:
@@ -215,6 +294,7 @@ class AdminMixin:
                              if o.created_at.startswith(day) and o.status == ESTADO_CONFIRMADO), 2)
 
         todays = [o for o in orders if o.created_at.startswith(today)]
+        unpaid = [o for o in orders if o.awaiting_payment]
         confirmed = [o for o in todays if o.status == ESTADO_CONFIRMADO]
         pending = [o for o in orders if o.status == ESTADO_REVISION]
 
@@ -241,6 +321,8 @@ class AdminMixin:
             "auto_confirmed_today": sum(1 for o in confirmed if not o.reviewed_by),
             "avg_ticket": round(sales(today) / len(confirmed), 2) if confirmed else 0.0,
             "pending": pending,
+            "unpaid": unpaid,
+            "unpaid_total": round(sum(o.total for o in unpaid), 2),
             "low_stock": sorted((p for p in products if p.stock < LOW_STOCK), key=lambda p: p.stock),
             "unread_notices": len(self.repo.list_notices(limit=500, unread_only=True)),
             "hours": hours,

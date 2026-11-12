@@ -81,6 +81,20 @@ nuevo y descuenta lo que corresponde; el pedido conserva su ID. Si el cambio lo 
 los parámetros, vuelve a revisión y queda el aviso en la web. Fuera de término, el bot le
 avisa al admin para que lo resuelva a mano.
 
+**Pago.** Después de confirmar el resumen, el bot pregunta **cómo paga**: 💵 efectivo al recibir
+o 🏦 transferencia (le pasa el alias `NEGOCIO_ALIAS` y el monto). El pedido queda **«pendiente de
+pago»** con el stock reservado y el bot responde *«¡Pedido completado! Queda pendiente de pago»*.
+En la web, el admin toca **«Confirmar pago recibido»** (en el detalle o directo en el tablero,
+sección «Por cobrar») y el bot le avisa al cliente *«¡Recibimos tu pago!»*. Una transferencia que
+no se acredita en `PAGO_HORAS` (24 h) se **cancela sola**: vuelve el stock y se le avisa al cliente;
+también se puede cancelar a mano desde la web. El efectivo no vence: se marca pagado al cobrarlo.
+Un pedido pagado ya no se modifica desde el chat.
+
+**Lo que no hay no se nombra.** El `/catalogo` y Gemini solo ven lo que tiene stock. Si alguien
+pide algo agotado (o que no vendemos), el bot sigue con lo que sí hay y dice *«Del resto que
+pediste no tengo ahora»*; si no hay nada, *«No tengo eso ahora»*. De lo que queda poco, sí dice la
+cantidad («pediste 10, me quedan 5»).
+
 **Dirección guardada:** la primera que da el cliente se guarda sola. Si después un pedido (o
 una modificación) va a otra dirección, la guardada **no** cambia: una vez registrado el pedido,
 el bot pregunta cuál dejar para la próxima, con los botones **🏠 La de siempre** · **📍 La nueva**
@@ -121,7 +135,7 @@ solo. Para verlo o editarlo a mano: [DB Browser for SQLite](https://sqlitebrowse
 |---|---|
 | `productos` | `sku` (PK), `producto`, `categoria` (Gaseosas, Aguas, Cervezas, Vinos, Aperitivos, Jugos, Energizantes), `alias` (separados por coma), `stock` (≥ 0), `precio`, `activo`, `actualizado` |
 | `clientes` | `canal` + `externo_id` (únicos; ej. `telegram` + ID del chat), `nombre`, `direccion`, `creado`, `actualizado` |
-| `pedidos` | `pedido_id` (PK, ej. `P261112-A3F1`), `fecha`, `canal`, `cliente_id`, `cliente_nombre`, `mensaje_original`, `direccion_envio` (obligatoria), `costo_envio`, `total`, `estado` (`CONFIRMADO` / `EN REVISION` / `RECHAZADO`), `motivo`, `actualizado`, `revisado_por` |
+| `pedidos` | `pedido_id` (PK, ej. `P261112-A3F1`), `fecha`, `canal`, `cliente_id`, `cliente_nombre`, `mensaje_original`, `direccion_envio` (obligatoria), `costo_envio`, `total`, `estado` (`CONFIRMADO` / `EN REVISION` / `RECHAZADO` / `CANCELADO`), `motivo`, `actualizado`, `revisado_por`, `pago_medio` (efectivo / transferencia), `pago_estado` (pendiente / pagado), `pago_fecha`, `pago_por` |
 | `pedido_items` | renglones de cada pedido: `sku`, `producto`, `cantidad`, `precio_unitario`, `subtotal` |
 | `pedidos_pendientes` | pedido retenido (ya interpretado) esperando la dirección del cliente |
 | `avisos` | avisos para el admin (pedido en revisión, modificado, cambio fuera de término, falla); se ven en la web |

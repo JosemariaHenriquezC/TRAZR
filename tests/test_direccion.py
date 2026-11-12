@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from app.models import ESTADO_CONFIRMADO, ESTADO_REVISION
 from app.service import User
 
-from .conftest import CLIENT, CLIENT_ADDRESS, avisos, button, pedir, plain
+from .conftest import CLIENT, CLIENT_ADDRESS, avisos, button, pagar, pedir, plain
 
 NUEVO = User(3003, "Cliente Nuevo")
 DIR = "Av. Sarmiento 450, Yerba Buena"
@@ -27,18 +27,24 @@ def test_cliente_con_direccion_ve_resumen_y_nada_se_registra_hasta_confirmar(svc
     assert repo.list_orders() == [] and repo.get_product("COC1").stock == 50
 
     out = svc.handle_callback(CLIENT, button(out, "cf:"))
-    assert "¡Pedido confirmado!" in plain(out[0].text) and "próximos 60 minutos" in plain(out[0].text)
+    assert "¿Cómo lo vas a pagar?" in plain(out[0].text) and repo.list_orders() == []
+    assert [t for t, _ in out[0].buttons] == ["💵 Efectivo al recibir", "🏦 Transferencia", "❌ Cancelar"]
+    out = svc.handle_callback(CLIENT, button(out, "pe:"))
+    assert "¡Pedido completado!" in plain(out[0].text) and "pendiente de pago" in plain(out[0].text)
+    assert "próximos 60 minutos" in plain(out[0].text) and "efectivo cuando te llega" in plain(out[0].text)
     assert repo.list_orders()[-1].status == ESTADO_CONFIRMADO and repo.get_product("COC1").stock == 48
     assert draft(repo, CLIENT) is None
 
 
 def test_confirmar_y_cancelar_escribiendo(svc, repo):
     svc.handle_message(CLIENT, "2 coca")
-    assert "¡Pedido confirmado!" in plain(svc.handle_message(CLIENT, "sí, dale")[0].text)
+    assert "¿Cómo lo vas a pagar?" in plain(svc.handle_message(CLIENT, "sí, dale")[0].text)
+    assert "¡Pedido completado!" in plain(pagar(svc, CLIENT, "en efectivo")[0].text)
     svc.handle_message(CLIENT, "1 fanta")
     assert "descarté" in plain(svc.handle_message(CLIENT, "no")[0].text)
     svc.handle_message(CLIENT, "1 fanta")
-    assert "¡Pedido confirmado!" in plain(svc.handle_message(CLIENT, "/confirmar")[0].text)
+    svc.handle_message(CLIENT, "/confirmar")
+    assert "¡Pedido completado!" in plain(pagar(svc, CLIENT, "transferencia")[0].text)
     assert len(repo.list_orders()) == 2
     assert "No tengo ningún pedido para confirmar" in plain(svc.handle_message(CLIENT, "/confirmar")[0].text)
 
@@ -48,6 +54,7 @@ def test_un_mensaje_nuevo_reemplaza_el_borrador(svc, repo):
     out = svc.handle_message(CLIENT, "3 sprite")
     assert "3 × Sprite 2.25L" in plain(out[0].text) and "Coca" not in plain(out[0].text)
     svc.handle_message(CLIENT, "si")
+    pagar(svc, CLIENT)
     assert [(l.sku, l.qty) for l in repo.list_orders()[-1].lines] == [("SPR1", 3)]
 
 
@@ -83,6 +90,7 @@ def test_si_se_vende_el_stock_antes_de_confirmar(svc, repo):
     assert repo.list_orders() == []
     svc.handle_message(CLIENT, "si")       # ajusta a 2
     svc.handle_message(CLIENT, "si")       # confirma
+    pagar(svc, CLIENT)
     assert [(l.sku, l.qty) for l in repo.list_orders()[-1].lines] == [("CER1", 2)]
     assert repo.get_product("CER1").stock == 0
 
@@ -107,8 +115,12 @@ def test_cliente_sin_direccion_la_pide_y_despues_muestra_el_resumen(svc, repo):
     assert repo.list_orders() == []  # todavía falta confirmar
 
     out = svc.handle_callback(NUEVO, button(out, "cf:"))
+    assert "¿Cómo lo vas a pagar?" in plain(out[0].text) and repo.list_orders() == []
+    out = svc.handle_callback(NUEVO, button(out, "pt:"))
+    assert "TRAZR.BEBIDAS.TUC" in plain(out[0].text) and "Transferí $ 9.400,00" in plain(out[0].text)
     o = repo.list_orders()[-1]
-    assert "¡Pedido confirmado!" in plain(out[0].text) and o.address == DIR and o.shipping_cost == 0
+    assert "¡Pedido completado!" in plain(out[0].text) and o.address == DIR and o.shipping_cost == 0
+    assert o.payment_method == "transferencia" and o.payment_status == "pendiente"
 
     # El segundo pedido ya no pregunta la dirección: la muestra en el resumen
     assert f"Dirección: {DIR}" in plain(svc.handle_message(NUEVO, "1 fanta")[0].text)
@@ -124,6 +136,7 @@ def test_cambiar_direccion_desde_el_resumen(svc, repo):
     assert repo.get_customer("telegram", str(CLIENT.id)).address == CLIENT_ADDRESS
 
     out = svc.handle_callback(CLIENT, button(out, "cf:"))
+    out = svc.handle_callback(CLIENT, button(out, "pe:"))
     assert repo.list_orders()[-1].address == "Belgrano 300, Tafí Viejo"
     # Después del pedido, pregunta cuál dejar guardada
     q = out[-1]
@@ -137,7 +150,8 @@ def test_cambiar_direccion_desde_el_resumen(svc, repo):
 def _pedido_a_otra_direccion(svc):
     svc.handle_message(CLIENT, "2 coca")
     svc.handle_message(CLIENT, "/direccion Belgrano 300, Tafí Viejo")
-    return svc.handle_message(CLIENT, "si")
+    svc.handle_message(CLIENT, "si")
+    return pagar(svc, CLIENT)
 
 
 def test_elegir_la_de_siempre(svc, repo):
@@ -155,6 +169,7 @@ def test_responder_escribiendo_cual_direccion(svc, repo):
     svc.handle_message(CLIENT, "1 sprite")
     svc.handle_message(CLIENT, f"/direccion {CLIENT_ADDRESS}")
     svc.handle_message(CLIENT, "si")
+    pagar(svc, CLIENT)
     assert "sigo usando" in plain(svc.handle_message(CLIENT, "la de siempre")[0].text)
     assert repo.get_customer("telegram", str(CLIENT.id)).address == "Belgrano 300, Tafí Viejo"
 
@@ -174,7 +189,8 @@ def test_misma_direccion_no_pregunta(svc, repo):
 def test_primera_direccion_se_guarda_sola(svc, repo):
     svc.handle_message(NUEVO, "2 coca")
     svc.handle_message(NUEVO, DIR)
-    out = svc.handle_message(NUEVO, "si")
+    svc.handle_message(NUEVO, "si")
+    out = pagar(svc, NUEVO)
     assert not any("¿Qué dirección" in plain(m.text) for m in out)
     assert repo.get_customer("telegram", str(NUEVO.id)).address == DIR
 
@@ -192,6 +208,7 @@ def test_direccion_con_comando_durante_el_resumen(svc, repo):
     out = svc.handle_message(CLIENT, "/direccion Calle Falsa 123, Tafí Viejo")
     assert "Dirección: Calle Falsa 123, Tafí Viejo" in plain(out[0].text)
     svc.handle_message(CLIENT, "si")
+    pagar(svc, CLIENT)
     assert repo.list_orders()[-1].address == "Calle Falsa 123, Tafí Viejo"
 
 
@@ -212,7 +229,8 @@ def test_direccion_invalida_se_vuelve_a_pedir(svc, repo):
 def test_pedido_en_revision_tambien_lleva_direccion(svc, repo):
     svc.handle_message(NUEVO, "1 fernet")
     svc.handle_message(NUEVO, DIR)
-    out = svc.handle_message(NUEVO, "si")
+    svc.handle_message(NUEVO, "si")
+    out = pagar(svc, NUEVO)
     o = repo.list_orders()[-1]
     assert o.status == ESTADO_REVISION and o.address == DIR
     assert all(m.chat_id == NUEVO.id for m in out)  # nada por chat al admin
@@ -258,4 +276,4 @@ def test_clientes_de_distintos_canales_no_se_mezclan(svc, repo):
 
 
 def test_helper_pedir(svc, repo):
-    assert "¡Pedido confirmado!" in plain(pedir(svc, CLIENT, "1 coca")[0].text)
+    assert "¡Pedido completado!" in plain(pedir(svc, CLIENT, "1 coca")[0].text)

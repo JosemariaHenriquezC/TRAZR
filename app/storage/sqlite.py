@@ -24,9 +24,35 @@ from .base import Repository, StorageError
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _ESTADOS_SQL = ", ".join(f"'{e}'" for e in ESTADOS)
+
+def _pedidos_sql(name: str) -> str:
+    return f"""CREATE TABLE IF NOT EXISTS {name} (
+    pedido_id         TEXT PRIMARY KEY,
+    fecha             TEXT NOT NULL,
+    canal             TEXT NOT NULL,
+    cliente_id        TEXT NOT NULL,
+    cliente_nombre    TEXT NOT NULL DEFAULT '',
+    mensaje_original  TEXT NOT NULL DEFAULT '',
+    direccion_envio   TEXT NOT NULL CHECK (trim(direccion_envio) <> ''),
+    costo_envio       REAL NOT NULL DEFAULT 0,
+    total             REAL NOT NULL,
+    estado            TEXT NOT NULL CHECK (estado IN ({_ESTADOS_SQL})),
+    motivo            TEXT NOT NULL DEFAULT '',
+    actualizado       TEXT NOT NULL,
+    revisado_por      TEXT NOT NULL DEFAULT '',
+    pago_medio        TEXT NOT NULL DEFAULT '',        -- efectivo | transferencia
+    pago_estado       TEXT NOT NULL DEFAULT '',        -- pendiente | pagado
+    pago_fecha        TEXT NOT NULL DEFAULT '',
+    pago_por          TEXT NOT NULL DEFAULT ''         -- admin que confirmó el pago
+);"""
+
+
+PEDIDOS_COLUMNS = ["pedido_id", "fecha", "canal", "cliente_id", "cliente_nombre", "mensaje_original",
+                   "direccion_envio", "costo_envio", "total", "estado", "motivo", "actualizado",
+                   "revisado_por", "pago_medio", "pago_estado", "pago_fecha", "pago_por"]
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS productos (
@@ -51,21 +77,7 @@ CREATE TABLE IF NOT EXISTS clientes (
     UNIQUE (canal, externo_id)
 );
 
-CREATE TABLE IF NOT EXISTS pedidos (
-    pedido_id         TEXT PRIMARY KEY,
-    fecha             TEXT NOT NULL,
-    canal             TEXT NOT NULL,
-    cliente_id        TEXT NOT NULL,
-    cliente_nombre    TEXT NOT NULL DEFAULT '',
-    mensaje_original  TEXT NOT NULL DEFAULT '',
-    direccion_envio   TEXT NOT NULL CHECK (trim(direccion_envio) <> ''),
-    costo_envio       REAL NOT NULL DEFAULT 0,
-    total             REAL NOT NULL,
-    estado            TEXT NOT NULL CHECK (estado IN ({_ESTADOS_SQL})),
-    motivo            TEXT NOT NULL DEFAULT '',
-    actualizado       TEXT NOT NULL,
-    revisado_por      TEXT NOT NULL DEFAULT ''
-);
+{_pedidos_sql("pedidos")}
 CREATE INDEX IF NOT EXISTS ix_pedidos_cliente ON pedidos (canal, cliente_id);
 CREATE INDEX IF NOT EXISTS ix_pedidos_estado ON pedidos (estado);
 
@@ -145,10 +157,43 @@ class SQLiteRepository(Repository):
             if path != ":memory:":
                 self._conn.execute("PRAGMA journal_mode = WAL")
             self._conn.executescript(SCHEMA)
+            self._migrate()
             self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         except sqlite3.Error as exc:
             raise StorageError(f"No pude abrir la base de datos {path!r}: {exc}") from exc
         self._lock = threading.RLock()
+
+    def _migrate(self) -> None:
+        """Bases creadas antes del pago: se rehace `pedidos` con las columnas de pago y el
+        estado CANCELADO (SQLite no deja cambiar un CHECK). No se pierde ningún dato."""
+        sql = self._conn.execute("SELECT sql FROM sqlite_master WHERE name = 'pedidos'").fetchone()[0]
+        if "pago_medio" in sql and "CANCELADO" in sql:
+            return
+        have = [r[1] for r in self._conn.execute("PRAGMA table_info(pedidos)")]
+        cols = [c for c in PEDIDOS_COLUMNS if c in have]
+        self._conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+            self._conn.execute(_pedidos_sql("pedidos_nueva"))
+            self._conn.execute(f"INSERT INTO pedidos_nueva ({', '.join(cols)}) "
+                               f"SELECT {', '.join(cols)} FROM pedidos ORDER BY rowid")
+            # Los pedidos confirmados de antes se dan por pagados (no hay forma de saberlo).
+            self._conn.execute("UPDATE pedidos_nueva SET pago_estado = 'pagado' WHERE estado = 'CONFIRMADO' "
+                               "AND pago_estado = ''")
+            # Los que esperaban revisión van a pedir pago cuando se aprueben (efectivo por defecto).
+            self._conn.execute("UPDATE pedidos_nueva SET pago_estado = 'pendiente', pago_medio = 'efectivo' "
+                               "WHERE estado = 'EN REVISION' AND pago_estado = ''")
+            self._conn.execute("DROP TABLE pedidos")
+            self._conn.execute("ALTER TABLE pedidos_nueva RENAME TO pedidos")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS ix_pedidos_cliente ON pedidos (canal, cliente_id)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS ix_pedidos_estado ON pedidos (estado)")
+            self._conn.execute("COMMIT")
+        except sqlite3.Error:
+            self._conn.execute("ROLLBACK")
+            raise
+        finally:
+            self._conn.execute("PRAGMA foreign_keys = ON")
+        log.info("Base migrada: los pedidos ahora guardan el medio y el estado del pago.")
 
     def close(self) -> None:
         self._conn.close()
@@ -337,11 +382,13 @@ class SQLiteRepository(Repository):
             c.execute(
                 """INSERT INTO pedidos (pedido_id, fecha, canal, cliente_id, cliente_nombre,
                                         mensaje_original, direccion_envio, costo_envio, total,
-                                        estado, motivo, actualizado, revisado_por)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                        estado, motivo, actualizado, revisado_por,
+                                        pago_medio, pago_estado, pago_fecha, pago_por)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (o.order_id, o.created_at, o.channel, str(o.customer_id), o.customer_name,
                  o.original_text, o.address, o.shipping_cost, o.total, o.status, o.reason,
-                 o.updated_at or o.created_at, o.reviewed_by))
+                 o.updated_at or o.created_at, o.reviewed_by,
+                 o.payment_method, o.payment_status, o.paid_at, o.paid_by))
             self._insert_lines(c, o.order_id, o.lines)
 
     def _orders(self, where: str = "", params=()) -> list[Order]:
@@ -367,7 +414,8 @@ class SQLiteRepository(Repository):
                 lines=lines[r["pedido_id"]], status=r["estado"], reason=r["motivo"],
                 updated_at=r["actualizado"], reviewed_by=r["revisado_por"],
                 address=r["direccion_envio"], shipping_cost=float(r["costo_envio"]),
-                channel=r["canal"]))
+                channel=r["canal"], payment_method=r["pago_medio"], payment_status=r["pago_estado"],
+                paid_at=r["pago_fecha"], paid_by=r["pago_por"]))
         return out
 
     def list_orders(self) -> list[Order]:
@@ -382,10 +430,12 @@ class SQLiteRepository(Repository):
             raise KeyError(o.order_id)
         with self._tx() as c:
             c.execute("""UPDATE pedidos SET direccion_envio = ?, costo_envio = ?, total = ?, estado = ?,
-                                          motivo = ?, actualizado = ?, revisado_por = ?
+                                          motivo = ?, actualizado = ?, revisado_por = ?,
+                                          pago_medio = ?, pago_estado = ?, pago_fecha = ?, pago_por = ?
                          WHERE pedido_id = ?""",
                       (o.address, o.shipping_cost, o.total, o.status, o.reason, o.updated_at,
-                       o.reviewed_by, o.order_id))
+                       o.reviewed_by, o.payment_method, o.payment_status, o.paid_at, o.paid_by,
+                       o.order_id))
             c.execute("DELETE FROM pedido_items WHERE pedido_id = ?", (o.order_id,))
             self._insert_lines(c, o.order_id, o.lines)
         return self.get_order(o.order_id)

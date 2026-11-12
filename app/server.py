@@ -13,6 +13,7 @@ leyendo el mismo token chocan en Telegram.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -47,9 +48,21 @@ def build(settings: Settings):
             log.info("Bot @%s en marcha junto con la web.", me.username)
         else:
             log.warning("Sin TELEGRAM_BOT_TOKEN: arranca solo la web (no se pueden avisar clientes).")
+
+        async def expire_loop():
+            # Cada 5 minutos: cancela transferencias sin pagar pasadas PAGO_HORAS y avisa al cliente.
+            while True:
+                try:
+                    await notifier.send(await asyncio.to_thread(svc.expire_unpaid))
+                except Exception:
+                    log.exception("Falló la revisión de pagos vencidos")
+                await asyncio.sleep(300)
+
+        expirer = asyncio.create_task(expire_loop())
         try:
             yield
         finally:
+            expirer.cancel()
             if tg is not None:
                 await tg.updater.stop()
                 await tg.stop()

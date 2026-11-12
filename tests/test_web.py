@@ -112,8 +112,15 @@ def test_aprobar_avisa_al_cliente(admin, svc, repo, tg):
     assert "aprobado: se descontó el stock y se avisó al cliente" in r.text
     o = repo.get_order(oid)
     assert o.status == "CONFIRMADO" and o.reviewed_by == "Lucía Fernández" and o.total == 12000
-    assert len(tg.sent) == 1 and tg.sent[0].chat_id == CLIENT.id and "¡Tu pedido fue confirmado!" in tg.sent[0].text
+    assert len(tg.sent) == 1 and tg.sent[0].chat_id == CLIENT.id and "¡Tu pedido fue aprobado!" in tg.sent[0].text
     assert "Aprobado por Lucía Fernández" in r.text and "Aprobar y avisar" not in r.text
+    # Queda por cobrar: se confirma el pago desde la web y el cliente recibe el aviso
+    assert "Por cobrar" in r.text and "Confirmar pago recibido" in r.text
+    r = admin.post(f"/pedidos/{oid}/pago", data={"csrf_token": csrf(r.text)})
+    assert "Pago del pedido" in r.text and repo.get_order(oid).is_paid
+    assert repo.get_order(oid).paid_by == "Lucía Fernández"
+    assert "Recibimos tu pago" in tg.sent[1].text and tg.sent[1].chat_id == CLIENT.id
+    assert "ya figura como pagado" in admin.post(f"/pedidos/{oid}/pago", data={"csrf_token": csrf(r.text)}).text
 
 
 def test_aprobar_bloqueado_por_stock(admin, svc, repo, tg):
@@ -136,7 +143,7 @@ def test_rechazar_con_motivo(admin, svc, repo, tg):
     r = admin.post(f"/pedidos/{oid}/rechazar", data={"csrf_token": csrf(page), "motivo": "Sin Fernet hasta el lunes"})
     assert "rechazado" in r.text and repo.get_order(oid).status == "RECHAZADO"
     assert "Sin Fernet hasta el lunes" in tg.sent[0].text
-    assert "Rechazados · 1" in text(admin.get("/pedidos?estado=rechazados"))
+    assert "Rechazados y cancelados · 1" in text(admin.get("/pedidos?estado=rechazados"))
 
 
 def test_buscar_y_pedido_inexistente(admin, svc, repo):
@@ -212,3 +219,21 @@ def test_cambios_para_refresco_automatico(admin, svc, repo):
 
 def test_cambios_pide_ingresar(client):
     assert client.get("/cambios", follow_redirects=False).status_code == 303
+
+
+def test_cobros_desde_el_tablero_y_cancelar_impago(admin, svc, repo, tg):
+    pedir(svc, CLIENT, "2 coca", pago="transferencia")
+    pedir(svc, CLIENT, "1 sprite")
+    t = text(admin.get("/"))
+    assert "Por cobrar" in t and "$ 9.400,00" in t and "Pago recibido" in t      # remito + lista
+    assert "Por cobrar · 2" in text(admin.get("/pedidos?estado=por_cobrar"))
+    o1, o2 = repo.list_orders()
+    r = admin.post(f"/pedidos/{o2.order_id}/pago", data={"csrf_token": csrf(admin.get("/").text), "volver": "/"},
+                   follow_redirects=False)
+    assert r.headers["location"] == "/" and repo.get_order(o2.order_id).is_paid
+    page = admin.get(f"/pedidos/{o1.order_id}").text
+    assert "Transferencia" in page and "se cancela solo" in page
+    r = admin.post(f"/pedidos/{o1.order_id}/cancelar", data={"csrf_token": csrf(page), "motivo": ""})
+    assert "cancelado: volvió el stock" in r.text
+    assert repo.get_order(o1.order_id).status == "CANCELADO" and repo.get_product("COC1").stock == 50
+    assert "No recibimos el pago" in tg.sent[-1].text

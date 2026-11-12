@@ -7,7 +7,13 @@ from dataclasses import dataclass, field
 ESTADO_CONFIRMADO = "CONFIRMADO"
 ESTADO_REVISION = "EN REVISION"
 ESTADO_RECHAZADO = "RECHAZADO"
-ESTADOS = (ESTADO_CONFIRMADO, ESTADO_REVISION, ESTADO_RECHAZADO)
+ESTADO_CANCELADO = "CANCELADO"     # no se recibió el pago a tiempo: el stock se devolvió
+ESTADOS = (ESTADO_CONFIRMADO, ESTADO_REVISION, ESTADO_RECHAZADO, ESTADO_CANCELADO)
+
+# Pago: es una dimensión aparte del estado. Un pedido CONFIRMADO puede estar pendiente de pago o pagado.
+PAGO_PENDIENTE = "pendiente"
+PAGO_PAGADO = "pagado"
+MEDIOS_PAGO = {"efectivo": "Efectivo al recibir", "transferencia": "Transferencia"}
 
 # El envío está siempre incluido en el precio: no se cobra aparte.
 COSTO_ENVIO = 0.0
@@ -94,6 +100,23 @@ class Order:
     address: str = ""                 # dirección de envío (obligatoria para registrar)
     shipping_cost: float = COSTO_ENVIO
     channel: str = "telegram"
+    payment_method: str = ""          # efectivo | transferencia
+    payment_status: str = ""          # pendiente | pagado
+    paid_at: str = ""
+    paid_by: str = ""                 # admin que confirmó el pago
+
+    @property
+    def is_paid(self) -> bool:
+        return self.payment_status == PAGO_PAGADO
+
+    @property
+    def awaiting_payment(self) -> bool:
+        """Confirmado (stock reservado) y todavía sin pagar."""
+        return self.status == ESTADO_CONFIRMADO and self.payment_status == PAGO_PENDIENTE
+
+    @property
+    def payment_label(self) -> str:
+        return MEDIOS_PAGO.get(self.payment_method, self.payment_method or "—")
 
     @property
     def items_total(self) -> float:
