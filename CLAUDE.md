@@ -84,7 +84,8 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
    rechaza 549… (131030) se reintenta sin el 9 y se recuerda.
 3. Túnel (cloudflared quick tunnel, la URL cambia al reiniciarlo) + webhook en Meta (campo
    «messages») + suscripción de la app a la WABA (POST /<WABA_ID>/subscribed_apps). HECHO:
-   el bot contesta por WhatsApp. Falta probar el flujo completo (pedido → aprobar → pago).
+   el bot contesta por WhatsApp. Flujo completo probado por el usuario (pedido → aprobar en la
+   web → aviso → pago recibido → aviso): FUNCIONA.
 4. Pendiente: plantillas aprobadas para avisos fuera de la ventana de 24 h (error 131047:
    pedido aprobado, pago confirmado, transferencia vencida).
 5. Pendiente (producción): token permanente (usuario del sistema), número propio,
