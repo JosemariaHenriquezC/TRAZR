@@ -1,7 +1,7 @@
 """
 Configuración del bot.
 
-Todo lo sensible (token de Telegram, IDs de hojas, credenciales) se lee de
+Todo lo sensible (token de Telegram, claves de APIs) se lee de
 variables de entorno o de un archivo .env (ver .env.example). Nada de eso
 está escrito en el código.
 
@@ -53,7 +53,7 @@ class Rules:
     Regla mínima de "pedido dentro de los parámetros".
 
     Un pedido se CONFIRMA AUTOMÁTICAMENTE solo si TODOS sus renglones cumplen:
-      1. El producto existe en la hoja de stock y está activo.
+      1. El producto existe en el catálogo (base de datos) y está activo.
       2. Tiene precio vigente: Precio > 0 y (Vigente_hasta vacío o >= hoy).
       3. Hay stock suficiente: Stock >= cantidad pedida.
     Y además, opcionalmente:
@@ -80,16 +80,8 @@ class Rules:
 class Settings:
     telegram_token: str
     admin_chat_ids: set[int]
-    storage_backend: str                  # "gsheets" | "excel"
-    # Google Sheets
-    google_credentials_file: str = ""
-    stock_spreadsheet_id: str = ""
-    orders_spreadsheet_id: str = ""
-    stock_worksheet: str = "Stock"
-    orders_worksheet: str = "Pedidos"
-    # Excel local (modo prueba sin credenciales)
-    excel_stock_path: str = "data/stock.xlsx"
-    excel_orders_path: str = "data/pedidos.xlsx"
+    # Base de datos SQLite (un archivo; se crea solo si no existe)
+    database_path: str = "data/trazr.db"
     # Presentación
     currency_symbol: str = "$"
     timezone: str = "UTC"
@@ -117,10 +109,6 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         except ValueError as exc:
             raise ConfigError(f"ADMIN_CHAT_IDS contiene un valor no numérico: {part!r}") from exc
 
-    backend = os.getenv("STORAGE_BACKEND", "gsheets").strip().lower()
-    if backend not in {"gsheets", "excel"}:
-        raise ConfigError("STORAGE_BACKEND debe ser 'gsheets' o 'excel'.")
-
     on_unknown = os.getenv("ON_UNKNOWN_PRODUCT", "ask").strip().lower()
     if on_unknown not in {"ask", "review"}:
         raise ConfigError("ON_UNKNOWN_PRODUCT debe ser 'ask' o 'review'.")
@@ -137,36 +125,10 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
     settings = Settings(
         telegram_token=token,
         admin_chat_ids=admin_ids,
-        storage_backend=backend,
-        google_credentials_file=os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json").strip(),
-        stock_spreadsheet_id=os.getenv("STOCK_SPREADSHEET_ID", "").strip(),
-        orders_spreadsheet_id=os.getenv("ORDERS_SPREADSHEET_ID", "").strip(),
-        stock_worksheet=os.getenv("STOCK_WORKSHEET", "Stock").strip() or "Stock",
-        orders_worksheet=os.getenv("ORDERS_WORKSHEET", "Pedidos").strip() or "Pedidos",
-        excel_stock_path=os.getenv("EXCEL_STOCK_PATH", "data/stock.xlsx").strip(),
-        excel_orders_path=os.getenv("EXCEL_ORDERS_PATH", "data/pedidos.xlsx").strip(),
+        database_path=os.getenv("DATABASE_PATH", "data/trazr.db").strip() or "data/trazr.db",
         currency_symbol=os.getenv("CURRENCY_SYMBOL", "$").strip() or "$",
         timezone=os.getenv("TIMEZONE", "UTC").strip() or "UTC",
         rules=rules,
     )
 
-    if backend == "gsheets":
-        missing = [
-            name
-            for name, val in [
-                ("STOCK_SPREADSHEET_ID", settings.stock_spreadsheet_id),
-                ("ORDERS_SPREADSHEET_ID", settings.orders_spreadsheet_id),
-            ]
-            if not val
-        ]
-        if missing:
-            raise ConfigError(
-                "Faltan variables para Google Sheets: " + ", ".join(missing)
-                + ". Copiá el ID de cada hoja desde su URL (ver README)."
-            )
-        if not Path(settings.google_credentials_file).exists():
-            raise ConfigError(
-                f"No encuentro el archivo de credenciales {settings.google_credentials_file!r}. "
-                "Descargá la clave JSON de la cuenta de servicio (ver README, paso 3)."
-            )
     return settings

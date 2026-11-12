@@ -2,7 +2,7 @@
 Capa de Telegram (python-telegram-bot v21, long polling).
 
 Solo traduce entre Telegram y BotService: no tiene lógica de negocio.
-Las llamadas a la hoja son bloqueantes, por eso se ejecutan en un hilo
+Las llamadas a la base de datos son bloqueantes, por eso se ejecutan en un hilo
 aparte (asyncio.to_thread) para no congelar el bot.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 def _user(update: Update) -> User:
     u = update.effective_user
     name = (u.full_name or u.username or str(u.id)) if u else "desconocido"
-    return User(id=update.effective_chat.id, name=name)
+    return User(id=update.effective_chat.id, name=name, channel="telegram")
 
 
 async def _send(context: ContextTypes.DEFAULT_TYPE, messages: list[Outgoing]) -> None:
@@ -54,7 +54,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
-        "Por ahora solo entiendo mensajes de texto. Escribí tu pedido, por ejemplo: 2 yerba, 3 azúcar.")
+        "Por ahora solo entiendo mensajes de texto. Escribí tu pedido, por ejemplo: 2 coca, 3 agua sin gas.")
 
 
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -83,7 +83,8 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def post_init(app: Application) -> None:
     await app.bot.set_my_commands([
-        BotCommand("start", "Empezar"), BotCommand("catalogo", "Productos y precios"),
+        BotCommand("start", "Empezar"), BotCommand("catalogo", "Bebidas y precios"),
+        BotCommand("direccion", "Ver o cambiar mi dirección de envío"),
         BotCommand("mispedidos", "Mis últimos pedidos"), BotCommand("ayuda", "Ayuda y comandos"),
         BotCommand("miid", "Ver mi ID de Telegram"),
     ])
@@ -99,14 +100,20 @@ def main() -> None:
     except ConfigError as exc:
         raise SystemExit(f"Error de configuración: {exc}")
 
-    repo = build_repository(settings)
-    # Verificación temprana: si las hojas no son accesibles, se avisa al arrancar.
+    try:
+        repo = build_repository(settings)
+    except StorageError as exc:
+        raise SystemExit(str(exc))
+    # Verificación temprana: si la base de datos no es accesible, se avisa al arrancar.
     try:
         n = len(repo.list_products())
         repo.list_orders()
-        log.info("Hojas OK (%s): %d productos en stock.", settings.storage_backend, n)
+        log.info("Base de datos OK (%s): %d productos en el catálogo.", settings.database_path, n)
+        if n == 0:
+            log.warning("El catálogo está vacío. Cargalo con: python -m scripts.init_db --ejemplo "
+                        "(o --csv tu_catalogo.csv).")
     except StorageError as exc:
-        raise SystemExit(f"No pude acceder a las hojas: {exc}")
+        raise SystemExit(f"No pude acceder a la base de datos: {exc}")
     if not settings.admin_chat_ids:
         log.warning("ADMIN_CHAT_IDS vacío: nadie es administrador. Escribile /miid al bot y "
                     "poné ese número en el .env.")

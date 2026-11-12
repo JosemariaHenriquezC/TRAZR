@@ -27,7 +27,7 @@ def make_update(user, text=None, data=None):
 
 def test_mensaje_y_botones(svc: BotService, repo):
     ctx = make_context(svc)
-    asyncio.run(tg.on_text(make_update(CLIENT, "10 aceite"), ctx))
+    asyncio.run(tg.on_text(make_update(CLIENT, "10 cerveza"), ctx))
     calls = ctx.bot.send_message.call_args_list
     assert calls[0].kwargs["chat_id"] == CLIENT.id and calls[0].kwargs["parse_mode"] == "HTML"
     admin_call = calls[1].kwargs

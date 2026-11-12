@@ -4,19 +4,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
-# Estados posibles de un pedido en la hoja de pedidos.
+# Estados posibles de un pedido.
 ESTADO_CONFIRMADO = "CONFIRMADO"
 ESTADO_REVISION = "EN REVISION"
 ESTADO_RECHAZADO = "RECHAZADO"
+ESTADOS = (ESTADO_CONFIRMADO, ESTADO_REVISION, ESTADO_RECHAZADO)
 
-# Columnas de la hoja de stock (en este orden; la primera fila es el encabezado).
-STOCK_COLUMNS = ["SKU", "Producto", "Alias", "Stock", "Precio", "Vigente_hasta", "Activo", "Actualizado"]
-
-# Columnas de la hoja de pedidos.
-ORDER_COLUMNS = [
-    "Pedido_ID", "Fecha", "Cliente_ID", "Cliente_nombre", "Mensaje_original",
-    "Detalle", "Items_JSON", "Total", "Estado", "Motivo", "Actualizado", "Revisado_por",
-]
+# El envío está siempre incluido en el precio: no se cobra aparte.
+COSTO_ENVIO = 0.0
 
 
 @dataclass
@@ -28,12 +23,21 @@ class Product:
     price: float
     valid_until: date | None
     active: bool
-    row: int = 0  # número de fila en la hoja (para actualizar)
+    category: str = ""        # Gaseosas, Aguas, Cervezas, Vinos, ...
 
     def price_is_valid(self, today: date) -> bool:
         if self.price is None or self.price <= 0:
             return False
         return self.valid_until is None or self.valid_until >= today
+
+
+@dataclass
+class Customer:
+    """Cliente identificado por canal (telegram, whatsapp...) + su ID en ese canal."""
+    channel: str
+    external_id: str
+    name: str = ""
+    address: str = ""
 
 
 @dataclass
@@ -69,11 +73,17 @@ class Order:
     reason: str = ""
     updated_at: str = ""
     reviewed_by: str = ""
-    row: int = 0
+    address: str = ""                 # dirección de envío (obligatoria para registrar)
+    shipping_cost: float = COSTO_ENVIO
+    channel: str = "telegram"
+
+    @property
+    def items_total(self) -> float:
+        return round(sum(l.subtotal for l in self.lines), 2)
 
     @property
     def total(self) -> float:
-        return round(sum(l.subtotal for l in self.lines), 2)
+        return round(self.items_total + self.shipping_cost, 2)
 
 
 @dataclass

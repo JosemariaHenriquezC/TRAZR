@@ -6,13 +6,17 @@ una lista de mensajes a enviar (`Outgoing`): la respuesta al que escribió y,
 si corresponde, avisos a los administradores o al cliente. Así la misma lógica
 se usa desde Telegram, desde el simulador de consola y desde los tests.
 
-Flujo de un pedido (etapas pedidas):
+Flujo de un pedido:
   1. El cliente escribe su pedido en lenguaje natural → parser.parse_order()
-  2. Se lee el stock y precio vigentes en ese momento de la hoja de stock.
-  3. Se evalúa la regla (rules.evaluate):
+  2. Se lee el stock y precio vigentes en ese momento de la base de datos.
+  3. Dirección obligatoria: si el cliente todavía no tiene una guardada, el
+     pedido queda retenido (pedidos_pendientes) y se le pide la dirección.
+     Su respuesta se guarda y el pedido retenido se procesa en ese momento.
+     El envío está siempre incluido, sin costo.
+  4. Se evalúa la regla (rules.evaluate):
        - dentro de los parámetros  → CONFIRMADO + se descuenta stock
        - fuera (faltante, precio)   → EN REVISION + aviso al admin con botones
-  4. El cliente recibe la confirmación con el detalle completo
+  5. El cliente recibe la confirmación con el detalle completo
      (o el aviso de que quedó en revisión; y luego el resultado de la revisión).
 """
 from __future__ import annotations
@@ -22,17 +26,23 @@ import logging
 import secrets
 import threading
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import Settings
-from .models import (ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION, Order,
-                     OrderLine, ParsedItem, Product)
+from .models import (COSTO_ENVIO, ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION,
+                     Customer, Order, OrderLine, ParsedItem, Product)
 from .parser import parse_order
 from .rules import evaluate
 from .storage.base import Repository, StorageError, to_date, to_number
 
 log = logging.getLogger(__name__)
+
+# Un pedido retenido esperando la dirección se descarta pasado este tiempo
+# (si el cliente vuelve días después, su mensaje es un pedido nuevo, no una dirección).
+PENDING_TTL = timedelta(hours=24)
+MIN_ADDRESS_LEN = 8
+MAX_ADDRESS_LEN = 200
 
 
 @dataclass
@@ -46,6 +56,7 @@ class Outgoing:
 class User:
     id: int
     name: str
+    channel: str = "telegram"   # canal por el que escribe (telegram, whatsapp...)
 
 
 def esc(value) -> str:
@@ -89,12 +100,12 @@ class BotService:
         return [Outgoing(a, text, buttons or []) for a in sorted(self.s.admin_chat_ids)]
 
     def _storage_failure(self, user: User, exc: StorageError, action: str) -> list[Outgoing]:
-        log.error("Fallo de hoja al %s: %s", action, exc)
+        log.error("Fallo de la base de datos al %s: %s", action, exc)
         out = [Outgoing(user.id,
-                        "⚠️ No pude acceder a la planilla en este momento, así que no se registró nada. "
+                        "⚠️ No pude acceder a la base de datos en este momento, así que no se registró nada. "
                         "Probá de nuevo en unos minutos.")]
         if not self.is_admin(user.id):
-            out += self._admins(f"🚨 Falla de acceso a la hoja al {esc(action)} "
+            out += self._admins(f"🚨 Falla de acceso a la base de datos al {esc(action)} "
                                 f"(usuario {esc(user.name)} / {user.id}):\n<code>{esc(exc)}</code>")
         else:
             out[0].text += f"\n<code>{esc(exc)}</code>"
@@ -106,7 +117,12 @@ class BotService:
         for l in order.lines:
             lines.append(f"• {l.qty} × {esc(l.name)} — {self.money(l.unit_price)} c/u = "
                          f"<b>{self.money(l.subtotal)}</b>")
-        lines += ["", f"<b>Total: {self.money(order.total)}</b>",
+        shipping = ("incluido, sin costo" if not order.shipping_cost
+                    else self.money(order.shipping_cost))
+        lines += ["", f"<b>Envío:</b> {shipping}"]
+        if order.address:
+            lines.append(f"<b>Dirección:</b> {esc(order.address)}")
+        lines += [f"<b>Total: {self.money(order.total)}</b>",
                   f"<b>Estado:</b> {esc(order.status)}"]
         if order.reason:
             lines.append(f"<b>Motivo:</b> {esc(order.reason)}")
@@ -116,9 +132,16 @@ class BotService:
     def handle_message(self, user: User, text: str) -> list[Outgoing]:
         text = (text or "").strip()
         if not text:
-            return [Outgoing(user.id, "Mandame tu pedido como texto, por ejemplo: <i>2 yerba, 3 azúcar</i>.")]
+            return [Outgoing(user.id, "Mandame tu pedido como texto, por ejemplo: <i>2 coca, 3 agua sin gas</i>.")]
         if text.startswith("/"):
             return self._handle_command(user, text)
+        try:
+            pending = self._pending_order(user)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "leer un pedido pendiente")
+        if pending is not None:
+            # Hay un pedido retenido esperando la dirección: este mensaje es la dirección.
+            return self.receive_address(user, text, pending)
         return self.process_order(user, text)
 
     def handle_callback(self, user: User, data: str) -> list[Outgoing]:
@@ -139,6 +162,7 @@ class BotService:
         public = {
             "/start": self.cmd_start, "/ayuda": self.cmd_help, "/help": self.cmd_help,
             "/catalogo": self.cmd_catalog, "/mispedidos": self.cmd_my_orders, "/miid": self.cmd_my_id,
+            "/direccion": self.cmd_address, "/cancelar": self.cmd_cancel,
         }
         admin = {
             "/stock": self.cmd_stock, "/setstock": self.cmd_setstock, "/sumar": self.cmd_add_stock,
@@ -154,9 +178,11 @@ class BotService:
         return [Outgoing(user.id, "No conozco ese comando. Escribí /ayuda.")]
 
     def cmd_start(self, user, args):
-        msg = (f"¡Hola {esc(user.name)}! 👋\nSoy el bot de pedidos. Escribime lo que necesitás, por ejemplo:\n"
-               "<i>Quiero 2 yerba, 3 azúcar y 1 aceite</i>\n\n"
-               "/catalogo — productos y precios\n/mispedidos — tus últimos pedidos\n/ayuda — más opciones")
+        msg = (f"¡Hola {esc(user.name)}! 👋\nSoy el bot de pedidos de bebidas. Escribime lo que necesitás, "
+               "por ejemplo:\n<i>Quiero 2 coca, 3 agua sin gas y 1 fernet</i>\n\n"
+               "🚚 El envío está siempre incluido, sin costo.\n\n"
+               "/catalogo — bebidas y precios\n/direccion — ver o cambiar tu dirección de envío\n"
+               "/mispedidos — tus últimos pedidos\n/ayuda — más opciones")
         if self.is_admin(user.id):
             msg += "\n\n🔑 Sos administrador. Mirá /ayuda para los comandos de gestión."
         elif not self.s.admin_chat_ids:
@@ -164,9 +190,13 @@ class BotService:
         return [Outgoing(user.id, msg)]
 
     def cmd_help(self, user, args):
-        msg = ("<b>Cómo pedir</b>\nEscribí productos y cantidades separados por coma o «y»:\n"
-               "<i>2 yerba, 3 azúcar y 1 aceite</i>  ·  <i>harina x 4</i>  ·  <i>media docena de huevos</i>\n\n"
-               "/catalogo — productos y precios\n/mispedidos — tus últimos pedidos\n/miid — tu ID de Telegram")
+        msg = ("<b>Cómo pedir</b>\nEscribí bebidas y cantidades separadas por coma o «y»:\n"
+               "<i>2 coca, 3 agua sin gas y 1 fernet</i>  ·  <i>sprite x 4</i>  ·  <i>media docena de cervezas</i>\n\n"
+               "🚚 El envío está siempre incluido, sin costo. La primera vez te pido la dirección.\n\n"
+               "/catalogo — bebidas y precios\n"
+               "/direccion [nueva dirección] — ver o cambiar tu dirección de envío\n"
+               "/cancelar — descartar un pedido que espera tu dirección\n"
+               "/mispedidos — tus últimos pedidos\n/miid — tu ID")
         if self.is_admin(user.id):
             msg += ("\n\n<b>Administrador</b>\n"
                     "/stock [texto] — consultar stock (todo o filtrado)\n"
@@ -190,16 +220,22 @@ class BotService:
         if not products:
             return [Outgoing(user.id, "El catálogo está vacío por ahora.")]
         today = self.today()
-        rows = ["<b>Catálogo</b>"]
+        rows = ["<b>Catálogo de bebidas</b>"]
+        category = None
         for p in products:
+            if p.category != category:
+                category = p.category
+                rows += ["", f"<b>{esc(category or 'Otras')}</b>"]
             price = self.money(p.price) if p.price_is_valid(today) else "precio a confirmar"
             avail = "✅" if p.stock > 0 else "❌ sin stock"
             rows.append(f"• {esc(p.name)} — {price} {avail}")
+        rows += ["", "🚚 Envío incluido, sin costo."]
         return [Outgoing(user.id, "\n".join(rows))]
 
     def cmd_my_orders(self, user, args):
         try:
-            orders = [o for o in self.repo.list_orders() if o.customer_id == user.id]
+            orders = [o for o in self.repo.list_orders()
+                      if o.customer_id == user.id and o.channel == user.channel]
         except StorageError as exc:
             return self._storage_failure(user, exc, "listar pedidos")
         if not orders:
@@ -209,6 +245,84 @@ class BotService:
             rows.append(f"• <code>{esc(o.order_id)}</code> {esc(o.created_at)} — "
                         f"{self.money(o.total)} — {esc(o.status)}")
         return [Outgoing(user.id, "\n".join(rows))]
+
+    # ---- dirección de envío ----
+    def cmd_address(self, user, args):
+        new = " ".join(args).strip()
+        try:
+            customer = self.repo.get_customer(user.channel, str(user.id))
+            if not new:
+                if customer and customer.address:
+                    return [Outgoing(user.id, f"📍 Tu dirección de envío es:\n<b>{esc(customer.address)}</b>\n\n"
+                                              "Para cambiarla: /direccion nueva dirección")]
+                return [Outgoing(user.id, "Todavía no tenés dirección guardada.\n"
+                                          "Cargala así: /direccion Av. Mate de Luna 1234, San Miguel de Tucumán")]
+            pending = self._pending_order(user)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "consultar la dirección")
+        if pending is not None:
+            return self.receive_address(user, new, pending)
+        problem = self._address_problem(new)
+        if problem:
+            return [Outgoing(user.id, problem)]
+        try:
+            self._save_address(user, new)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "guardar la dirección")
+        return [Outgoing(user.id, f"📍 Listo, tus próximos pedidos van a:\n<b>{esc(new)}</b>")]
+
+    def cmd_cancel(self, user, args):
+        try:
+            pending = self._pending_order(user)
+            if pending is None:
+                return [Outgoing(user.id, "No tenés ningún pedido esperando dirección.")]
+            self.repo.clear_pending_order(user.channel, str(user.id))
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "cancelar el pedido pendiente")
+        return [Outgoing(user.id, "Listo, descarté ese pedido. Cuando quieras, mandame uno nuevo.")]
+
+    def _pending_order(self, user: User) -> str | None:
+        """Mensaje del pedido retenido esperando dirección (None si no hay o venció)."""
+        found = self.repo.get_pending_order(user.channel, str(user.id))
+        if found is None:
+            return None
+        text, created = found
+        try:
+            created_at = datetime.strptime(created, "%Y-%m-%d %H:%M:%S").replace(tzinfo=self.tz)
+        except ValueError:
+            created_at = None
+        if created_at is None or self.now() - created_at > PENDING_TTL:
+            self.repo.clear_pending_order(user.channel, str(user.id))
+            return None
+        return text
+
+    @staticmethod
+    def _address_problem(address: str) -> str | None:
+        if len(address) < MIN_ADDRESS_LEN or not any(ch.isalpha() for ch in address):
+            return ("Esa dirección parece incompleta 🤔. Mandame calle, número y localidad, por ejemplo:\n"
+                    "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n(o /cancelar para descartar el pedido)")
+        if len(address) > MAX_ADDRESS_LEN:
+            return f"La dirección es muy larga (máximo {MAX_ADDRESS_LEN} caracteres)."
+        return None
+
+    def _save_address(self, user: User, address: str) -> Customer:
+        return self.repo.save_customer(Customer(user.channel, str(user.id), user.name, address.strip()),
+                                       self.stamp())
+
+    def receive_address(self, user: User, address: str, pending_text: str) -> list[Outgoing]:
+        """El cliente respondió con su dirección: se guarda y se procesa el pedido retenido."""
+        address = address.strip()
+        problem = self._address_problem(address)
+        if problem:
+            return [Outgoing(user.id, problem)]
+        try:
+            self._save_address(user, address)
+            self.repo.clear_pending_order(user.channel, str(user.id))
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "guardar la dirección")
+        out = [Outgoing(user.id, f"📍 Guardé tu dirección: <b>{esc(address)}</b>\n"
+                                 "(podés cambiarla cuando quieras con /direccion)")]
+        return out + self.process_order(user, pending_text)
 
     # ---- admin: stock ----
     def cmd_stock(self, user, args):
@@ -382,7 +496,7 @@ class BotService:
             if not items:
                 return [Outgoing(user.id,
                                  "No encontré un pedido en tu mensaje 🤔. Escribí productos y cantidades, "
-                                 "por ejemplo: <i>2 yerba, 3 azúcar</i>. Mirá /catalogo.")]
+                                 "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Mirá /catalogo.")]
             problems = self._clarifications(items)
             if problems:
                 return [Outgoing(user.id, "No pude registrar el pedido todavía:\n• " + "\n• ".join(problems)
@@ -391,12 +505,31 @@ class BotService:
             pairs = [(it.product, it.qty) for it in items if it.product and it.qty]
             unknown = [it.unknown_name for it in items if it.error == "no_existe"]  # solo modo "review"
 
-            # Etapa 3: regla de parámetros.
+            # Etapa 3: dirección obligatoria. Sin dirección no se registra nada:
+            # el pedido queda retenido y se le pide la dirección al cliente.
+            try:
+                customer = self.repo.get_customer(user.channel, str(user.id))
+                if customer is None or not customer.address:
+                    self.repo.set_pending_order(user.channel, str(user.id), text, self.stamp())
+                    return [Outgoing(user.id,
+                                     "📍 ¡Casi listo! ¿A qué dirección te lo enviamos? "
+                                     "<b>El envío está incluido, sin costo.</b>\n"
+                                     "Respondé con calle, número y localidad, por ejemplo:\n"
+                                     "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n"
+                                     "(o /cancelar para descartar el pedido)")]
+                if customer.name != user.name:  # mantener el nombre al día
+                    customer.name = user.name
+                    self.repo.save_customer(customer, self.stamp())
+            except StorageError as exc:
+                return self._storage_failure(user, exc, "leer los datos del cliente")
+
+            # Etapa 4: regla de parámetros.
             ev = evaluate(pairs, self.s.rules, self.today(), unknown)
             now = self.stamp()
             order = Order(order_id=self._new_order_id(), created_at=now, customer_id=user.id,
                           customer_name=user.name, original_text=text, lines=ev.lines,
-                          status=ev.status, reason="; ".join(ev.reasons), updated_at=now)
+                          status=ev.status, reason="; ".join(ev.reasons), updated_at=now,
+                          address=customer.address, shipping_cost=COSTO_ENVIO, channel=user.channel)
 
             try:
                 if order.status == ESTADO_CONFIRMADO:
@@ -406,7 +539,7 @@ class BotService:
             except StorageError as exc:
                 return self._storage_failure(user, exc, "registrar un pedido")
 
-        # Etapa 4: avisos.
+        # Etapa 5: avisos.
         if order.status == ESTADO_CONFIRMADO:
             return [Outgoing(user.id, self.format_order(order, "✅ <b>¡Pedido confirmado!</b>"))]
         client_msg = self.format_order(order, "🟡 <b>Recibimos tu pedido</b>") + \
@@ -452,7 +585,7 @@ class BotService:
                 for l in order.lines:
                     p = products.get(l.sku.upper())
                     if p is None:
-                        blockers.append(f"{esc(l.name)}: ya no existe en la hoja de stock.")
+                        blockers.append(f"{esc(l.name)}: ya no existe en el catálogo.")
                         continue
                     if p.stock < l.qty:
                         blockers.append(f"{esc(p.name)}: hay {self.qty(p.stock)}, se piden {l.qty}. "

@@ -1,28 +1,33 @@
 """
-Interfaz común de almacenamiento + utilidades para convertir filas <-> objetos.
+Interfaz común de almacenamiento + utilidades de conversión de valores.
 
-Hay dos implementaciones:
-  - GoogleSheetsRepository (producción): dos hojas de cálculo de Google separadas.
-  - ExcelRepository (pruebas locales sin credenciales): dos archivos .xlsx.
-Ambas usan exactamente las mismas columnas, así el resto del bot no sabe
-(ni le importa) dónde están guardados los datos.
+La implementación es SQLiteRepository (app/storage/sqlite.py). El resto del
+bot solo conoce esta interfaz, así que el día de mañana se puede cambiar de
+motor (por ejemplo a PostgreSQL) sin tocar service.py.
 """
 from __future__ import annotations
 
-import json
 from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
 
-from ..models import ORDER_COLUMNS, STOCK_COLUMNS, Order, OrderLine, Product
+from ..models import Customer, Order, OrderLine, Product
 
 
 class StorageError(Exception):
-    """No se pudo leer o escribir una hoja (red, permisos, hoja mal armada...)."""
+    """No se pudo leer o escribir en la base de datos."""
 
 
 class Repository(ABC):
+    # ---- productos ----
     @abstractmethod
     def list_products(self) -> list[Product]: ...
+
+    @abstractmethod
+    def get_product(self, sku: str) -> Product | None: ...
+
+    @abstractmethod
+    def upsert_product(self, product: Product, stamp: str) -> None:
+        """Da de alta un producto o reemplaza sus datos si el SKU ya existe."""
 
     @abstractmethod
     def set_stock(self, sku: str, new_stock: float, stamp: str) -> Product: ...
@@ -34,32 +39,46 @@ class Repository(ABC):
     @abstractmethod
     def set_price(self, sku: str, price: float, valid_until: date | None, stamp: str) -> Product: ...
 
+    # ---- clientes ----
+    @abstractmethod
+    def get_customer(self, channel: str, external_id: str) -> Customer | None: ...
+
+    @abstractmethod
+    def save_customer(self, customer: Customer, stamp: str) -> Customer:
+        """Alta o actualización (nombre y dirección) del cliente."""
+
+    # ---- pedido esperando la dirección del cliente ----
+    @abstractmethod
+    def set_pending_order(self, channel: str, external_id: str, text: str, stamp: str) -> None: ...
+
+    @abstractmethod
+    def get_pending_order(self, channel: str, external_id: str) -> tuple[str, str] | None:
+        """Devuelve (mensaje, fecha) del pedido retenido, o None."""
+
+    @abstractmethod
+    def clear_pending_order(self, channel: str, external_id: str) -> None: ...
+
+    # ---- pedidos ----
     @abstractmethod
     def add_order(self, order: Order) -> None: ...
 
     @abstractmethod
-    def list_orders(self) -> list[Order]: ...
+    def list_orders(self) -> list[Order]:
+        """Todos los pedidos, del más viejo al más nuevo."""
+
+    @abstractmethod
+    def get_order(self, order_id: str) -> Order | None: ...
 
     @abstractmethod
     def update_order_status(self, order_id: str, status: str, reason: str,
                             reviewed_by: str, stamp: str,
                             lines: list[OrderLine] | None = None) -> Order:
-        """Cambia el estado. Si se pasan `lines`, reescribe también Detalle, Items_JSON y Total
+        """Cambia el estado. Si se pasan `lines`, reescribe también los renglones y el total
         (se usa cuando el admin aprueba con precios actualizados)."""
-
-    # Helpers que usan los métodos anteriores
-    def get_product(self, sku: str) -> Product | None:
-        sku = sku.strip().upper()
-        return next((p for p in self.list_products() if p.sku.upper() == sku), None)
-
-    def get_order(self, order_id: str) -> Order | None:
-        order_id = order_id.strip().upper()
-        return next((o for o in self.list_orders() if o.order_id.upper() == order_id), None)
 
 
 # ---------------------------------------------------------------------------
-# Conversión de valores de celda. Las hojas pueden devolver números como
-# texto ("1.234,50"), fechas como texto o como fecha, booleanos como "SI", etc.
+# Conversión de valores escritos por personas (comandos del admin, CSV).
 # ---------------------------------------------------------------------------
 
 def to_number(value) -> float | None:
@@ -91,7 +110,7 @@ def to_date(value) -> date | None:
     if isinstance(value, date):
         return value
     if isinstance(value, (int, float)):
-        # Número de serie de fecha de hojas de cálculo (días desde 1899-12-30)
+        # Número de serie de fecha de planillas (días desde 1899-12-30)
         return date(1899, 12, 30) + timedelta(days=int(value))
     text = str(value).strip()
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S"):
@@ -110,98 +129,4 @@ def to_bool(value, default: bool = True) -> bool:
     return str(value).strip().lower() in {"si", "sí", "s", "true", "1", "yes", "y", "x", "verdadero"}
 
 
-def check_header(header: list, expected: list[str], sheet_name: str) -> dict[str, int]:
-    """Valida que estén todas las columnas y devuelve {columna: índice}."""
-    normalized = [str(h).strip() for h in header]
-    missing = [c for c in expected if c not in normalized]
-    if missing:
-        raise StorageError(
-            f"La hoja '{sheet_name}' no tiene las columnas: {', '.join(missing)}. "
-            f"Encabezado esperado (fila 1): {' | '.join(expected)}"
-        )
-    return {c: normalized.index(c) for c in expected}
-
-
-def row_to_product(values: list, idx: dict[str, int], row_number: int) -> Product | None:
-    def cell(col):
-        i = idx[col]
-        return values[i] if i < len(values) else ""
-
-    sku = str(cell("SKU")).strip()
-    name = str(cell("Producto")).strip()
-    if not sku or not name:
-        return None  # fila vacía
-    try:
-        valid_until = to_date(cell("Vigente_hasta"))
-    except ValueError:
-        valid_until = date.min  # fecha ilegible → se trata como precio NO vigente
-    aliases = [a.strip() for a in str(cell("Alias") or "").split(",") if a.strip()]
-    return Product(
-        sku=sku,
-        name=name,
-        aliases=aliases,
-        stock=to_number(cell("Stock")) or 0.0,
-        price=to_number(cell("Precio")) or 0.0,
-        valid_until=valid_until,
-        active=to_bool(cell("Activo"), default=True),
-        row=row_number,
-    )
-
-
-def order_to_row(order: Order) -> list:
-    detail = "; ".join(f"{l.qty} x {l.name} ({l.sku}) @ {l.unit_price:.2f} = {l.subtotal:.2f}"
-                       for l in order.lines)
-    items_json = json.dumps([l.to_dict() for l in order.lines], ensure_ascii=False)
-    values = {
-        "Pedido_ID": order.order_id,
-        "Fecha": order.created_at,
-        "Cliente_ID": str(order.customer_id),
-        "Cliente_nombre": order.customer_name,
-        "Mensaje_original": order.original_text,
-        "Detalle": detail,
-        "Items_JSON": items_json,
-        "Total": order.total,
-        "Estado": order.status,
-        "Motivo": order.reason,
-        "Actualizado": order.updated_at or order.created_at,
-        "Revisado_por": order.reviewed_by,
-    }
-    return [values[c] for c in ORDER_COLUMNS]
-
-
-def row_to_order(values: list, idx: dict[str, int], row_number: int) -> Order | None:
-    def cell(col):
-        i = idx[col]
-        return values[i] if i < len(values) else ""
-
-    order_id = str(cell("Pedido_ID")).strip()
-    if not order_id:
-        return None
-    try:
-        lines = [OrderLine.from_dict(d) for d in json.loads(str(cell("Items_JSON")) or "[]")]
-    except (ValueError, KeyError, TypeError):
-        lines = []
-    try:
-        customer_id = int(float(str(cell("Cliente_ID")).strip() or 0))
-    except ValueError:
-        customer_id = 0
-    return Order(
-        order_id=order_id,
-        created_at=str(cell("Fecha")),
-        customer_id=customer_id,
-        customer_name=str(cell("Cliente_nombre")),
-        original_text=str(cell("Mensaje_original")),
-        lines=lines,
-        status=str(cell("Estado")).strip().upper(),
-        reason=str(cell("Motivo")),
-        updated_at=str(cell("Actualizado")),
-        reviewed_by=str(cell("Revisado_por")),
-        row=row_number,
-    )
-
-
-__all__ = [
-    "Repository", "StorageError", "STOCK_COLUMNS", "ORDER_COLUMNS",
-    "to_number", "to_date", "to_bool", "check_header",
-    "row_to_product", "order_to_row", "row_to_order",
-]
+__all__ = ["Repository", "StorageError", "to_number", "to_date", "to_bool"]

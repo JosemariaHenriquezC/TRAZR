@@ -2,17 +2,17 @@
 Intérprete de mensajes de pedido en lenguaje natural (versión por reglas).
 
 Entiende mensajes como:
-    "Hola, quiero 2 yerba y 3 azúcar"
-    "mandame 10 aceite, 1 docena de huevos"
-    "harina x 4"
-    "dos fideos\n1 arroz"
+    "Hola, quiero 2 coca y 3 agua sin gas"
+    "mandame 10 cerveza, 1 docena de jugos"
+    "sprite x 4"
+    "dos fanta\n1 fernet"
 
 Cómo funciona:
   1. Normaliza (minúsculas, sin tildes) y separa en renglones por coma, ";",
      salto de línea o " y " seguido de una cantidad.
   2. En cada renglón busca la cantidad (número o palabra: "dos", "docena"...).
-  3. Busca el producto comparando contra Producto, Alias y SKU de la hoja de
-     stock, tolerando plurales y errores de tipeo (difflib).
+  3. Busca el producto comparando contra Producto, Alias y SKU del catálogo,
+     tolerando plurales y errores de tipeo (difflib).
   4. Si dos productos se parecen casi igual → "ambiguo" (se le pregunta al cliente).
 
 Está aislado en este módulo a propósito: si más adelante se quiere usar un

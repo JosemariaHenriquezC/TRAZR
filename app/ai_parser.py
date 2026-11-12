@@ -16,7 +16,7 @@ Cómo trabaja (híbrido IA + reglas):
      TODO el mensaje lo interpreta el parser por reglas.
 
 La IA solo interpreta texto: nunca ve ni decide precios, stock ni estados.
-Eso lo siguen haciendo la hoja y rules.py.
+Eso lo siguen haciendo la base de datos y rules.py.
 """
 from __future__ import annotations
 
@@ -40,8 +40,8 @@ log = logging.getLogger(__name__)
 
 MODELO_POR_DEFECTO = "gemini-3.5-flash-lite"
 
-SYSTEM_PROMPT = """Sos el intérprete de pedidos de una distribuidora de bebidas y \
-consumo masivo del NOA argentino. Recibís el mensaje de un cliente y el catálogo.
+SYSTEM_PROMPT = """Sos el intérprete de pedidos de una distribuidora de bebidas \
+del NOA argentino. Recibís el mensaje de un cliente y el catálogo.
 Tu única tarea es extraer qué productos y cuántas unidades pide.
 
 Reglas:

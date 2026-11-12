@@ -1,1 +1,1 @@
-"""Bot de Telegram para gestión de stock y pedidos sobre dos hojas de cálculo."""
+"""Bot de pedidos de bebidas (Telegram) con catálogo, clientes y pedidos en SQLite."""

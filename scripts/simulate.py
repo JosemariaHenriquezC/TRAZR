@@ -1,5 +1,5 @@
 """
-Simulador de consola: probá el bot SIN Telegram (misma lógica, mismas hojas).
+Simulador de consola: probá el bot SIN Telegram (misma lógica, misma base de datos).
 
     python -m scripts.simulate
 
