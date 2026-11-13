@@ -170,6 +170,13 @@ solo. Para verlo o editarlo a mano: [DB Browser for SQLite](https://sqlitebrowse
 | `admins` | usuarios de la web: usuario, nombre, hash de la contraseña, activo |
 | `eventos` | qué pasó en cada conversación (mensaje, botón, resumen, pedido registrado…), con demora; nunca el texto |
 
+**Categorías.** Las de un mayorista de bebidas de Tucumán (`app/categorias.py`): Vinos, Vinos
+Blancos/Rosados, Espumante, Whisky, Gin, Vodka, Ron, Cervezas, Fernet, Aperitivos, Licores, Sin
+Alcohol (gaseosas, aguas, jugos), Energizantes, Combos y Regalería. La web las ofrece al cargar un
+producto. En el chat, con más de 15 productos el catálogo se muestra por grupos (una lista de
+WhatsApp admite hasta 10 opciones): Vinos y espumantes · Cervezas · Fernet y aperitivos ·
+Whisky, gin, vodka, ron · Licores · Sin alcohol · Combos y regalería.
+
 **Cajas, packs y fardos.** Cada presentación es un producto con su propia caja (unidades por caja
 y cómo se llama), que se carga en la web (Productos → Editar) o en el CSV. Stock y precio siguen en
 unidades. Si el cliente pide «2 packs de coca» y el pack trae 6, el bot anota 12; si pide 25 y la

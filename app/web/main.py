@@ -25,6 +25,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from ..admin import LOW_STOCK
+from ..categorias import CATEGORIAS
 from ..config import Settings
 from ..models import ESTADO_CANCELADO, ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION, Product
 from ..notifier import Notifier
@@ -272,7 +273,8 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             items = [p for p in items if q_norm in p.name.lower() or q_norm in p.sku.lower()
                      or any(q_norm in a.lower() for a in p.aliases)]
         editing = svc.repo.get_product(editar) if editar else None
-        categories = sorted({p.category for p in svc.repo.list_products() if p.category})
+        categories = CATEGORIAS + sorted({p.category for p in svc.repo.list_products()
+                                          if p.category and p.category not in CATEGORIAS})
         return render(request, "productos.html", admin, products=items, filtro=filtro, q=q, counts=counts,
                       total=len(svc.repo.list_products()), editing=editing, new=bool(nuevo),
                       categories=categories, page="productos")

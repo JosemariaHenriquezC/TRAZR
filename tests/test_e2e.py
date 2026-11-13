@@ -199,5 +199,5 @@ def test_comandos_cliente(svc, repo):
     assert "Tus últimos pedidos" in svc.handle_message(CLIENT, "/mispedidos")[0].text
     cat = plain(svc.handle_message(CLIENT, "/catalogo")[0].text)
     assert "Vino Tinto Malbec" not in cat and "sin stock" not in cat and "Fernet 750ml — $ 12.000" in cat
-    assert "Gaseosas" in cat and "Envío incluido, sin costo" in cat
+    assert "Sin Alcohol" in cat and "Envío incluido, sin costo" in cat
 

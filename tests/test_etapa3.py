@@ -144,9 +144,12 @@ def test_dias_de_reparto_desde_el_env(monkeypatch):
 # ---------------------------------------------------------------- catálogo por categorías
 def _catalogo_grande(repo):
     from app.models import Product
-    for i in range(8):
-        repo.upsert_product(Product(f"GAS{i}", f"Gaseosa Sabor {i} 2L", [f"sabor {i}"], 20, 2500, True, "Gaseosas"),
-                            "2026-01-01 00:00:00")
+    nuevos = [("WHI1", "Whisky Escocés 750ml", "Whisky"), ("GIN1", "Gin London Dry 700ml", "Gin"),
+              ("VOD1", "Vodka 700ml", "Vodka"), ("RON1", "Ron Blanco 750ml", "Ron"),
+              ("LIC1", "Licor de Café 700ml", "Licores"), ("ESP1", "Espumante Extra Brut 750ml", "Espumante"),
+              ("COM1", "Combo Fernet + 2 Cocas", "Combos"), ("REG1", "Estuche Malbec x2", "Regalería")]
+    for sku, name, cat in nuevos:
+        repo.upsert_product(Product(sku, name, [], 20, 9000, True, cat), "2026-01-01 00:00:00")
 
 
 def test_catalogo_chico_va_entero(svc):
@@ -155,22 +158,28 @@ def test_catalogo_chico_va_entero(svc):
     assert labels(out) == []
 
 
-def test_catalogo_grande_primero_las_categorias(svc, repo):
+def test_catalogo_grande_primero_los_grupos(svc, repo):
     _catalogo_grande(repo)
     out = svc.handle_message(CLIENT, "catálogo")
     txt = plain(out[0].text)
-    assert "¿Qué querés ver?" in txt and "• Gaseosas (11)" in txt and "Vinos" not in txt   # lo agotado no se nombra
-    assert labels(out)[:2] == ["Aguas", "Aperitivos"] and out[0].menu_label == "Ver categorías"
-    out = svc.handle_callback(CLIENT, button(out, "cc:gaseosas"))
+    assert "¿Qué querés ver?" in txt and "• Whisky, gin, vodka, ron (4)" in txt
+    assert "Vinos y espumantes (1)" in txt                     # el Malbec está agotado: solo el espumante
+    assert labels(out) == ["Vinos y espumantes", "Cervezas", "Fernet y aperitivos", "Whisky, gin, vodka, ron",
+                           "Licores", "Sin alcohol", "Combos y regalería"]
+    assert out[0].menu_label == "Ver categorías"
+    out = svc.handle_callback(CLIENT, button(out, "cc:whisky gin vodka ron"))
     txt = plain(out[0].text)
-    assert txt.startswith("Gaseosas") and "Gaseosa Sabor 3 2L" in txt and "Agua" not in txt
+    assert txt.startswith("Whisky, gin, vodka, ron") and "Gin London Dry" in txt and "Ron Blanco" in txt
+    assert txt.index("Whisky Escocés") < txt.index("Gin London") < txt.index("Vodka 700") < txt.index("Ron Blanco")
     assert labels(out) == ["📋 Otra categoría"]
 
 
-def test_escribir_la_categoria_la_muestra(svc, repo):
+@pytest.mark.parametrize("texto,esperado", [("gin", "Gin London Dry"), ("Sin alcohol", "Coca-Cola 2.25L"),
+                                            ("regalería", "Estuche Malbec x2")])
+def test_escribir_la_categoria_o_el_grupo_lo_muestra(svc, repo, texto, esperado):
     _catalogo_grande(repo)
-    out = svc.handle_message(CLIENT, "Gaseosas")
-    assert "Gaseosa Sabor 0 2L" in plain(out[0].text)
+    out = svc.handle_message(CLIENT, texto)
+    assert esperado in plain(out[0].text)
 
 
 def test_en_whatsapp_las_categorias_van_como_lista(svc, repo):
@@ -179,7 +188,16 @@ def test_en_whatsapp_las_categorias_van_como_lista(svc, repo):
     [m] = svc.handle_message(CLIENT, "catálogo")
     [p] = build_payloads(m)
     assert p["interactive"]["type"] == "list" and p["interactive"]["action"]["button"] == "Ver categorías"
-    assert len(p["interactive"]["action"]["sections"][0]["rows"]) <= 10
+    rows = p["interactive"]["action"]["sections"][0]["rows"]
+    assert len(rows) <= 10 and all(len(r["title"]) <= 24 for r in rows)
+
+
+def test_categorias_y_grupos():
+    from app.categorias import CATEGORIAS, GRUPOS, grupo_de
+    assert len(CATEGORIAS) == 15 and len(GRUPOS) <= 10 and all(len(n) <= 24 for n, _ in GRUPOS)
+    agrupadas = [c for _, cats in GRUPOS for c in cats]
+    assert sorted(agrupadas) == sorted(CATEGORIAS)            # cada categoría en un solo grupo
+    assert grupo_de("regaleria") == "Combos y regalería" and grupo_de("Cervezas artesanales") == "Cervezas artesanales"
 
 
 # ---------------------------------------------------------------- un mensaje por paso

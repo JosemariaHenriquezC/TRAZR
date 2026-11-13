@@ -23,7 +23,10 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - `scripts/init_db.py` — crea la base y carga el catálogo (`--ejemplo` o `--csv`)
 
 ## Reglas del proyecto
-- Catálogo solo de bebidas.
+- Catálogo solo de bebidas. Categorías = la división de un mayorista de Tucumán (`app/categorias.py`,
+  15: Vinos, Vinos Blancos/Rosados, Espumante, Whisky, Gin, Vodka, Ron, Cervezas, Fernet, Aperitivos,
+  Licores, Sin Alcohol, Energizantes, Combos, Regalería). En el chat se agrupan en 7 GRUPOS (lista de
+  WhatsApp ≤ 10 opciones, títulos ≤ 24); escribir un grupo o una categoría la muestra.
 - Gemini interpreta y redacta, pero NUNCA pone números: precios, stock, totales y estados
   salen de la base y de rules.py (`respuesta_segura` descarta textos con plata o "confirmado").
 - `service.py` no debe depender de Telegram: va a sumarse WhatsApp. Los clientes se

@@ -29,7 +29,8 @@ def test_los_datos_persisten_al_reabrir(tmp_path):
 
 def test_catalogo_solo_bebidas():
     cats = {p.category for p in sample_products()}
-    assert cats == {"Gaseosas", "Aguas", "Cervezas", "Vinos", "Aperitivos", "Jugos", "Energizantes"}
+    from app.categorias import CATEGORIAS
+    assert cats <= set(CATEGORIAS)        # la división del mayorista (app/categorias.py)
 
 
 def test_pedido_sin_direccion_rechazado_por_la_base(repo):
