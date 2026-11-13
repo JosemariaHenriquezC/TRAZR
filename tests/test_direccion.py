@@ -20,9 +20,9 @@ def draft(repo, user):
 def test_cliente_con_direccion_ve_resumen_y_nada_se_registra_hasta_confirmar(svc, repo):
     out = svc.handle_message(CLIENT, "2 coca y 1 sprite")
     txt = plain(out[0].text)
-    assert "Revisá tu pedido" in txt and "2 × Coca-Cola 2.25L — $ 3.200,00 c/u = $ 6.400,00" in txt
-    assert f"Dirección: {CLIENT_ADDRESS}" in txt and "Envío: incluido, sin costo" in txt
-    assert "Total: $ 9.400,00" in txt and "¿Lo confirmo?" in txt
+    assert "Revisá tu pedido" in txt and "2 × Coca-Cola 2.25L — $ 3.200 c/u = $ 6.400" in txt
+    assert f"Dirección: {CLIENT_ADDRESS}" in txt and "envío incluido, sin costo" in txt
+    assert "Total: $ 9.400" in txt and "¿Lo confirmo?" in txt
     assert [t for t, _ in out[0].buttons] == ["✅ Confirmar", "📍 Cambiar dirección", "❌ Cancelar"]
     assert repo.list_orders() == [] and repo.get_product("COC1").stock == 50
 
@@ -67,7 +67,7 @@ def test_botones_viejos_no_sirven(svc, repo):
 
 def test_resumen_avisa_si_va_a_quedar_en_revision(svc, repo):
     txt = plain(svc.handle_message(CLIENT, "1 fernet")[0].text)
-    assert "1 × Fernet 750ml — $ 12.000,00" in txt
+    assert "1 × Fernet 750ml — $ 12.000" in txt
     assert "Si lo confirmás, queda en revisión" in txt and "supera el máximo automático" in txt
 
 
@@ -110,14 +110,14 @@ def test_cliente_sin_direccion_la_pide_y_despues_muestra_el_resumen(svc, repo):
 
     out = svc.handle_message(NUEVO, DIR)
     txt = plain(out[0].text)
-    assert f"va a {DIR}" in txt and "Revisá tu pedido" in txt and "Total: $ 9.400,00" in txt
+    assert f"va a {DIR}" in txt and "Revisá tu pedido" in txt and "Total: $ 9.400" in txt
     assert repo.get_customer("telegram", str(NUEVO.id)).address == DIR
     assert repo.list_orders() == []  # todavía falta confirmar
 
     out = svc.handle_callback(NUEVO, button(out, "cf:"))
     assert "¿Cómo lo vas a pagar?" in plain(out[0].text) and repo.list_orders() == []
     out = svc.handle_callback(NUEVO, button(out, "pt:"))
-    assert "TRAZR.BEBIDAS.TUC" in plain(out[0].text) and "Transferí $ 9.400,00" in plain(out[0].text)
+    assert "TRAZR.BEBIDAS.TUC" in plain(out[0].text) and "Transferí $ 9.400" in plain(out[0].text)
     o = repo.list_orders()[-1]
     assert "¡Pedido completado!" in plain(out[0].text) and o.address == DIR and o.shipping_cost == 0
     assert o.payment_method == "transferencia" and o.payment_status == "pendiente"

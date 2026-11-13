@@ -49,6 +49,27 @@ def _float(name: str, default: float) -> float:
         raise ConfigError(f"{name} debe ser un número (valor actual: {raw!r})") from exc
 
 
+DAY_NAMES = {"lun": 0, "mar": 1, "mie": 2, "mié": 2, "jue": 3, "vie": 4, "sab": 5, "sáb": 5, "dom": 6}
+
+
+def _days(name: str, default: tuple[int, ...]) -> tuple[int, ...]:
+    """«lun-sab» o «lun,mar,mie,jue,vie,sab» → (0, 1, 2, 3, 4, 5)."""
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    try:
+        days: set[int] = set()
+        for part in raw.replace(" ", "").split(","):
+            if "-" in part:
+                a, b = (DAY_NAMES[x[:3]] for x in part.split("-", 1))
+                days.update(range(a, b + 1))
+            else:
+                days.add(DAY_NAMES[part[:3]])
+        return tuple(sorted(days))
+    except KeyError as exc:
+        raise ConfigError(f"{name} debe ser días como «lun-sab» o «lun,mie,vie» (valor actual: {raw!r})") from exc
+
+
 def _delays(name: str, default: tuple[float, ...]) -> tuple[float, ...]:
     raw = os.getenv(name, "").strip()
     if not raw:
@@ -94,7 +115,7 @@ class Rules:
 # Tienda ficticia de ejemplo: se usa si el .env no define los NEGOCIO_*.
 TRAZR = {
     "NEGOCIO_NOMBRE": "Trazr",
-    "NEGOCIO_HORARIOS": ("lunes a viernes de 9 a 20 y sábados de 9 a 14; domingos y feriados cerrado. "
+    "NEGOCIO_HORARIOS": ("lunes a sábado de 9 a 13 y de 17 a 21; domingos y feriados cerrado. "
                          "Los pedidos confirmados antes de las 13 se entregan en el día; "
                          "después de las 13, el siguiente día hábil."),
     "NEGOCIO_ZONA": "San Miguel de Tucumán, Yerba Buena, Tafí Viejo y Banda del Río Salí",
@@ -119,7 +140,8 @@ class Business:
     transfer_alias: str = "TRAZR.BEBIDAS.TUC"          # alias para transferencias (de ejemplo)
     transfer_holder: str = "Trazr Distribuidora (cuenta de ejemplo)"
     open_hour: int = 9           # horario de atención (para el tablero «el día en reparto»)
-    close_hour: int = 20
+    close_hour: int = 21
+    delivery_days: tuple[int, ...] = (0, 1, 2, 3, 4, 5)   # días que se reparte (0 = lunes … 6 = domingo)
     cutoff_hour: int = 13        # lo confirmado antes de esta hora sale en el día
     contact: str = ""            # mail o teléfono de contacto (página de privacidad)
 
@@ -233,7 +255,8 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             transfer_alias=os.getenv("NEGOCIO_ALIAS", "TRAZR.BEBIDAS.TUC").strip(),
             transfer_holder=os.getenv("NEGOCIO_TITULAR", "Trazr Distribuidora (cuenta de ejemplo)").strip(),
             open_hour=_int("NEGOCIO_HORA_APERTURA", 9),
-            close_hour=_int("NEGOCIO_HORA_CIERRE", 20),
+            close_hour=_int("NEGOCIO_HORA_CIERRE", 21),
+            delivery_days=_days("NEGOCIO_DIAS_REPARTO", (0, 1, 2, 3, 4, 5)),
             cutoff_hour=_int("NEGOCIO_HORA_CORTE", 13),
             contact=os.getenv("NEGOCIO_CONTACTO", "").strip(),
         ),

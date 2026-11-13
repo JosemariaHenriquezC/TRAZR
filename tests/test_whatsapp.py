@@ -224,7 +224,7 @@ class FakeGraphWindow(FakeGraph):
 
 def _aviso(**kw):
     return Outgoing(int(WA), "✅ <b>¡Tu pedido fue aprobado!</b>", channel="whatsapp",
-                    template=("pedido_aprobado", ["P1-AB", "$ 1.000,00"]), **kw)
+                    template=("pedido_aprobado", ["P1-AB", "$ 1.000"]), **kw)
 
 
 def test_aviso_sin_mensaje_reciente_va_con_plantilla():
@@ -235,7 +235,7 @@ def test_aviso_sin_mensaje_reciente_va_con_plantilla():
     [p] = graph.sent
     assert p["type"] == "template" and p["template"]["name"] == "trazr_pedido_aprobado"
     assert p["template"]["language"]["code"] == "es_AR"
-    assert [x["text"] for x in p["template"]["components"][0]["parameters"]] == ["P1-AB", "$ 1.000,00"]
+    assert [x["text"] for x in p["template"]["components"][0]["parameters"]] == ["P1-AB", "$ 1.000"]
 
 
 def test_aviso_con_mensaje_reciente_va_normal_y_si_meta_lo_rechaza_va_la_plantilla():

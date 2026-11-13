@@ -108,6 +108,12 @@ queda la de siempre). `/direccion nueva dirección` la cambia directamente.
 Otros detalles: cada pedido guarda su **copia** de la dirección; un borrador sin confirmar
 vence a las 24 h.
 
+**Saludo y «lo de siempre».** Un saludo («hola», «buenas») recibe la bienvenida por el nombre con
+[📋 Ver catálogo]; si ya compró, también [🔁 Lo de siempre], que arma su último pedido con los
+precios de hoy (también escribiendo «lo de siempre» o «lo mismo que la otra vez»). El resumen y el
+comprobante dicen cuándo sale: «hoy» si se confirma antes del corte (`NEGOCIO_HORA_CORTE`, 13 h)
+en un día de reparto (`NEGOCIO_DIAS_REPARTO`, lun-sab); si no, «mañana» o «el lunes 16/11».
+
 **Medio de pago en el resumen.** En el primer pedido, el bot pregunta cómo paga después de que el
 cliente confirma. Desde el segundo, el resumen ya muestra su medio de siempre («Pago: efectivo al
 recibir, como la última vez») con [✅ Confirmar] [💳 Cambiar pago] [❌ Cancelar]: confirmar deja

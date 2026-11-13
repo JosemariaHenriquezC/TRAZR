@@ -122,8 +122,15 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   último pedido; `confirm_draft` coloca el pedido si hay medio; botón cp: (`change_payment`);
   `_quick_answer` (sí/no/medio escrito/dirección suelta solo sin Gemini) antes de llamar a Gemini;
   palabras «cambiar dirección», «cambiar pago». Primer pedido y modificaciones: como antes. Set:
-  68 casos (pago-05..07). Falta de la etapa 3: «lo de siempre» (repetir último pedido), un mensaje
-  por paso / resumen compacto, «sale hoy» según el corte de las 13, saludo con nombre.
+  68 casos (pago-05..07).
+- ETAPA 3 COMPLETA: «lo de siempre» (`_wants_repeat` en service: frase corta sin cambios ni números →
+  `repeat_last_order`, precios de hoy, mismo resumen; con cambios → Gemini con la lista completa);
+  saludo (GREETINGS, con o sin Gemini, sin pisar un borrador) por nombre con botones
+  [📋 Ver catálogo] (ct:) y, si ya compró, [🔁 Lo de siempre] (rp:); `ship_day()` «hoy / mañana /
+  el lunes 16/11» según NEGOCIO_HORA_CORTE (13) y NEGOCIO_DIAS_REPARTO (lun-sab) en resumen y
+  comprobante; plata sin «,00»; comprobante compacto (fecha «13/11 10:22», sin «Estado» si hay
+  pago, «Total · envío incluido»). Horario nuevo (usuario): lunes a sábado 9–13 y 17–21
+  (TRAZR, NEGOCIO_HORA_CIERRE=21). Set: 74 casos; reglas 61/74.
   Detalle original: pendientes simples en el Draft
   (se arma con lo entendido, lo dudoso queda en Draft.pending; no se confirma con pendientes salvo
   «Seguir sin eso»; un número suelto completa el único pendiente), «un par» = 2 (parser + prompts),

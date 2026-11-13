@@ -327,9 +327,14 @@ class CheckoutMixin:
             else:
                 rows.append(f"• {l.qty} × {name} — {self.money(l.unit_price)} c/u = "
                             f"<b>{self.money(l.subtotal)}</b>")
-        rows += ["", "<b>Envío:</b> incluido, sin costo",
-                 f"<b>Dirección:</b> {esc(draft.address)}",
-                 f"<b>Total: {self.money(ev.total + COSTO_ENVIO)}</b>"]
+        rows += ["", f"<b>Dirección:</b> {esc(draft.address)}"]
+        if draft.payment and not draft.modifies and not draft.pending:
+            label = {"efectivo": "efectivo al recibir", "transferencia": "transferencia"}.get(draft.payment, draft.payment)
+            rows.append(f"<b>Pago:</b> {label} (como la última vez)")
+        rows.append(f"<b>Total: {self.money(ev.total + COSTO_ENVIO)}</b> · envío incluido, sin costo")
+        if not draft.modifies:
+            rows.append("🚚 Sale cuando lo apruebe el equipo." if ev.status == ESTADO_REVISION
+                        else f"🚚 Si lo confirmás ahora, sale <b>{self.ship_day()}</b>.")
         if ev.status == ESTADO_REVISION:
             rows += ["", "⚠️ Si lo confirmás, queda <b>en revisión</b> porque:"]
             rows += [f"• {esc(r)}" for r in ev.reasons]
@@ -341,10 +346,8 @@ class CheckoutMixin:
                              [("Seguir sin eso", f"sp:{t}"), ("📍 Cambiar dirección", f"cd:{t}"),
                               ("❌ Cancelar", f"cx:{t}")])]
         if draft.payment and not draft.modifies:
-            label = {"efectivo": "efectivo al recibir", "transferencia": "transferencia"}.get(draft.payment, draft.payment)
-            rows += [f"<b>Pago:</b> {label} (como la última vez)", "",
-                     "¿Lo confirmo? Respondé «sí» y queda hecho. Si va a otra dirección, mandámela; "
-                     "si querés cambiar algo, decime."]
+            rows += ["", "¿Lo confirmo? Respondé «sí» y queda hecho. Si va a otra dirección, mandámela; "
+                         "si querés cambiar algo, decime."]
             return [Outgoing(user.id, "\n".join(rows),
                              [("✅ Confirmar", f"cf:{t}"), ("💳 Cambiar pago", f"cp:{t}"),
                               ("❌ Cancelar", f"cx:{t}")])]
@@ -352,6 +355,32 @@ class CheckoutMixin:
         return [Outgoing(user.id, "\n".join(rows),
                          [("✅ Confirmar", f"cf:{t}"), ("📍 Cambiar dirección", f"cd:{t}"),
                           ("❌ Cancelar", f"cx:{t}")])]
+
+    # ----------------------------------------------------------- «lo de siempre»
+    def repeat_last_order(self, user) -> list:
+        """Arma el último pedido del cliente con los precios y el stock de hoy. Pasa por el
+        mismo resumen y la misma confirmación que cualquier pedido."""
+        try:
+            mine = [o for o in self.repo.list_orders()
+                    if o.customer_id == user.id and o.channel == user.channel and o.lines
+                    and o.status not in ("RECHAZADO",)]
+            products = {p.sku.upper(): p for p in self.repo.list_products()}
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "buscar tu último pedido")
+        if not mine:
+            return [Outgoing(user.id, "Todavía no tenés pedidos para repetir. Escribime lo que necesitás 🙂",
+                             [("📋 Ver catálogo", "ct:")])]
+        last = mine[-1]
+        items = []
+        for l in last.lines:
+            p = products.get(l.sku.upper())
+            if p is None or not p.active:
+                items.append(ParsedItem(raw=l.name, error="no_existe", unknown_name=l.name))
+            else:
+                items.append(ParsedItem(raw=f"{l.qty} {l.name}", qty=l.qty, product=p))
+        self._event(user, "repetir")
+        intro = f"Armé tu último pedido ({self.when(last.created_at)}) con los precios de hoy."
+        return self.start_order(user, "(repetir el último pedido)", items, intro=intro)
 
     # ----------------------------------------------------------- medio de pago habitual
     def _usual_payment(self, user) -> str:
@@ -798,7 +827,7 @@ class CheckoutMixin:
         tail = f"\n\n✏️ Si necesitás cambiar algo, avisame en los próximos {self.s.rules.modify_minutes} minutos."
         if order.status == ESTADO_CONFIRMADO:
             out = [Outgoing(user.id, self.format_order(order, "✅ <b>¡Pedido completado!</b> Queda pendiente de pago.")
-                            + self._payment_text(order) + tail)]
+                            + f"\n🚚 Sale <b>{self.ship_day()}</b>." + self._payment_text(order) + tail)]
         else:
             out = [Outgoing(user.id, self.format_order(order, "🟡 <b>Recibimos tu pedido</b>")
                             + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva"

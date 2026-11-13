@@ -382,6 +382,9 @@ Con cada mensaje del cliente (mirando la conversación y el borrador actual):
    - "cancelar": no quiere el borrador ("no", "dejá", "cancelá").
    - "cambiar_direccion": quiere que el borrador (o su último pedido) vaya a otra
      dirección. Si la dice, ponela completa en "direccion".
+   - Si quiere repetir un pedido anterior CON cambios ("lo mismo que la otra vez pero
+     sin fanta", "lo de siempre y 2 cocas más"), es "pedido" con la lista completa armada
+     a partir de ULTIMOS PEDIDOS DEL CLIENTE.
    - "cambio_pedido": NO hay borrador y quiere modificar un pedido YA HECHO
      (productos y/o dirección) o cancelarlo.
    - "consulta": pregunta precios, si hay un producto, qué tienen, horarios, zona,

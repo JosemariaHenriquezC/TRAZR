@@ -85,7 +85,7 @@ def test_consulta_de_precio_los_numeros_los_pone_el_bot(repo, settings):
                           "consulta_skus": ["FER1", "VIN1", "INVENTADO"]})
     txt = plain(_svc(repo, settings, models).handle_message(CLIENT, "tenés fernet y vino? a cuánto?")[0].text)
     assert txt.startswith("¡Sí! Mirá:")
-    assert "Fernet 750ml — $ 12.000,00 ✅ disponible" in txt
+    assert "Fernet 750ml — $ 12.000 ✅ disponible" in txt
     assert "Vino" not in txt and "sin stock" not in txt   # lo agotado ni se nombra (no se le pasa a Gemini)
     assert "INVENTADO" not in txt and repo.list_orders() == []
 
@@ -94,7 +94,7 @@ def test_si_gemini_escribe_precios_se_descarta_su_texto(repo, settings):
     models = _FakeModels({"intencion": "consulta", "respuesta": "La coca sale $100, re barata",
                           "consulta_skus": ["COC1"]})
     txt = plain(_svc(repo, settings, models).handle_message(CLIENT, "cuanto la coca")[0].text)
-    assert "$100" not in txt and "Coca-Cola 2.25L — $ 3.200,00" in txt
+    assert "$100" not in txt and "Coca-Cola 2.25L — $ 3.200" in txt
 
 
 def test_no_puede_dar_por_confirmado_un_pedido(repo, settings):

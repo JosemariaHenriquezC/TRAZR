@@ -88,7 +88,7 @@ def test_tablero(admin, svc, repo):
     pedir(svc, CLIENT, "1 fernet")
     t = text(admin.get("/"))
     assert "1 pedido espera tu decisión" in t
-    assert "Vendido hoy" in t and "$ 6.400,00" in t              # remito del día
+    assert "Vendido hoy" in t and "$ 6.400" in t              # remito del día
     assert "El día en reparto" in t and "corte" in t              # pedidos por hora y corte de entrega
     assert "supera el máximo automático" in t                     # cola de decisiones y avisos
     assert "Se está por acabar" in t and "Vino Tinto Malbec 750ml" in t and "Sin stock" in t
@@ -201,7 +201,7 @@ def test_alta_y_edicion_de_producto(admin, svc, repo):
 def test_clientes(admin, svc, repo):
     pedir(svc, CLIENT, "2 coca")
     t = text(admin.get("/clientes"))
-    assert CLIENT.name in t and "Av. Mate de Luna 1234" in t and "$ 6.400,00" in t
+    assert CLIENT.name in t and "Av. Mate de Luna 1234" in t and "$ 6.400" in t
     assert "Coca-Cola 2.25L" in t   # compra típica
     assert "No hay clientes que coincidan" in admin.get("/clientes?q=zzzz").text
 
@@ -225,7 +225,7 @@ def test_cobros_desde_el_tablero_y_cancelar_impago(admin, svc, repo, tg):
     pedir(svc, CLIENT, "2 coca", pago="transferencia")
     pedir(svc, CLIENT, "1 sprite")
     t = text(admin.get("/"))
-    assert "Por cobrar" in t and "$ 9.400,00" in t and "Pago recibido" in t      # remito + lista
+    assert "Por cobrar" in t and "$ 9.400" in t and "Pago recibido" in t      # remito + lista
     assert "Por cobrar · 2" in text(admin.get("/pedidos?estado=por_cobrar"))
     o1, o2 = repo.list_orders()
     r = admin.post(f"/pedidos/{o2.order_id}/pago", data={"csrf_token": csrf(admin.get("/").text), "volver": "/"},

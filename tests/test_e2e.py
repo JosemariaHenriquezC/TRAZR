@@ -22,11 +22,11 @@ def test_pedido_confirmado(svc, repo):
     assert len(out) == 1 and out[0].chat_id == CLIENT.id
     txt = plain(out[0].text)
     assert "¡Pedido completado! Queda pendiente de pago." in txt and "Pago: Efectivo al recibir · pendiente" in txt
-    assert "2 × Coca-Cola 2.25L — $ 3.200,00 c/u = $ 6.400,00" in txt
-    assert "3 × Agua Mineral sin Gas 2L — $ 1.100,00 c/u = $ 3.300,00" in txt
-    assert "Envío: incluido, sin costo" in txt
+    assert "2 × Coca-Cola 2.25L — $ 3.200 c/u = $ 6.400" in txt
+    assert "3 × Agua Mineral sin Gas 2L — $ 1.100 c/u = $ 3.300" in txt
+    assert "envío incluido, sin costo" in txt
     assert f"Dirección: {CLIENT_ADDRESS}" in txt
-    assert "Total: $ 9.700,00" in txt
+    assert "Total: $ 9.700" in txt
     # stock descontado
     assert stock(repo, "COC1") == 48 and stock(repo, "AGU1") == 27
     # registrado en la base de pedidos, con dirección y envío sin costo
@@ -77,7 +77,7 @@ def test_aprobar_revisa_stock_y_precio(svc, repo):
     r = svc.approve(order_id, ADMIN)
     assert r.ok and r.notify[0].chat_id == CLIENT.id and r.notify[0].channel == "telegram"
     assert "¡Tu pedido fue aprobado! Queda pendiente de pago." in plain(r.notify[0].text)
-    assert "Total: $ 13.000,00" in plain(r.notify[0].text) and "efectivo" in plain(r.notify[0].text)
+    assert "Total: $ 13.000" in plain(r.notify[0].text) and "efectivo" in plain(r.notify[0].text)
     assert stock(repo, "FER1") == 3 and last_order(repo).reviewed_by == ADMIN
     assert "ya está confirmado" in svc.approve(order_id, ADMIN).message
 
@@ -89,7 +89,7 @@ def test_aprobar_toma_el_precio_actual(svc, repo):
     assert last_order(repo).total == 12000
     assert svc.set_price("FER1", 13000).ok      # el admin lo actualiza en la web
     r = svc.approve(oid, ADMIN)
-    assert r.ok and "Total: $ 13.000,00" in plain(r.notify[0].text)
+    assert r.ok and "Total: $ 13.000" in plain(r.notify[0].text)
     assert last_order(repo).total == 13000 and stock(repo, "FER1") == 9
     # Un producto sin precio cargado no se aprueba
     pedir(svc, CLIENT, "1 fernet")
@@ -198,6 +198,6 @@ def test_comandos_cliente(svc, repo):
     pedir(svc, CLIENT, "1 sprite")
     assert "Tus últimos pedidos" in svc.handle_message(CLIENT, "/mispedidos")[0].text
     cat = plain(svc.handle_message(CLIENT, "/catalogo")[0].text)
-    assert "Vino Tinto Malbec" not in cat and "sin stock" not in cat and "Fernet 750ml — $ 12.000,00" in cat
+    assert "Vino Tinto Malbec" not in cat and "sin stock" not in cat and "Fernet 750ml — $ 12.000" in cat
     assert "Gaseosas" in cat and "Envío incluido, sin costo" in cat
 

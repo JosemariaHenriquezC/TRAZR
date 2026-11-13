@@ -46,6 +46,22 @@ log = logging.getLogger(__name__)
 # y se pierde al reiniciar el bot.
 HISTORY_WINDOW = timedelta(hours=12)
 HISTORY_MESSAGES = 10
+WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+REPEAT_PHRASES = ("lo de siempre", "lo mismo que", "lo mismo de", "mismo pedido", "repeti", "repetir",
+                  "repetime", "repetilo", "lo de la otra vez", "lo de la vez pasada", "lo mismo")
+REPEAT_STOP = {"pero", "sin", "menos", "mas", "agrega", "agregale", "saca", "sacale", "cambia", "cambiale",
+               "sumale", "quita", "quitale"}
+
+
+def _wants_repeat(t: str) -> bool:
+    """«lo de siempre», «lo mismo que la semana pasada», «repetí mi último pedido». Si pide
+    cambios («…pero sin fanta», «…y 2 cocas más») no: eso lo arma Gemini con la lista completa."""
+    words = t.split()
+    if not words or len(words) > 10 or any(ch.isdigit() for ch in t) or REPEAT_STOP & set(words):
+        return False
+    return any(t.startswith(p) or f" {p}" in f" {t}" for p in REPEAT_PHRASES)
+
+
 GREETINGS = {"hola", "holaa", "buenas", "buen dia", "buenos dias", "buenas tardes", "buenas noches",
              "que tal", "hola que tal", "hola buenas", "hola buen dia", "hey", "holis"}
 
@@ -82,8 +98,33 @@ class BotService(CheckoutMixin, AdminMixin):
         return self.now().date()
 
     def money(self, value: float) -> str:
-        txt = f"{value:,.2f}".replace(",", "§").replace(".", ",").replace("§", ".")
+        """$ 3.200 (sin «,00» si es redondo) · $ 3.200,50."""
+        decimals = 0 if round(value, 2) == round(value) else 2
+        txt = f"{value:,.{decimals}f}".replace(",", "§").replace(".", ",").replace("§", ".")
         return f"{self.s.currency_symbol} {txt}"
+
+    def ship_day(self, when: datetime | None = None) -> str:
+        """Cuándo sale un pedido confirmado en `when` (ahora si no se dice): «hoy» si es día de
+        reparto y antes del corte; si no, el próximo día de reparto («mañana», «el lunes 16/11»)."""
+        b = self.s.business
+        now = when or self.now()
+        days = set(b.delivery_days) or {0, 1, 2, 3, 4, 5}
+        if now.weekday() in days and now.hour < b.cutoff_hour:
+            return "hoy"
+        day = now.date() + timedelta(days=1)
+        while day.weekday() not in days:
+            day += timedelta(days=1)
+        if day == now.date() + timedelta(days=1):
+            return "mañana"
+        return f"el {WEEKDAYS[day.weekday()]} {day:%d/%m}"
+
+    @staticmethod
+    def when(stamp: str) -> str:
+        """«2026-11-13 10:22:01» → «13/11 10:22» (como lo lee una persona)."""
+        try:
+            return datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").strftime("%d/%m %H:%M")
+        except (ValueError, TypeError):
+            return stamp or ""
 
     @staticmethod
     def qty(value: float) -> str:
@@ -109,8 +150,7 @@ class BotService(CheckoutMixin, AdminMixin):
         return out
 
     def format_order(self, order: Order, header: str) -> str:
-        lines = [header, f"<b>Pedido:</b> <code>{esc(order.order_id)}</code>",
-                 f"<b>Fecha:</b> {esc(order.created_at)}", ""]
+        lines = [header, f"<b>Pedido:</b> <code>{esc(order.order_id)}</code> · {esc(self.when(order.created_at))}", ""]
         try:
             products = {p.sku.upper(): p for p in self.repo.list_products()}
         except StorageError:
@@ -120,17 +160,17 @@ class BotService(CheckoutMixin, AdminMixin):
             packs = p.pack_label(l.qty) if p is not None else ""
             lines.append(f"• {l.qty} × {esc(l.name)}{f' ({esc(packs)})' if packs else ''} — "
                          f"{self.money(l.unit_price)} c/u = <b>{self.money(l.subtotal)}</b>")
-        shipping = ("incluido, sin costo" if not order.shipping_cost
-                    else self.money(order.shipping_cost))
-        lines += ["", f"<b>Envío:</b> {shipping}"]
+        shipping = ("envío incluido, sin costo" if not order.shipping_cost
+                    else f"envío {self.money(order.shipping_cost)}")
+        lines.append("")
         if order.address:
             lines.append(f"<b>Dirección:</b> {esc(order.address)}")
-        status = ("Pendiente de pago" if order.awaiting_payment else
-                  "Pagado" if order.is_paid else order.status.capitalize())
-        lines += [f"<b>Total: {self.money(order.total)}</b>", f"<b>Estado:</b> {esc(status)}"]
-        if order.payment_method:
+        if order.payment_method:   # el estado del pago ya dice todo: pendiente o pagado
             paid = "pagado ✅" if order.is_paid else "pendiente"
             lines.append(f"<b>Pago:</b> {esc(order.payment_label)} · {paid}")
+        else:
+            lines.append(f"<b>Estado:</b> {esc(order.status.capitalize())}")
+        lines.append(f"<b>Total: {self.money(order.total)}</b> · {shipping}")
         if order.reason:
             lines.append(f"<b>Motivo:</b> {esc(order.reason)}")
         return "\n".join(lines)
@@ -168,8 +208,8 @@ class BotService(CheckoutMixin, AdminMixin):
             out = self.answer_payment(user, text, draft)
         elif draft is not None and draft.waiting == "guardar_direccion":
             out = self.answer_which_address(user, text, draft)
-        elif self._keyword(text) is not None:
-            out = self._keyword(text)(user, [])
+        elif (keyword := self._keyword(text)) is not None and not (draft is not None and keyword == self.cmd_start):
+            out = keyword(user, [])      # (un «hola» con un pedido a medio armar lo atiende la charla)
         else:
             out = self.converse(user, text, draft, on_wait=on_wait)
         self._remember(user, text, out)
@@ -207,8 +247,10 @@ class BotService(CheckoutMixin, AdminMixin):
         }
         if t in keywords:
             return keywords[t]
-        if not self.s.ai.usable and self.ai_client is None and t in GREETINGS:
-            return self.cmd_start   # sin Gemini, un saludo recibe la bienvenida
+        if t in GREETINGS:
+            return self.cmd_start   # un saludo: bienvenida con el catálogo a mano
+        if _wants_repeat(t):
+            return lambda user, args: self.repeat_last_order(user)
         return None
 
     # ------------------------------------------------------- conversación
@@ -244,6 +286,8 @@ class BotService(CheckoutMixin, AdminMixin):
                   "cx": (self.cancel_draft, "Cancelar"),
                   "sp": (self.skip_pending, "Seguir sin eso"),
                   "cp": (self.change_payment, "Cambiar pago"),
+                  "ct": (lambda u, t: self.cmd_catalog(u, []), "Ver catálogo"),
+                  "rp": (lambda u, t: self.repeat_last_order(u), "Lo de siempre"),
                   "aj": (self.adjust_to_stock, "Ajustar a lo que hay"),
                   "pe": (lambda u, t: self.choose_payment(u, "efectivo", t), "Efectivo al recibir"),
                   "pt": (lambda u, t: self.choose_payment(u, "transferencia", t), "Transferencia"),
@@ -271,13 +315,23 @@ class BotService(CheckoutMixin, AdminMixin):
         return [Outgoing(user.id, "No conozco ese comando. Escribí /ayuda.")]
 
     def cmd_start(self, user, args):
+        """Saludo: al que ya compró, por su nombre y con «lo de siempre» a mano; al nuevo, una
+        bienvenida corta. A los dos se les ofrece ver el catálogo."""
+        name = esc((user.name or "").strip()[:40])
+        try:
+            returning = any(o.customer_id == user.id and o.channel == user.channel
+                            for o in self.repo.list_orders())
+        except StorageError:
+            returning = False
+        if returning:
+            msg = (f"¡Hola, {name}! 👋 ¿Qué te mando hoy?\n"
+                   "Escribime el pedido, o tocá un botón para ver el catálogo o repetir el último.")
+            return [Outgoing(user.id, msg, [("📋 Ver catálogo", "ct:"), ("🔁 Lo de siempre", "rp:")])]
         shop = f"de {esc(self.s.business.name)}" if self.s.business.name else "de bebidas"
-        msg = (f"¡Hola {esc(user.name)}! 👋\nSoy el asistente de pedidos {shop}. Escribime lo que necesitás, "
-               "por ejemplo:\n<i>Quiero 2 coca, 3 agua sin gas y 1 fernet</i>\n\n"
-               "🚚 El envío está siempre incluido, sin costo.\n\n"
-               "Escribí <b>catálogo</b> para ver bebidas y precios, <b>mis pedidos</b> para ver los "
-               "últimos, o <b>ayuda</b> para más opciones.")
-        return [Outgoing(user.id, msg)]
+        msg = (f"¡Hola, {name}! 👋 Soy el asistente de pedidos {shop}.\n"
+               "Escribime lo que necesitás, por ejemplo: <i>2 packs de coca y 6 aguas sin gas</i>.\n"
+               "🚚 El envío está siempre incluido, sin costo.")
+        return [Outgoing(user.id, msg, [("📋 Ver catálogo", "ct:")])]
 
     def cmd_help(self, user, args):
         msg = ("<b>Cómo pedir</b>\nEscribí bebidas y cantidades separadas por coma o «y»:\n"
