@@ -1,4 +1,4 @@
-# Baja o actualiza el proyecto Trazr desde GitHub (rama development) e instala dependencias.
+﻿# Baja o actualiza el proyecto Trazr desde GitHub (rama development) e instala dependencias.
 #
 # Uso (PowerShell, desde la carpeta del proyecto o desde la carpeta donde lo quieras bajar):
 #   powershell -ExecutionPolicy Bypass -File actualizar.ps1

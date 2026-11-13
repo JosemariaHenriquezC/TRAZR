@@ -227,8 +227,12 @@ confirmado) les llegan por WhatsApp.
 2. Completá en el `.env` los cuatro `WHATSAPP_*` (ver `.env.example`): el token, el
    *Phone Number ID*, la clave secreta de la app (Configuración de la app → Básica) y una
    palabra de verificación que inventás vos.
-3. Meta tiene que poder llegar a tu web: abrí un túnel HTTPS hacia `127.0.0.1:8000`
-   (por ejemplo `cloudflared tunnel --url http://127.0.0.1:8000`).
+3. Meta tiene que poder llegar a tu web: un túnel HTTPS hacia `127.0.0.1:8000`. Con
+   **ngrok** la dirección es fija (gratis, un dominio `*.ngrok-free.dev` por cuenta): instalalo
+   (`winget install ngrok.ngrok`), conectalo con `ngrok config add-authtoken TU_TOKEN`, copiá tu
+   dominio del panel (Domains) a `NGROK_DOMAIN` en el `.env` y arrancá todo con **doble clic en
+   `iniciar.bat`** (abre la web + el bot y el túnel en dos ventanas). Límites del plan gratis:
+   20.000 pedidos y 1 GB por mes; usá la web de admin por `http://127.0.0.1:8000`, no por ngrok.
 4. En Meta, **Configuración → Webhook**: URL `https://<tu-túnel>/whatsapp/webhook`, el mismo
    token de verificación, y suscribite al campo **messages**.
 5. Si el webhook se verifica pero los mensajes reales no llegan, la app no quedó suscripta a la

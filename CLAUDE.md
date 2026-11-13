@@ -82,7 +82,8 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
    Detalles: HTML del bot → *negrita* _cursiva_ `código`; botones → reply buttons (≤3, títulos
    ≤20; más de 3 → lista); resumen >1024 caracteres va aparte de los botones; Argentina: si Meta
    rechaza 549… (131030) se reintenta sin el 9 y se recuerda.
-3. Túnel (cloudflared quick tunnel, la URL cambia al reiniciarlo) + webhook en Meta (campo
+3. Túnel: ngrok con dominio fijo gratis (NGROK_DOMAIN; `iniciar.bat` → `iniciar.ps1` abre web+bot
+   y el túnel en dos ventanas). Antes: cloudflared quick tunnel (la URL cambiaba al reiniciarlo) + webhook en Meta (campo
    «messages») + suscripción de la app a la WABA (POST /<WABA_ID>/subscribed_apps). HECHO:
    el bot contesta por WhatsApp. Flujo completo probado por el usuario (pedido → aprobar en la
    web → aviso → pago recibido → aviso): FUNCIONA.
