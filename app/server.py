@@ -1,6 +1,7 @@
 """
-Arranca todo junto: la web de administración, el bot de Telegram y el canal de
-WhatsApp, en un proceso.
+Arranca todo junto: la web de administración, el bot de Telegram, el canal de
+WhatsApp y (si NGROK_DOMAIN está en el .env) el túnel de ngrok, en un proceso.
+Ctrl+C apaga todo.
 
     python -m app.server
 
@@ -28,6 +29,7 @@ from .notifier import Notifier
 from .service import BotService
 from .storage import StorageError, build_repository
 from .web.main import create_app
+from .tunnel import NgrokTunnel
 from .whatsapp import WhatsAppClient, build_router
 
 log = logging.getLogger(__name__)
@@ -69,11 +71,21 @@ def build(settings: Settings):
                     log.exception("Falló la revisión de pagos vencidos")
                 await asyncio.sleep(300)
 
+        tunnel = None
+        if settings.ngrok_domain:
+            tunnel = NgrokTunnel(settings.ngrok_domain, settings.web_port)
+            if not tunnel.start():
+                tunnel = None
+        elif wa is not None:
+            log.warning("Sin NGROK_DOMAIN en el .env: no abro túnel (Meta no puede llegar a esta PC).")
+
         expirer = asyncio.create_task(expire_loop())
         try:
             yield
         finally:
             expirer.cancel()
+            if tunnel is not None:
+                tunnel.stop()
             if wa is not None:
                 await wa.close()
             if tg is not None:

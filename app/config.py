@@ -173,6 +173,8 @@ class Settings:
     web_port: int = 8000
     # Canal WhatsApp (fase 5): apagado si falta algún dato
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
+    # Túnel de ngrok que abre `python -m app.server` (vacío = sin túnel)
+    ngrok_domain: str = ""
 
 
 def load_settings(require_telegram: bool = True, env_file: str | None = None) -> Settings:
@@ -209,6 +211,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         ai=load_ai_config(),
         ai_retry_delays=_delays("AI_RETRY_DELAYS", (4.0, 8.0)),
         secret_key=os.getenv("SECRET_KEY", "").strip(),
+        ngrok_domain=os.getenv("NGROK_DOMAIN", "").strip(),
         web_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",
         web_port=_int("WEB_PORT", 8000),
         whatsapp=WhatsAppConfig(

@@ -8,6 +8,7 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - `app/server.py` — `python -m app.server`: web + bot de Telegram en un proceso
 - `app/web/` — web de admin: `main.py` (rutas FastAPI, login, CSRF), `templates/` (Jinja2), `static/` (CSS del diseño)
 - `app/bot.py` — capa de Telegram, sin lógica de negocio
+- `app/tunnel.py` — túnel de ngrok que abre el servidor si hay NGROK_DOMAIN
 - `app/whatsapp.py` — canal WhatsApp (Cloud API): webhook `/whatsapp/webhook` (firma
   X-Hub-Signature-256, sin duplicados, procesa en segundo plano) y envío por la Graph API
 - `app/service.py` — `BotService`: entrada de mensajes, comandos, revisión del admin (independiente del canal)
@@ -82,8 +83,9 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
    Detalles: HTML del bot → *negrita* _cursiva_ `código`; botones → reply buttons (≤3, títulos
    ≤20; más de 3 → lista); resumen >1024 caracteres va aparte de los botones; Argentina: si Meta
    rechaza 549… (131030) se reintenta sin el 9 y se recuerda.
-3. Túnel: ngrok con dominio fijo gratis (NGROK_DOMAIN; `iniciar.bat` → `iniciar.ps1` abre web+bot
-   y el túnel en dos ventanas). Antes: cloudflared quick tunnel (la URL cambiaba al reiniciarlo) + webhook en Meta (campo
+3. Túnel: ngrok con dominio fijo gratis. Si NGROK_DOMAIN está en el .env, `python -m app.server`
+   lo abre solo (`app/tunnel.py`, subproceso; Ctrl+C apaga todo). El usuario prefiere UN comando
+   en la terminal de VS Code (se descartó iniciar.bat/.ps1). Antes: cloudflared quick tunnel (la URL cambiaba al reiniciarlo) + webhook en Meta (campo
    «messages») + suscripción de la app a la WABA (POST /<WABA_ID>/subscribed_apps). HECHO:
    el bot contesta por WhatsApp. Flujo completo probado por el usuario (pedido → aprobar en la
    web → aviso → pago recibido → aviso): FUNCIONA.
