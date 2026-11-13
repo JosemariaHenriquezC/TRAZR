@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 log = logging.getLogger("ngrok")
@@ -54,6 +55,9 @@ class NgrokTunnel:
         self._proc: subprocess.Popen | None = None
         self._stopped = threading.Event()
         self.grace = 3.0   # segundos que se espera antes de avisar que ngrok se cerró
+        self.failures = 0  # cierres seguidos (si se cierra enseguida 3 veces, es la configuración)
+        self._ngrok = ""
+        self._started_at = 0.0
 
     @property
     def webhook_url(self) -> str:
@@ -65,37 +69,58 @@ class NgrokTunnel:
             log.warning("No encuentro ngrok: instalalo con «winget install ngrok.ngrok» (y reabrí la terminal). "
                         "Sigo sin túnel: WhatsApp no va a recibir mensajes.")
             return False
+        self._ngrok = ngrok
+        return self._spawn()
+
+    def _spawn(self) -> bool:
         try:
             self._proc = subprocess.Popen(
-                command(ngrok, self.domain, self.port), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                command(self._ngrok, self.domain, self.port), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
                 env={**os.environ})
         except OSError as exc:
             log.error("No pude arrancar ngrok: %s", exc)
             return False
-        threading.Thread(target=self._read, name="ngrok-log", daemon=True).start()
+        self._started_at = time.monotonic()
+        threading.Thread(target=self._read, args=(self._proc,), name="ngrok-log", daemon=True).start()
         return True
 
-    def _read(self) -> None:
-        """Pasa a nuestro registro solo lo importante de ngrok (arranque y errores)."""
-        proc = self._proc
-        assert proc and proc.stdout
+    def _read(self, proc: subprocess.Popen) -> None:
+        """Pasa a nuestro registro solo lo importante de ngrok (arranque, cortes y errores).
+        Si ngrok se cierra solo (se cortó internet, la PC se suspendió), lo vuelve a abrir."""
+        assert proc.stdout
+        dropped, config_error = False, False
         for line in proc.stdout:
             line = line.strip()
             level, msg = _field(line, "lvl"), _field(line, "msg") or line
-            if "started tunnel" in msg:
-                log.info("Túnel abierto: Meta tiene que avisar a %s", self.webhook_url)
+            err = _field(line, "err") or msg
+            if "started tunnel" in msg or ("session" in msg and "start" in msg and dropped):
+                log.info("Túnel %s: Meta tiene que avisar a %s", "reconectado" if dropped else "abierto",
+                         self.webhook_url)
+                dropped, self.failures = False, 0
+            elif "heartbeat" in err or "session closed" in err or "reconnect" in msg:
+                if not dropped:
+                    log.warning("Se cortó la conexión con ngrok (¿se fue internet o la PC se suspendió?). "
+                                "Reconectando solo…")
+                dropped = True
             elif level in ("eror", "crit") or "ERR_NGROK" in line:
-                err = _field(line, "err") or msg
                 log.error("ngrok: %s", err)
+                config_error = config_error or "ERR_NGROK" in line
         code = proc.wait()
         # Con Ctrl+C, ngrok recibe la señal junto con el servidor y se cierra un instante antes
         # de que lo apaguemos nosotros: eso no es un error. Se espera un poco antes de avisar.
         if self._stopped.wait(timeout=self.grace):
             return
-        if code not in (0, None):
+        quick = time.monotonic() - self._started_at < 10
+        self.failures = self.failures + 1 if quick else 1
+        if quick and (self.failures >= 3 or config_error):
             log.error("ngrok se cerró (código %s). Revisá el authtoken (ngrok config add-authtoken …) y que "
                       "NGROK_DOMAIN sea el dominio de tu cuenta. La web y Telegram siguen funcionando.", code)
+            return
+        wait = min(60, 5 * self.failures)
+        log.warning("ngrok se cerró (código %s): lo vuelvo a abrir en %s s.", code, wait)
+        if not self._stopped.wait(timeout=wait):
+            self._spawn()
 
     def stop(self) -> None:
         self._stopped.set()

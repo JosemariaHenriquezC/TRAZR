@@ -68,3 +68,25 @@ def test_si_ngrok_falla_lo_avisa(tmp_path, monkeypatch, caplog):
                 break
             time.sleep(0.05)
     assert "ERR_NGROK_4018" in caplog.text and "authtoken" in caplog.text
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="ngrok simulado con un script de shell")
+def test_si_se_corta_internet_lo_avisa_y_vuelve_a_abrir_ngrok(tmp_path, monkeypatch, caplog):
+    fake = tmp_path / "ngrok"
+    fake.write_text('#!/bin/sh\necho \'t=1 lvl=info msg="started tunnel" url=https://abc.ngrok-free.dev\'\n'
+                    'echo \'t=2 lvl=eror msg="heartbeat timeout, terminating session" err="heartbeat timeout"\'\n'
+                    'exit 1\n')
+    fake.chmod(0o755)
+    monkeypatch.setattr(tunnel, "find_ngrok", lambda: str(fake))
+    t = NgrokTunnel("abc.ngrok-free.dev", 8000)
+    t.grace = 0.01
+    monkeypatch.setattr(tunnel.time, "monotonic", lambda: 1000.0 + time.time() * 100)  # «hace rato» que arrancó
+    with caplog.at_level(logging.INFO, logger="ngrok"):
+        t.start()
+        for _ in range(100):
+            if "lo vuelvo a abrir" in caplog.text:
+                break
+            time.sleep(0.02)
+        t.stop()
+    assert "Reconectando solo" in caplog.text and "lo vuelvo a abrir" in caplog.text
+    assert "authtoken" not in caplog.text
