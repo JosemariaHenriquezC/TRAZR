@@ -75,6 +75,20 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 
 ## Próxima sesión — empezar por acá
 
+### Plan de mejora del bot (con el consultor) — propuesto, falta el OK del usuario
+Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mercado Pago.
+- Bugs confirmados en el simulador: esperando dirección, cualquier texto ≥8 letras se toma como
+  dirección («esperá, agregale 2 fantas»); esperando pago, «no tengo plata, cancelá» elige efectivo
+  y REGISTRA el pedido (answer_payment busca palabras sueltas, efectivo antes que cancelar).
+- Núcleo nuevo: pedido en curso + operaciones (agregar/fijar/quitar/vaciar, unidad|bulto) que
+  devuelve Gemini en un JSON por turno; pendientes (dudas) guardados en el Draft y resueltos con
+  botones/listas; una sola voz (sistema) en pasos transaccionales.
+- Etapas: 0 red de seguridad (bugs, sí/no sin Gemini, timeout, «escribiendo» WhatsApp, golden set
+  ~50 casos + eventos) → 1 pedido en curso → 2 bultos (unidades_por_bulto) → 3 voz/forma, pago en
+  el resumen, «lo de siempre» → Mercado Pago → 4 handoff a humano + métricas.
+- Decisiones pendientes del usuario: cómo se venden los bultos; pago dentro del resumen; voz;
+  funciones de WhatsApp (sí escribiendo/listas, no Flows/catálogo Meta); handoff; avisos con texto.
+
 ### Fase 5: WhatsApp — en curso
 1. App de Meta creada (caso de uso WhatsApp) con número de prueba; el «Hello World» llegó. HECHO.
 2. Canal programado: `app/whatsapp.py`, `WhatsAppConfig` en config (WHATSAPP_TOKEN,
