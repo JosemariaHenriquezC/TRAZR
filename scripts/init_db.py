@@ -11,6 +11,8 @@ separador coma o punto y coma, así lo podés exportar desde Excel o Google Shee
     SKU, Producto, Categoria, Alias, Stock, Precio, Activo
 - Alias: otras formas de nombrarlo, separadas por coma (poné la celda entre comillas).
 - Activo: SI / NO (vacío = SI).
+Columnas opcionales para vender por caja (pack, fardo, cajón):
+    UnidadesPorCaja (ej. 6; vacío o 0 = no se vende por caja), NombreCaja (ej. pack; vacío = caja)
 Si un SKU ya existe, se reemplazan sus datos. Nunca se borra nada.
 """
 from __future__ import annotations
@@ -46,18 +48,22 @@ def read_csv(path: str) -> list[Product]:
         if not r["SKU"] and not r["Producto"]:
             continue  # fila vacía
         stock, price = to_number(r["Stock"]), to_number(r["Precio"])
+        pack = to_number(r.get("UnidadesPorCaja", "")) if r.get("UnidadesPorCaja") else 0
         if not r["SKU"] or not r["Producto"]:
             errors.append(f"fila {n}: falta SKU o Producto")
         elif stock is None or stock < 0 or not float(stock).is_integer():
             errors.append(f"fila {n}: Stock debe ser un entero >= 0")
         elif price is None or price < 0:
             errors.append(f"fila {n}: Precio inválido")
+        elif pack is None or pack < 0 or not float(pack).is_integer():
+            errors.append(f"fila {n}: UnidadesPorCaja debe ser un entero (o vacío)")
         else:
             products.append(Product(
                 sku=r["SKU"].upper(), name=r["Producto"],
                 aliases=[a.strip() for a in r["Alias"].split(",") if a.strip()],
                 stock=int(stock), price=round(price, 2),
-                active=to_bool(r["Activo"], default=True), category=r["Categoria"]))
+                active=to_bool(r["Activo"], default=True), category=r["Categoria"],
+                pack_size=int(pack), pack_name=(r.get("NombreCaja") or "caja").lower()))
     if errors:
         raise ValueError("revisá el CSV:\n  " + "\n  ".join(errors))
     return products

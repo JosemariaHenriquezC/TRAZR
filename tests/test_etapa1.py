@@ -26,31 +26,31 @@ def labels(out):
 
 
 def test_con_una_duda_se_anota_lo_demas_y_se_pregunta_solo_eso(svc, repo):
-    out = svc.handle_message(CLIENT, "2 cajas de coca y 3 fantas")
+    out = svc.handle_message(CLIENT, "2 cajas de sprite y 3 fantas")
     d = draft(repo)
     assert d["items"] == [["FAN1", 3]] and len(d["pending"]) == 1
     txt = plain(out[0].text)
-    assert "3 × Fanta Naranja 2.25L" in txt and "Me falta saber" in txt and "¿cuántas unidades de Coca-Cola" in txt
+    assert "3 × Fanta Naranja 2.25L" in txt and "Me falta saber" in txt and "¿cuántas unidades de Sprite" in txt
     assert labels(out) == ["Seguir sin eso", "📍 Cambiar dirección", "❌ Cancelar"]   # no hay ✅ Confirmar
 
 
 def test_con_una_duda_abierta_no_se_puede_confirmar(svc, repo):
-    svc.handle_message(CLIENT, "2 cajas de coca y 3 fantas")
+    svc.handle_message(CLIENT, "2 cajas de sprite y 3 fantas")
     out = svc.handle_message(CLIENT, "si")
     assert "Antes de confirmarlo me falta saber" in plain(out[0].text)
     assert repo.list_orders() == [] and draft(repo)["waiting"] == "confirmacion"
 
 
 def test_un_numero_suelto_completa_la_duda(svc, repo):
-    svc.handle_message(CLIENT, "2 cajas de coca y 3 fantas")
+    svc.handle_message(CLIENT, "2 cajas de sprite y 3 fantas")
     out = svc.handle_message(CLIENT, "24")
     d = draft(repo)
-    assert sorted(d["items"]) == [["COC1", 24], ["FAN1", 3]] and d["pending"] == []
+    assert sorted(d["items"]) == [["FAN1", 3], ["SPR1", 24]] and d["pending"] == []
     assert "✅ Confirmar" in labels(out)
 
 
 def test_seguir_sin_eso(svc, repo):
-    out = svc.handle_message(CLIENT, "2 cajas de coca y 3 fantas")
+    out = svc.handle_message(CLIENT, "2 cajas de sprite y 3 fantas")
     out = svc.handle_callback(CLIENT, button(out, "sp:"))
     assert draft(repo)["items"] == [["FAN1", 3]] and draft(repo)["pending"] == []
     out = svc.handle_callback(CLIENT, button(out, "cf:"))
@@ -67,18 +67,18 @@ def test_producto_ambiguo_queda_pendiente_y_se_elige_por_nombre(svc, repo):
 
 
 def test_cliente_nuevo_con_duda_pide_direccion_y_el_numero_no_es_la_direccion(svc, repo):
-    out = svc.handle_message(NUEVO, "2 cajas de coca y 3 fantas")
+    out = svc.handle_message(NUEVO, "2 cajas de sprite y 3 fantas")
     assert draft(repo, NUEVO)["waiting"] == "direccion" and "¿A qué dirección" in plain(out[0].text)
     out = svc.handle_message(NUEVO, "24")
     d = draft(repo, NUEVO)
-    assert d["waiting"] == "direccion" and d["pending"] == [] and sorted(d["items"]) == [["COC1", 24], ["FAN1", 3]]
+    assert d["waiting"] == "direccion" and d["pending"] == [] and sorted(d["items"]) == [["FAN1", 3], ["SPR1", 24]]
     assert repo.get_customer(NUEVO.channel, str(NUEVO.id)) is None
     out = svc.handle_message(NUEVO, DIR)
-    assert "24 × Coca-Cola 2.25L" in plain(out[0].text) and "✅ Confirmar" in labels(out)
+    assert "24 × Sprite 2.25L" in plain(out[0].text) and "✅ Confirmar" in labels(out)
 
 
 def test_nunca_se_registra_con_una_duda_abierta(svc, repo):
-    svc.handle_message(CLIENT, "2 cajas de coca y 3 fantas")
+    svc.handle_message(CLIENT, "2 cajas de sprite y 3 fantas")
     found = repo.get_pending_order("telegram", str(CLIENT.id))
     d = json.loads(found[0])
     d["waiting"] = "pago"            # aunque algo lo deje en el paso del pago
@@ -88,18 +88,18 @@ def test_nunca_se_registra_con_una_duda_abierta(svc, repo):
 
 
 def test_si_todo_es_duda_no_se_arma_un_borrador_vacio(svc, repo):
-    out = svc.handle_message(CLIENT, "2 cajas de coca")
+    out = svc.handle_message(CLIENT, "2 cajas de sprite")
     assert draft(repo) is None and "son en total" in plain(out[0].text)
 
 
 def test_con_gemini_tambien_se_conserva_lo_entendido(repo, settings):
-    models = _FakeModels(pedido([("COC1", "2 cajas de coca", 2), ("FAN1", "3 fantas", 3)]))
+    models = _FakeModels(pedido([("SPR1", "2 cajas de sprite", 2), ("FAN1", "3 fantas", 3)]))
     svc = _svc(repo, settings, models)
-    svc.handle_message(CLIENT, "2 cajas de coca y 3 fantas")
+    svc.handle_message(CLIENT, "2 cajas de sprite y 3 fantas")
     assert draft(repo)["items"] == [["FAN1", 3]]
-    assert "falta aclarar: 2 cajas de coca" in svc._draft_for_ai(svc._get_draft(CLIENT))
+    assert "falta aclarar: 2 cajas de sprite" in svc._draft_for_ai(svc._get_draft(CLIENT))
     svc.handle_message(CLIENT, "24")              # el número no pasa por Gemini
-    assert len(models.prompts) == 1 and sorted(draft(repo)["items"]) == [["COC1", 24], ["FAN1", 3]]
+    assert len(models.prompts) == 1 and sorted(draft(repo)["items"]) == [["FAN1", 3], ["SPR1", 24]]
 
 
 @pytest.mark.parametrize("texto,esperado", [("un par de fantas", [("FAN1", 2)]), ("par de cocas", [("COC1", 2)]),

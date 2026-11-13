@@ -88,21 +88,22 @@ def test_si_y_no_no_pasan_por_gemini(repo, settings):
 
 # ---------------------------------------------------------------- cajas y packs
 @pytest.mark.parametrize("texto", ["2 cajas de coca", "un pack de birras", "3 fardos de agua sin gas", "un six pack de birra"])
-def test_cajas_y_packs_no_se_toman_como_unidades(texto):
-    [item] = parse_order(texto, sample_products())
+def test_sin_caja_cargada_las_cajas_no_se_toman_como_unidades(texto):
+    products = [replace(p, pack_size=0) for p in sample_products()]
+    [item] = parse_order(texto, products)
     assert item.error == "bulto" and item.qty is None
 
 
 def test_cajas_preguntan_cuantas_unidades(svc, repo):
-    out = svc.handle_message(CLIENT, "2 cajas de coca")
-    assert "¿cuántas unidades de Coca-Cola 2.25L son en total?" in plain(out[0].text)
+    out = svc.handle_message(CLIENT, "2 cajas de sprite")
+    assert "¿cuántas unidades de Sprite 2.25L son en total?" in plain(out[0].text)
     assert draft(repo, CLIENT) is None
 
 
 def test_si_gemini_pone_cantidad_a_una_caja_igual_se_pregunta(repo, settings):
-    models = _FakeModels(pedido([("COC1", "2 cajas de coca", 2)]))
+    models = _FakeModels(pedido([("SPR1", "2 cajas de sprite", 2)]))
     svc = _svc(repo, settings, models)
-    out = svc.handle_message(CLIENT, "2 cajas de coca")
+    out = svc.handle_message(CLIENT, "2 cajas de sprite")
     assert "son en total" in plain(out[0].text) and draft(repo, CLIENT) is None
 
 
@@ -114,7 +115,7 @@ def test_palabras_clave(svc, texto, esperado):
 
 
 def test_los_textos_no_nombran_comandos_con_barra(svc):
-    for texto in ("hola", "ayuda", "2 whisky", "2 cajas de coca"):
+    for texto in ("hola", "ayuda", "2 whisky", "2 cajas de sprite"):
         for m in svc.handle_message(CLIENT, texto):
             assert "/catalogo" not in m.text and "/cancelar" not in m.text and "/direccion" not in m.text
 

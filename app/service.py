@@ -111,9 +111,15 @@ class BotService(CheckoutMixin, AdminMixin):
     def format_order(self, order: Order, header: str) -> str:
         lines = [header, f"<b>Pedido:</b> <code>{esc(order.order_id)}</code>",
                  f"<b>Fecha:</b> {esc(order.created_at)}", ""]
+        try:
+            products = {p.sku.upper(): p for p in self.repo.list_products()}
+        except StorageError:
+            products = {}
         for l in order.lines:
-            lines.append(f"• {l.qty} × {esc(l.name)} — {self.money(l.unit_price)} c/u = "
-                         f"<b>{self.money(l.subtotal)}</b>")
+            p = products.get(l.sku.upper())
+            packs = p.pack_label(l.qty) if p is not None else ""
+            lines.append(f"• {l.qty} × {esc(l.name)}{f' ({esc(packs)})' if packs else ''} — "
+                         f"{self.money(l.unit_price)} c/u = <b>{self.money(l.subtotal)}</b>")
         shipping = ("incluido, sin costo" if not order.shipping_cost
                     else self.money(order.shipping_cost))
         lines += ["", f"<b>Envío:</b> {shipping}"]

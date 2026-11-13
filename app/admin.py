@@ -266,6 +266,10 @@ class AdminMixin:
             return AdminResult(False, "El stock debe ser un número entero mayor o igual a 0.")
         if product.price is None or product.price < 0:
             return AdminResult(False, "El precio no puede ser negativo.")
+        if product.pack_size < 0 or product.pack_size > 1000:
+            return AdminResult(False, "Las unidades por caja van de 1 a 1000 (o vacío si no se vende por caja).")
+        if len(product.pack_name or "") > 20:
+            return AdminResult(False, "El nombre de la caja es muy largo (máx. 20 letras).")
         with self._lock:
             try:
                 exists = self.repo.get_product(sku) is not None

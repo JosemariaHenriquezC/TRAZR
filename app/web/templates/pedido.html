@@ -35,7 +35,7 @@
         {% for x in lines %}
           <tr>
             <td class="lead" data-label="Producto">{{ x.line.name }} <span class="id muted">{{ x.line.sku }}</span></td>
-            <td class="num" data-label="Cantidad">{{ x.line.qty }}</td>
+            <td class="num" data-label="Cantidad">{{ x.line.qty }}{% if x.product and x.product.pack_label(x.line.qty) %}<span class="muted" style="display:block;font-size:12px">{{ x.product.pack_label(x.line.qty) }}</span>{% endif %}</td>
             <td class="num" data-label="Precio">{{ x.line.unit_price|money }}</td>
             <td class="num" data-label="Subtotal">{{ x.line.subtotal|money }}</td>
             {% if o.status == 'EN REVISION' %}

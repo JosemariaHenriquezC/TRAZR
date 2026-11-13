@@ -148,13 +148,20 @@ solo. Para verlo o editarlo a mano: [DB Browser for SQLite](https://sqlitebrowse
 
 | Tabla | Contenido |
 |---|---|
-| `productos` | `sku` (PK), `producto`, `categoria` (Gaseosas, Aguas, Cervezas, Vinos, Aperitivos, Jugos, Energizantes), `alias` (separados por coma), `stock` (≥ 0), `precio`, `activo`, `actualizado` |
+| `productos` | `sku` (PK), `producto`, `categoria` (Gaseosas, Aguas, Cervezas, Vinos, Aperitivos, Jugos, Energizantes), `alias` (separados por coma), `stock` (≥ 0, en unidades), `precio` (por unidad), `activo`, `actualizado`, `unidades_bulto` (unidades por caja; 0 = no se vende por caja), `nombre_bulto` (caja, pack, fardo, cajón) |
 | `clientes` | `canal` + `externo_id` (únicos; ej. `telegram` + ID del chat), `nombre`, `direccion`, `creado`, `actualizado` |
 | `pedidos` | `pedido_id` (PK, ej. `P261112-A3F1`), `fecha`, `canal`, `cliente_id`, `cliente_nombre`, `mensaje_original`, `direccion_envio` (obligatoria), `costo_envio`, `total`, `estado` (`CONFIRMADO` / `EN REVISION` / `RECHAZADO` / `CANCELADO`), `motivo`, `actualizado`, `revisado_por`, `pago_medio` (efectivo / transferencia), `pago_estado` (pendiente / pagado), `pago_fecha`, `pago_por` |
 | `pedido_items` | renglones de cada pedido: `sku`, `producto`, `cantidad`, `precio_unitario`, `subtotal` |
 | `pedidos_pendientes` | pedido retenido (ya interpretado) esperando la dirección del cliente |
 | `avisos` | avisos para el admin (pedido en revisión, modificado, cambio fuera de término, falla); se ven en la web |
 | `admins` | usuarios de la web: usuario, nombre, hash de la contraseña, activo |
+| `eventos` | qué pasó en cada conversación (mensaje, botón, resumen, pedido registrado…), con demora; nunca el texto |
+
+**Cajas, packs y fardos.** Cada presentación es un producto con su propia caja (unidades por caja
+y cómo se llama), que se carga en la web (Productos → Editar) o en el CSV. Stock y precio siguen en
+unidades. Si el cliente pide «2 packs de coca» y el pack trae 6, el bot anota 12; si pide 25 y la
+caja trae 12, el resumen y la web muestran «25 u. (2 cajas + 1 suelta)» para armar el pedido. Si
+un producto no tiene caja cargada y el cliente pide cajas, el bot pregunta cuántas unidades son.
 
 ### Cargar el catálogo
 
@@ -164,7 +171,8 @@ python -m scripts.init_db --csv catalogo.csv  # alta/actualización desde un CSV
 ```
 
 El CSV lleva el encabezado `SKU,Producto,Categoria,Alias,Stock,Precio,Activo`
-(coma o punto y coma; se puede exportar desde Excel). Si un SKU ya existe, se
+(coma o punto y coma; se puede exportar desde Excel), y opcionalmente `UnidadesPorCaja` y
+`NombreCaja` para vender por caja. Si un SKU ya existe, se
 actualiza. Nunca se borra nada. Los ejemplos incluyen uno con poco stock (`CER1`) y uno sin
 stock (`VIN1`).
 

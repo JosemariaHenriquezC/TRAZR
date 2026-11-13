@@ -173,6 +173,22 @@ BULK_WORDS = {"caja", "cajas", "cajon", "cajones", "pack", "packs", "bulto", "bu
               "sixpack", "sixpacks", "plancha", "planchas", "paquete", "paquetes", "jaula", "jaulas"}
 
 
+LOOSE_WORDS = {"suelta", "sueltas", "suelto", "sueltos"}   # «3 cocas sueltas» = 3 unidades
+
+
+def bulk_units(text: str, product: Product, max_qty: int = 1000) -> int | None:
+    """«2 cajas de coca» → 2 × unidades por caja del producto. None si no se puede calcular
+    (no hay caja cargada, falta la cantidad de cajas o es inválida)."""
+    if product.pack_size <= 0:
+        return None
+    words = [w for w in normalize(text).split()
+             if w not in FILLER and w not in BULK_WORDS and w not in LOOSE_WORDS and w != "six"]
+    qty, valid, _ = _extract_qty(words)
+    if qty is None or not valid or qty * product.pack_size > max_qty:
+        return None
+    return int(qty) * product.pack_size
+
+
 def mentions_bulk(text: str) -> bool:
     """¿El renglón pide por caja, pack, bulto o fardo? («2 cajas de coca», «un six pack»)"""
     t = normalize(text)
@@ -186,7 +202,7 @@ def parse_order(text: str, products: list[Product], threshold: float = 0.72,
     for line in split_lines(text):
         # Se quitan las palabras de relleno ANTES de buscar la cantidad
         # ("quiero 2 yerba" → "2 yerba").
-        words = [w for w in line.split() if w and w not in FILLER]
+        words = [w for w in line.split() if w and w not in FILLER and w not in LOOSE_WORDS]
         bulk = bool(BULK_WORDS & set(words)) or "six pack" in line
         words = [w for w in words if w not in BULK_WORDS and w != "six"]
         qty, valid, rest = _extract_qty(words)
@@ -206,7 +222,15 @@ def parse_order(text: str, products: list[Product], threshold: float = 0.72,
             item.error, item.unknown_name = "no_existe", query
         else:
             item.product = product
-        if bulk:   # «2 cajas»: no son 2 unidades; se pregunta cuántas son
+        if bulk and item.product is not None and item.product.pack_size > 0 and not item.error:
+            # «2 cajas de coca» y la caja trae 6 → 12 unidades. «cajas de coca» → ¿cuántas?
+            if qty is None:
+                item.error = "sin_cantidad"
+            elif not valid or qty * item.product.pack_size > max_qty:
+                item.qty, item.error = qty, "cantidad_invalida"
+            else:
+                item.qty = int(qty) * item.product.pack_size
+        elif bulk:   # sin caja cargada: no son 2 unidades; se pregunta cuántas son
             item.error = item.error or "bulto"
         elif qty is None:
             item.error = item.error or "sin_cantidad"

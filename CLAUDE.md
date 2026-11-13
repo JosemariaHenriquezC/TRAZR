@@ -105,6 +105,16 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   (46/56 originales). Con Gemini: simple 11/11, bulto 8/8, cambio 8/8 (centinela cambio-08 OK →
   operaciones siguen postergadas), duda 5/5. Falta correr el resto de los grupos para confirmar
   que no hubo regresión.
+- ETAPA 2 (cajas) — PROGRAMADA. Decisión del usuario: a empresas se vende caja cerrada Y unidad
+  suelta (25 con caja de 12 = 2 cajas + 1 suelta); cada presentación tiene su caja. Producto:
+  `pack_size` (0 = sin caja cargada → el bot pregunta) y `pack_name` (caja/pack/fardo/cajón);
+  columnas `unidades_bulto`/`nombre_bulto` (migración ALTER). Stock y precio siguen en UNIDADES.
+  `parser.bulk_units` y en Gemini (`_ai_items_a_parsed`): las unidades las calcula el código.
+  «sueltas» = unidades. Resumen, comprobante y web muestran «(2 cajas + 1 suelta)»
+  (`Product.pack_label`). Web: Productos → unidades por caja y nombre; CSV: UnidadesPorCaja,
+  NombreCaja. Catálogo de ejemplo con cajas (SPR1 sin caja, para probar la pregunta). Set: 65
+  casos (bulto-01..11); reglas 53/65. Falta: correr bulto con Gemini; ¿la caja tiene otro precio?
+  (hoy = unidades × precio unitario).
   Detalle original: pendientes simples en el Draft
   (se arma con lo entendido, lo dudoso queda en Draft.pending; no se confirma con pendientes salvo
   «Seguir sin eso»; un número suelto completa el único pendiente), «un par» = 2 (parser + prompts),

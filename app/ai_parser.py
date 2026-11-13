@@ -275,8 +275,13 @@ def _ai_items_a_parsed(
         if ai.sku is not None:
             item = ParsedItem(raw=ai.texto, product=por_sku[ai.sku])
             if rules_parser.mentions_bulk(ai.texto):
-                # Pidió cajas o packs: aunque el modelo haya puesto un número, no se asume.
-                item.error = "bulto"
+                # Pidió cajas o packs: las unidades las calcula el código con la caja cargada en
+                # la base; si no hay caja cargada, se pregunta (aunque el modelo haya puesto un número).
+                units = rules_parser.bulk_units(ai.texto, item.product, max_qty)
+                if units is None:
+                    item.error = "bulto" if item.product.pack_size <= 0 else "sin_cantidad"
+                else:
+                    item.qty = units
                 salida.append(item)
                 continue
             if ai.cantidad is not None:
@@ -392,7 +397,9 @@ Con cada mensaje del cliente (mirando la conversación y el borrador actual):
    - "Cambiá X por Y" reemplaza X por Y con la MISMA cantidad que tenía X, salvo que diga
      otra (borrador 2 fanta: "cambiame la fanta por sprite" -> 2 sprite; "por 6 sprite" -> 6).
    - Si pide cajas, cajones, packs, bultos o fardos, cantidad=null y en "texto" dejá
-     la palabra (ej. "2 cajas de coca"): el sistema le pregunta cuántas unidades son.
+     la palabra y el número de cajas (ej. "2 cajas de coca"): el sistema calcula las unidades.
+     Si mezcla cajas y sueltas del mismo producto, hacé dos renglones
+     ("2 cajas de coca" y "3 coca sueltas").
    - Si un producto es ambiguo (ej. "agua" y hay con y sin gas), NO lo pongas:
      elegí "charla" y preguntá cuál quiere.
    - "texto" describe el renglón (ej. "2 coca").

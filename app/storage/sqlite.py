@@ -63,7 +63,9 @@ CREATE TABLE IF NOT EXISTS productos (
     stock          INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
     precio         REAL NOT NULL DEFAULT 0 CHECK (precio >= 0),
     activo         INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
-    actualizado    TEXT NOT NULL DEFAULT ''
+    actualizado    TEXT NOT NULL DEFAULT '',
+    unidades_bulto INTEGER NOT NULL DEFAULT 0 CHECK (unidades_bulto >= 0),  -- 0 = sin caja cargada
+    nombre_bulto   TEXT NOT NULL DEFAULT 'caja'                             -- caja, pack, fardo...
 );
 
 CREATE TABLE IF NOT EXISTS clientes (
@@ -177,6 +179,15 @@ class SQLiteRepository(Repository):
         self._lock = threading.RLock()
 
     def _migrate(self) -> None:
+        prod_cols = [r[1] for r in self._conn.execute("PRAGMA table_info(productos)")]
+        if "unidades_bulto" not in prod_cols:   # bases de antes de las cajas
+            self._conn.execute("ALTER TABLE productos ADD COLUMN unidades_bulto INTEGER NOT NULL DEFAULT 0 "
+                               "CHECK (unidades_bulto >= 0)")
+            self._conn.execute("ALTER TABLE productos ADD COLUMN nombre_bulto TEXT NOT NULL DEFAULT 'caja'")
+            log.info("Base migrada: los productos ahora pueden tener caja (unidades por caja).")
+        self._migrate_pedidos()
+
+    def _migrate_pedidos(self) -> None:
         """Bases creadas antes del pago: se rehace `pedidos` con las columnas de pago y el
         estado CANCELADO (SQLite no deja cambiar un CHECK). No se pierde ningún dato."""
         sql = self._conn.execute("SELECT sql FROM sqlite_master WHERE name = 'pedidos'").fetchone()[0]
@@ -243,6 +254,7 @@ class SQLiteRepository(Repository):
             aliases=[a.strip() for a in (r["alias"] or "").split(",") if a.strip()],
             stock=float(r["stock"]), price=float(r["precio"]),
             active=bool(r["activo"]), category=r["categoria"],
+            pack_size=int(r["unidades_bulto"]), pack_name=r["nombre_bulto"] or "caja",
         )
 
     def list_products(self) -> list[Product]:
@@ -257,15 +269,17 @@ class SQLiteRepository(Repository):
         with self._tx() as c:
             c.execute(
                 """INSERT INTO productos (sku, producto, categoria, alias, stock, precio,
-                                         activo, actualizado)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                         activo, actualizado, unidades_bulto, nombre_bulto)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT (sku) DO UPDATE SET
                      producto = excluded.producto, categoria = excluded.categoria,
                      alias = excluded.alias, stock = excluded.stock, precio = excluded.precio,
-                     activo = excluded.activo,
+                     activo = excluded.activo, unidades_bulto = excluded.unidades_bulto,
+                     nombre_bulto = excluded.nombre_bulto,
                      actualizado = excluded.actualizado""",
                 (p.sku.strip().upper(), p.name.strip(), p.category.strip(), ", ".join(p.aliases),
-                 int(p.stock), float(p.price), int(p.active), stamp))
+                 int(p.stock), float(p.price), int(p.active), stamp, int(p.pack_size or 0),
+                 (p.pack_name or "caja").strip().lower()))
 
     def _require_product(self, sku: str) -> Product:
         p = self.get_product(sku)

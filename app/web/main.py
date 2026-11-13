@@ -295,21 +295,26 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
     def save_product(request: Request, csrf_token: str = Form(""), es_nuevo: str = Form("0"),
                      sku: str = Form(""), nombre: str = Form(""), alias: str = Form(""),
                      categoria: str = Form(""), precio: str = Form(""),
-                     stock: str = Form(""), activo: str = Form("1")):
+                     stock: str = Form(""), activo: str = Form("1"),
+                     unidades_caja: str = Form(""), nombre_caja: str = Form("caja")):
         current_admin(request)
         check_csrf(request, csrf_token)
         is_new = es_nuevo == "1"
         price, qty = to_number(precio), to_number(stock)
+        pack = to_number(unidades_caja) if unidades_caja.strip() else 0
         error = None
+        if pack is None or pack < 0 or int(pack) != pack:
+            error = "Las unidades por caja tienen que ser un número entero (o dejalo vacío)."
         if price is None:
             error = "Escribí un precio válido (por ejemplo 3200 o 3.200,50)."
-        elif qty is None:
+        elif qty is None and not error:
             error = "Escribí el stock en unidades."
         if error:
             flash(request, error, ok=False)
             return back("/productos?nuevo=1" if is_new else f"/productos?editar={quote(sku)}")
         product = Product(sku=sku, name=nombre, aliases=alias.split(","), stock=qty, price=price,
-                          active=activo == "1", category=categoria.strip())
+                          active=activo == "1", category=categoria.strip(),
+                          pack_size=int(pack), pack_name=(nombre_caja or "caja").strip().lower() or "caja")
         result = svc.save_product(product, is_new)
         flash(request, result.message, ok=result.ok)
         if not result.ok:

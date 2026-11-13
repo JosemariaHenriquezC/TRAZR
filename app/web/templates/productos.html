@@ -26,6 +26,8 @@
       <div class="tz-field"><label for="e-alias">Alias (separados por coma)</label><input id="e-alias" name="alias" value="{{ p.aliases|join(', ') if p }}" placeholder="pepsi, pecsi"></div>
       <div class="tz-field"><label for="e-cat">Categoría</label><input id="e-cat" name="categoria" list="categorias" value="{{ p.category if p }}"><datalist id="categorias">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist></div>
       <div class="tz-field"><label for="e-precio">Precio ($)</label><input id="e-precio" name="precio" inputmode="decimal" required value="{{ ('%.2f'|format(p.price)).replace('.', ',') if p }}"></div>
+      <div class="tz-field"><label for="e-caja">Unidades por caja</label><input id="e-caja" name="unidades_caja" inputmode="numeric" value="{{ p.pack_size if p and p.pack_size else '' }}" placeholder="Ej.: 6 (vacío = no se vende por caja)"></div>
+      <div class="tz-field"><label for="e-caja-nombre">Cómo se llama la caja</label><input id="e-caja-nombre" name="nombre_caja" list="nombres-caja" value="{{ p.pack_name if p else 'caja' }}"><datalist id="nombres-caja"><option value="caja"><option value="pack"><option value="fardo"><option value="cajón"><option value="bulto"></datalist></div>
       <div class="tz-field"><label for="e-stock">Stock (unidades)</label><input id="e-stock" name="stock" inputmode="numeric" required value="{{ p.stock|qty if p else '0' }}"></div>
       <div class="tz-field"><label for="e-act">Visible en el catálogo</label><select id="e-act" name="activo"><option value="1" {% if not p or p.active %}selected{% endif %}>Sí</option><option value="0" {% if p and not p.active %}selected{% endif %}>No</option></select></div>
     </div>
@@ -62,7 +64,7 @@
         <td class="lead" data-label="Producto">{{ p.name }} <span class="id muted">{{ p.sku }}</span></td>
         <td data-label="Categoría">{{ p.category or '—' }}</td>
         <td class="num" data-label="Precio">{{ p.price|money }}</td>
-        <td class="num" data-label="Stock">{{ p.stock|qty }}</td>
+        <td class="num" data-label="Stock">{{ p.stock|qty }}{% if p.pack_size %}<span class="muted" style="display:block;font-size:12px">{{ p.pack_name }} × {{ p.pack_size }}</span>{% endif %}</td>
         <td data-label="Sumar stock">
           <form class="inline-form" method="post" action="/productos/{{ p.sku }}/sumar">
             <input type="hidden" name="csrf_token" value="{{ csrf }}">

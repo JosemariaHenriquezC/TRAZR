@@ -320,10 +320,12 @@ class CheckoutMixin:
         rows = ([esc(intro), ""] if intro else []) + ([note, ""] if note else []) + [head, ""]
         for l in ev.lines:
             p = products.get(l.sku.upper())
+            packs = p.pack_label(l.qty) if p is not None else ""
+            name = esc(l.name) + (f" ({esc(packs)})" if packs else "")
             if p is not None and not p.has_price():
-                rows.append(f"• {l.qty} × {esc(l.name)} — precio a confirmar")
+                rows.append(f"• {l.qty} × {name} — precio a confirmar")
             else:
-                rows.append(f"• {l.qty} × {esc(l.name)} — {self.money(l.unit_price)} c/u = "
+                rows.append(f"• {l.qty} × {name} — {self.money(l.unit_price)} c/u = "
                             f"<b>{self.money(l.subtotal)}</b>")
         rows += ["", "<b>Envío:</b> incluido, sin costo",
                  f"<b>Dirección:</b> {esc(draft.address)}",

@@ -19,6 +19,20 @@ MEDIOS_PAGO = {"efectivo": "Efectivo al recibir", "transferencia": "Transferenci
 COSTO_ENVIO = 0.0
 
 
+def plural(word: str, n: int) -> str:
+    """caja → cajas, pack → packs, cajón → cajones, fardo → fardos."""
+    word = word.strip() or "caja"
+    if n == 1:
+        return word
+    if word.endswith("ón"):
+        return word[:-2] + "ones"
+    if word[-1] in "aeiouáéíóú":
+        return word + "s"
+    if word.endswith(("k", "t", "p")):
+        return word + "s"
+    return word + "es"
+
+
 @dataclass
 class Product:
     sku: str
@@ -28,6 +42,26 @@ class Product:
     price: float
     active: bool = True
     category: str = ""        # Gaseosas, Aguas, Cervezas, Vinos, ...
+    # Caja (o pack, fardo, cajón): cuántas unidades trae. 0 = no está cargado (si el cliente
+    # pide cajas, el bot pregunta cuántas unidades son). Stock y precio siguen en unidades.
+    pack_size: int = 0
+    pack_name: str = "caja"
+
+    def packs(self, qty: int) -> tuple[int, int]:
+        """Cuántas cajas cerradas y cuántas sueltas son `qty` unidades (para armar el pedido)."""
+        if self.pack_size <= 0:
+            return 0, int(qty)
+        return divmod(int(qty), self.pack_size)
+
+    def pack_label(self, qty: int) -> str:
+        """«2 cajas + 1 suelta» (vacío si no hay caja cargada o no llega a una caja)."""
+        boxes, loose = self.packs(qty)
+        if not boxes:
+            return ""
+        parts = [f"{boxes} {plural(self.pack_name, boxes)}"]
+        if loose:
+            parts.append(f"{loose} suelta{'s' if loose != 1 else ''}")
+        return " + ".join(parts)
 
     def has_price(self) -> bool:
         """Los precios no vencen: solo hace falta que esté cargado (mayor a 0)."""
