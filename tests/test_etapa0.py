@@ -161,3 +161,20 @@ def test_casos_de_la_etapa_0_pasan_sin_gemini(settings, case_id):
     case = next(c for c in load_cases() if c["id"] == case_id)
     ok, fails, _, _ = run_case(case, settings)
     assert ok, fails
+
+
+def test_si_gemini_no_contesta_el_caso_no_cuenta_como_falla(settings):
+    from scripts.evaluar import SIN_IA
+
+    class Caido:
+        class aio:
+            class models:
+                @staticmethod
+                async def generate_content(**kw):
+                    raise RuntimeError("503 UNAVAILABLE")
+
+    case = {"id": "x", "tema": "t", "turnos": ["2 coca", ":cf"], "espera": {"registrado": False}}
+    from dataclasses import replace
+    s = replace(settings, ai=replace(settings.ai, enabled=True, api_key="x"))
+    ok, fails, _, _ = run_case(case, s, ai_client=Caido())
+    assert fails == [SIN_IA]

@@ -69,18 +69,24 @@ def run_case(case: dict, settings, ai_client=None) -> tuple[bool, list[str], lis
                 if turn.startswith(":"):
                     data = next((d for m in last for _, d in m.buttons if d.startswith(turn[1:] + ":")), None)
                     if data is None:
+                        if _ai_failed(repo):   # el botón no apareció porque Gemini no contestó antes
+                            return False, [SIN_IA], replies, []
                         return False, [f"no apareció el botón {turn}"], replies, []
                     last = svc.handle_callback(user, data)
                 else:
                     last = svc.handle_message(user, turn)
                 replies += [_plain(m.text) for m in last if m.chat_id == user.id]
-            events = repo.list_events()
+            events = repo.list_events()   # (Gemini caído en algún turno → no cuenta como falla)
             latencies = [e["latencia_ms"] for e in events if e["tipo"] == "ia" and e["detalle"] != "sin_respuesta"]
             if any(e["tipo"] == "ia" and e["detalle"] == "sin_respuesta" for e in events):
                 return False, [SIN_IA], replies, latencies
             return (*_check(case.get("espera", {}), svc, repo, user, replies, last), replies, latencies)
         finally:
             repo.close()
+
+
+def _ai_failed(repo) -> bool:
+    return any(e["tipo"] == "ia" and e["detalle"] == "sin_respuesta" for e in repo.list_events())
 
 
 def _check(expect: dict, svc, repo, user, replies, last) -> tuple[bool, list[str]]:
