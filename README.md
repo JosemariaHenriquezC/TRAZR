@@ -111,8 +111,10 @@ vence a las 24 h.
 **Saludo y «lo de siempre».** Un saludo («hola», «buenas») recibe la bienvenida por el nombre con
 [📋 Ver catálogo]; si ya compró, también [🔁 Lo de siempre], que arma su último pedido con los
 precios de hoy (también escribiendo «lo de siempre» o «lo mismo que la otra vez»). El resumen y el
-comprobante dicen cuándo sale: «hoy» si se confirma antes del corte (`NEGOCIO_HORA_CORTE`, 13 h)
-en un día de reparto (`NEGOCIO_DIAS_REPARTO`, lun-sab); si no, «mañana» o «el lunes 16/11».
+comprobante dicen en qué turno sale (a la siesta no se reparte): confirmado antes de las 11
+(`NEGOCIO_HORA_CORTE_MANANA`) sale hoy a la mañana (9 a 13); antes de las 19 (`NEGOCIO_HORA_CORTE`),
+hoy a la tarde (17 a 21); si no, el próximo día de reparto (`NEGOCIO_DIAS_REPARTO`, lun-sab) a la
+mañana: «mañana a la mañana (9 a 13)» o «el lunes 16/11 a la mañana».
 
 **Medio de pago en el resumen.** En el primer pedido, el bot pregunta cómo paga después de que el
 cliente confirma. Desde el segundo, el resumen ya muestra su medio de siempre («Pago: efectivo al

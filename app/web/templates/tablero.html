@@ -48,7 +48,7 @@
     <section class="tz-panel" aria-labelledby="reparto-t">
       <div class="panel-head">
         <h2 class="section" id="reparto-t">El día en reparto</h2>
-        <span class="muted">{{ 'Ya pasó el corte: lo que entra ahora sale el próximo día hábil.' if d.past_cutoff else 'Lo que se confirma antes de las ' ~ d.cutoff_hour ~ ' sale hoy.' }}</span>
+        <span class="muted">{% if d.past_cutoff %}Ya pasó el corte: lo que entra ahora sale el próximo día hábil a la mañana.{% elif d.morning_cutoff %}Antes de las {{ d.morning_cutoff }} sale a la mañana; antes de las {{ d.cutoff_hour }}, a la tarde. A la siesta no se reparte.{% else %}Lo que se confirma antes de las {{ d.cutoff_hour }} sale hoy.{% endif %}</span>
       </div>
       <div class="reparto">
         {% if n %}

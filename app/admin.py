@@ -333,6 +333,7 @@ class AdminMixin:
             "unread_notices": len(self.repo.list_notices(limit=500, unread_only=True)),
             "hours": hours,
             "cutoff_hour": b.cutoff_hour,
+            "morning_cutoff": b.morning_cutoff,
             "ship_today": {"count": len(ship_today), "total": round(sum(o.total for o in ship_today), 2)},
             "ship_next": {"count": len(ship_next), "total": round(sum(o.total for o in ship_next), 2)},
             "past_cutoff": self.now().hour >= b.cutoff_hour,

@@ -115,9 +115,9 @@ class Rules:
 # Tienda ficticia de ejemplo: se usa si el .env no define los NEGOCIO_*.
 TRAZR = {
     "NEGOCIO_NOMBRE": "Trazr",
-    "NEGOCIO_HORARIOS": ("lunes a sábado de 9 a 13 y de 17 a 21; domingos y feriados cerrado. "
-                         "Los pedidos confirmados antes de las 13 se entregan en el día; "
-                         "después de las 13, el siguiente día hábil."),
+    "NEGOCIO_HORARIOS": ("lunes a sábado de 9 a 13 y de 17 a 21 (a la siesta no se reparte); domingos y "
+                         "feriados cerrado. Lo confirmado antes de las 11 sale a la mañana (9 a 13); antes "
+                         "de las 19, a la tarde (17 a 21); después, el próximo día hábil a la mañana."),
     "NEGOCIO_ZONA": "San Miguel de Tucumán, Yerba Buena, Tafí Viejo y Banda del Río Salí",
     "NEGOCIO_PEDIDO_MINIMO": "no hay pedido mínimo",
     "NEGOCIO_PAGOS": "efectivo o transferencia bancaria al recibir el pedido",
@@ -142,7 +142,10 @@ class Business:
     open_hour: int = 9           # horario de atención (para el tablero «el día en reparto»)
     close_hour: int = 21
     delivery_days: tuple[int, ...] = (0, 1, 2, 3, 4, 5)   # días que se reparte (0 = lunes … 6 = domingo)
-    cutoff_hour: int = 13        # lo confirmado antes de esta hora sale en el día
+    cutoff_hour: int = 19        # lo confirmado antes de esta hora sale en el día (en el turno de la tarde)
+    morning_cutoff: int = 11     # lo confirmado antes de esta hora sale en el turno de la mañana (0 = no hay)
+    morning_shift: str = "9 a 13"
+    evening_shift: str = "17 a 21"
     contact: str = ""            # mail o teléfono de contacto (página de privacidad)
 
     def as_text(self) -> str:
@@ -257,7 +260,10 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             open_hour=_int("NEGOCIO_HORA_APERTURA", 9),
             close_hour=_int("NEGOCIO_HORA_CIERRE", 21),
             delivery_days=_days("NEGOCIO_DIAS_REPARTO", (0, 1, 2, 3, 4, 5)),
-            cutoff_hour=_int("NEGOCIO_HORA_CORTE", 13),
+            cutoff_hour=_int("NEGOCIO_HORA_CORTE", 19),
+            morning_cutoff=_int("NEGOCIO_HORA_CORTE_MANANA", 11),
+            morning_shift=os.getenv("NEGOCIO_TURNO_MANANA", "9 a 13").strip() or "9 a 13",
+            evening_shift=os.getenv("NEGOCIO_TURNO_TARDE", "17 a 21").strip() or "17 a 21",
             contact=os.getenv("NEGOCIO_CONTACTO", "").strip(),
         ),
     )

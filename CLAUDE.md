@@ -127,7 +127,9 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   `repeat_last_order`, precios de hoy, mismo resumen; con cambios → Gemini con la lista completa);
   saludo (GREETINGS, con o sin Gemini, sin pisar un borrador) por nombre con botones
   [📋 Ver catálogo] (ct:) y, si ya compró, [🔁 Lo de siempre] (rp:); `ship_day()` «hoy / mañana /
-  el lunes 16/11» según NEGOCIO_HORA_CORTE (13) y NEGOCIO_DIAS_REPARTO (lun-sab) en resumen y
+  el lunes 16/11» por TURNOS (usuario: a la siesta no se reparte): confirmado antes de las 11
+  (NEGOCIO_HORA_CORTE_MANANA) → hoy a la mañana (9 a 13); antes de las 19 (NEGOCIO_HORA_CORTE) →
+  hoy a la tarde (17 a 21); si no, próximo día (NEGOCIO_DIAS_REPARTO lun-sab) a la mañana; en resumen y
   comprobante; plata sin «,00»; comprobante compacto (fecha «13/11 10:22», sin «Estado» si hay
   pago, «Total · envío incluido»). Horario nuevo (usuario): lunes a sábado 9–13 y 17–21
   (TRAZR, NEGOCIO_HORA_CIERRE=21). Set: 74 casos; reglas 61/74.

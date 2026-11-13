@@ -104,19 +104,25 @@ class BotService(CheckoutMixin, AdminMixin):
         return f"{self.s.currency_symbol} {txt}"
 
     def ship_day(self, when: datetime | None = None) -> str:
-        """Cuándo sale un pedido confirmado en `when` (ahora si no se dice): «hoy» si es día de
-        reparto y antes del corte; si no, el próximo día de reparto («mañana», «el lunes 16/11»)."""
+        """En qué turno sale un pedido confirmado en `when` (ahora si no se dice). Se reparte en
+        dos turnos (a la siesta no): lo confirmado antes del corte de la mañana (11) sale a la
+        mañana; antes del corte de la tarde (19), a la tarde; si no, el próximo día de reparto a
+        la mañana. «hoy a la tarde (17 a 21)», «mañana a la mañana (9 a 13)», «el lunes 16/11 …»."""
         b = self.s.business
         now = when or self.now()
         days = set(b.delivery_days) or {0, 1, 2, 3, 4, 5}
-        if now.weekday() in days and now.hour < b.cutoff_hour:
-            return "hoy"
+        morning = f"a la mañana ({b.morning_shift})" if b.morning_cutoff else f"a la tarde ({b.evening_shift})"
+        if now.weekday() in days:
+            if b.morning_cutoff and now.hour < b.morning_cutoff:
+                return f"hoy a la mañana ({b.morning_shift})"
+            if now.hour < b.cutoff_hour:
+                return f"hoy a la tarde ({b.evening_shift})"
         day = now.date() + timedelta(days=1)
         while day.weekday() not in days:
             day += timedelta(days=1)
         if day == now.date() + timedelta(days=1):
-            return "mañana"
-        return f"el {WEEKDAYS[day.weekday()]} {day:%d/%m}"
+            return f"mañana {morning}"
+        return f"el {WEEKDAYS[day.weekday()]} {day:%d/%m} {morning}"
 
     @staticmethod
     def when(stamp: str) -> str:

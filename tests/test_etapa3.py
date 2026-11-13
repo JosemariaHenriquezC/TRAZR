@@ -25,11 +25,13 @@ def _comprar(svc, texto="2 coca", medio="pe:"):
 
 # ---------------------------------------------------------------- cuándo sale
 @pytest.mark.parametrize("cuando,esperado", [
-    (datetime(2026, 11, 13, 10, 0, tzinfo=TZ), "hoy"),            # viernes antes del corte
-    (datetime(2026, 11, 13, 15, 0, tzinfo=TZ), "mañana"),         # viernes después del corte → sábado
-    (datetime(2026, 11, 14, 12, 59, tzinfo=TZ), "hoy"),           # sábado antes del corte
-    (datetime(2026, 11, 14, 13, 0, tzinfo=TZ), "el lunes 16/11"), # sábado después → lunes
-    (datetime(2026, 11, 15, 10, 0, tzinfo=TZ), "mañana"),         # domingo → lunes (mañana)
+    (datetime(2026, 11, 13, 10, 0, tzinfo=TZ), "hoy a la mañana (9 a 13)"),        # viernes antes de las 11
+    (datetime(2026, 11, 13, 11, 0, tzinfo=TZ), "hoy a la tarde (17 a 21)"),        # pasó el corte de la mañana
+    (datetime(2026, 11, 13, 14, 30, tzinfo=TZ), "hoy a la tarde (17 a 21)"),       # siesta: sale a la tarde
+    (datetime(2026, 11, 13, 19, 0, tzinfo=TZ), "mañana a la mañana (9 a 13)"),     # pasó el corte de la tarde
+    (datetime(2026, 11, 14, 18, 59, tzinfo=TZ), "hoy a la tarde (17 a 21)"),       # sábado antes de las 19
+    (datetime(2026, 11, 14, 20, 0, tzinfo=TZ), "el lunes 16/11 a la mañana (9 a 13)"),  # sábado tarde → lunes
+    (datetime(2026, 11, 15, 10, 0, tzinfo=TZ), "mañana a la mañana (9 a 13)"),     # domingo → lunes
 ])
 def test_cuando_sale_el_pedido(svc, cuando, esperado):
     assert svc.ship_day(cuando) == esperado
@@ -126,7 +128,9 @@ def test_lo_de_siempre_no_nombra_lo_agotado(svc, repo):
 def test_horarios_nuevos_por_defecto():
     from app.config import TRAZR
     assert "lunes a sábado de 9 a 13 y de 17 a 21" in TRAZR["NEGOCIO_HORARIOS"]
-    assert Business().close_hour == 21 and Business().delivery_days == (0, 1, 2, 3, 4, 5)
+    b = Business()
+    assert b.close_hour == 21 and b.delivery_days == (0, 1, 2, 3, 4, 5)
+    assert (b.morning_cutoff, b.cutoff_hour, b.morning_shift, b.evening_shift) == (11, 19, "9 a 13", "17 a 21")
 
 
 def test_dias_de_reparto_desde_el_env(monkeypatch):
