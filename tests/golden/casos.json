@@ -6,7 +6,9 @@
     "conserva": "{SKU: cantidad} que tienen que seguir en el borrador aunque haya una pregunta pendiente",
     "sin_pedido": "true = no queda borrador ni pedido registrado",
     "registrado": "true/false = si quedó un pedido registrado",
-    "esperando": "qué espera el bot al final: direccion | pago | stock | confirmacion",
+    "esperando": "qué espera el bot al final: direccion | pago | stock | confirmacion | nada",
+    "pedidos": "cuántos pedidos quedaron registrados",
+    "ultimo_pago": "medio de pago del último pedido registrado",
     "no_dice": "textos que NO pueden aparecer en ninguna respuesta (minúsculas)",
     "dice": "textos que tienen que aparecer en la última respuesta (minúsculas)"
   },
@@ -74,6 +76,9 @@
     {"id": "pago-02", "tema": "medio de pago", "turnos": ["2 coca", ":cf", "por transferencia"], "espera": {"registrado": true}},
     {"id": "pago-03", "tema": "medio de pago", "turnos": ["2 coca", ":cf", "no tengo plata ahora, cancelá"], "espera": {"registrado": false, "sin_pedido": true}},
     {"id": "pago-04", "tema": "medio de pago", "turnos": ["2 coca", ":cf", "no sé todavía"], "espera": {"registrado": false, "esperando": "pago"}},
+    {"id": "pago-05", "tema": "medio de pago", "turnos": ["2 coca", ":cf", ":pt", "3 fanta", "si"], "espera": {"pedidos": 2, "ultimo_pago": "transferencia", "esperando": "nada"}},
+    {"id": "pago-06", "tema": "medio de pago", "turnos": ["2 coca", ":cf", ":pe", "3 fanta", "por transferencia"], "espera": {"pedidos": 2, "ultimo_pago": "transferencia"}},
+    {"id": "pago-07", "tema": "medio de pago", "turnos": ["2 coca", ":cf", ":pe", "3 fanta", ":cp", ":pt"], "espera": {"pedidos": 2, "ultimo_pago": "transferencia"}},
 
     {"id": "consulta-01", "tema": "consultas sin pedido", "turnos": ["¿hasta qué hora reparten?"], "espera": {"sin_pedido": true}},
     {"id": "consulta-02", "tema": "consultas sin pedido", "turnos": ["¿llegan a Tafí Viejo?"], "espera": {"sin_pedido": true}},

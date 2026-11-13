@@ -183,6 +183,14 @@ class BotService(CheckoutMixin, AdminMixin):
         except Exception:
             log.debug("No se pudo registrar el evento %s", kind, exc_info=True)
 
+    def _change_address_word(self, user, args):
+        return self.ask_new_address(user) if self._get_draft(user) else self.cmd_address(user, args)
+
+    def _change_payment_word(self, user, args):
+        if self._get_draft(user) is None:
+            return [Outgoing(user.id, "No tenés ningún pedido sin confirmar. El medio de pago se elige al hacer el pedido.")]
+        return self.change_payment(user)
+
     def _keyword(self, text: str):
         """Palabras que hacen lo mismo que un comando, para canales sin menú de comandos
         (WhatsApp): «catálogo», «mis pedidos», «ayuda», «modificar mi pedido»."""
@@ -193,6 +201,9 @@ class BotService(CheckoutMixin, AdminMixin):
             "mis pedidos": self.cmd_my_orders, "mi pedido": self.cmd_my_orders, "ayuda": self.cmd_help,
             "menu": self.cmd_help, "modificar": self.cmd_modify, "modificar pedido": self.cmd_modify,
             "modificar mi pedido": self.cmd_modify, "mi direccion": self.cmd_address,
+            "cambiar direccion": self._change_address_word, "otra direccion": self._change_address_word,
+            "cambiar la direccion": self._change_address_word,
+            "cambiar pago": self._change_payment_word, "cambiar el pago": self._change_payment_word,
         }
         if t in keywords:
             return keywords[t]
@@ -232,6 +243,7 @@ class BotService(CheckoutMixin, AdminMixin):
         client = {"cf": (self.confirm_draft, "Confirmar"), "cd": (self.ask_new_address, "Cambiar dirección"),
                   "cx": (self.cancel_draft, "Cancelar"),
                   "sp": (self.skip_pending, "Seguir sin eso"),
+                  "cp": (self.change_payment, "Cambiar pago"),
                   "aj": (self.adjust_to_stock, "Ajustar a lo que hay"),
                   "pe": (lambda u, t: self.choose_payment(u, "efectivo", t), "Efectivo al recibir"),
                   "pt": (lambda u, t: self.choose_payment(u, "transferencia", t), "Transferencia"),

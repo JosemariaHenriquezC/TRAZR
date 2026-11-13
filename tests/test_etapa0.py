@@ -144,7 +144,8 @@ def test_los_eventos_no_guardan_el_texto_de_los_mensajes(svc, repo):
 # ---------------------------------------------------------------- set de prueba
 def test_el_set_de_prueba_es_valido():
     skus = {p.sku for p in sample_products()}
-    keys = {"borrador", "pregunta", "conserva", "sin_pedido", "registrado", "esperando", "no_dice", "dice"}
+    keys = {"borrador", "pregunta", "conserva", "sin_pedido", "registrado", "esperando", "no_dice", "dice",
+            "pedidos", "ultimo_pago"}
     cases = load_cases()
     assert len(cases) >= 50 and len({c["id"] for c in cases}) == len(cases)
     for c in cases:

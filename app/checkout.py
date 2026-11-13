@@ -340,10 +340,61 @@ class CheckoutMixin:
             return [Outgoing(user.id, "\n".join(rows),
                              [("Seguir sin eso", f"sp:{t}"), ("📍 Cambiar dirección", f"cd:{t}"),
                               ("❌ Cancelar", f"cx:{t}")])]
+        if draft.payment and not draft.modifies:
+            label = {"efectivo": "efectivo al recibir", "transferencia": "transferencia"}.get(draft.payment, draft.payment)
+            rows += [f"<b>Pago:</b> {label} (como la última vez)", "",
+                     "¿Lo confirmo? Respondé «sí» y queda hecho. Si va a otra dirección, mandámela; "
+                     "si querés cambiar algo, decime."]
+            return [Outgoing(user.id, "\n".join(rows),
+                             [("✅ Confirmar", f"cf:{t}"), ("💳 Cambiar pago", f"cp:{t}"),
+                              ("❌ Cancelar", f"cx:{t}")])]
         rows += ["", "¿Lo confirmo? Respondé «sí», o decime qué querés cambiar."]
         return [Outgoing(user.id, "\n".join(rows),
                          [("✅ Confirmar", f"cf:{t}"), ("📍 Cambiar dirección", f"cd:{t}"),
                           ("❌ Cancelar", f"cx:{t}")])]
+
+    # ----------------------------------------------------------- medio de pago habitual
+    def _usual_payment(self, user) -> str:
+        """El medio de pago del último pedido del cliente ("" si es su primer pedido)."""
+        try:
+            mine = [o for o in self.repo.list_orders()
+                    if o.customer_id == user.id and o.channel == user.channel and o.payment_method]
+        except StorageError:
+            return ""
+        return mine[-1].payment_method if mine else ""
+
+    def change_payment(self, user, token: str | None = None) -> list:
+        """Botón «Cambiar pago» del resumen: se pregunta el medio y, al elegirlo, queda hecho."""
+        try:
+            draft = self._get_draft(user)
+            if draft is None or (token and token != draft.token):
+                return self._stale(user)
+            draft.payment = ""
+            self._save_draft(user, draft)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "cambiar el medio de pago")
+        return self.confirm_draft(user)
+
+    def _quick_answer(self, user, text: str, draft: Draft) -> list | None:
+        """Respuestas al resumen que no necesitan a Gemini: «sí», «no», un medio de pago
+        («por transferencia» confirma con ese medio) o una dirección nueva. None = otra cosa."""
+        if self._wants_confirm(text):
+            return self.confirm_draft(user)
+        if self._wants_cancel(text):
+            return self.cancel_draft(user)
+        if draft.waiting != WAIT_CONFIRM or draft.modifies or "?" in text:
+            return None
+        method = self._payment_choice(text)
+        if method and len(_norm(text).split()) <= 4:
+            draft.payment = method
+            self._save_draft(user, draft)
+            return self.confirm_draft(user)
+        # Sin Gemini, una dirección suelta cambia la del pedido. Con Gemini, la saca él del mensaje
+        # («mandalo a lo de mi vieja, Belgrano 300») y no se toma la frase entera como dirección.
+        if self.ai_client is None and not self.s.ai.usable and \
+                self._looks_like_address(text) and not self._address_problem(text):
+            return self._set_address(user, draft, text.strip())
+        return None
 
     # ----------------------------------------------------------- pendientes
     @staticmethod
@@ -470,6 +521,9 @@ class CheckoutMixin:
                 customer = self.repo.get_customer(*self._key(user))
                 draft.address = (previous.address if previous and previous.address
                                  else customer.address if customer else "")
+                # El medio de pago de siempre ya va en el resumen (se puede cambiar).
+                draft.payment = (previous.payment if previous and previous.payment
+                                 else self._usual_payment(user))
             return self._next_step(user, draft, intro, note)
         except StorageError as exc:
             return self._storage_failure(user, exc, "armar el pedido")
@@ -612,6 +666,8 @@ class CheckoutMixin:
             pairs, _ = self._resolve(draft, self._products_for(draft))
             if self._shortages(pairs):
                 return self._next_step(user, draft, note="Uy, justo se vendió parte del stock 😕")
+            if draft.payment:   # el medio ya está en el resumen: confirmar = pedido hecho
+                return self._place_order(user, draft)
             draft.waiting = WAIT_PAYMENT
             self._save_draft(user, draft)
         except StorageError as exc:
@@ -946,11 +1002,10 @@ class CheckoutMixin:
         reintenta; si sigue sin contestar, se le pide que escriba más tarde."""
         if self.ai_client is None and not self.s.ai.usable:
             return self._converse_rules(user, text, draft)
-        if draft is not None and draft.waiting != WAIT_ADDRESS:   # «sí» / «no» no necesitan a Gemini
-            if self._wants_confirm(text):
-                return self.confirm_draft(user)
-            if self._wants_cancel(text):
-                return self.cancel_draft(user)
+        if draft is not None and draft.waiting != WAIT_ADDRESS:   # «sí», «no», el pago o una dirección
+            quick = self._quick_answer(user, text, draft)            # no necesitan a Gemini
+            if quick is not None:
+                return quick
         try:
             catalog = self._sellable()   # lo agotado no se le muestra a Gemini: no lo puede ofrecer
             history = self._history(user)
@@ -1043,10 +1098,9 @@ class CheckoutMixin:
     def _converse_rules(self, user, text: str, draft: Draft | None, catalog=None) -> list:
         """Sin Gemini: «sí»/«no» confirman o cancelan; lo demás se interpreta por reglas."""
         if draft is not None:
-            if self._wants_confirm(text):
-                return self.confirm_draft(user)
-            if self._wants_cancel(text):
-                return self.cancel_draft(user)
+            quick = self._quick_answer(user, text, draft)
+            if quick is not None:
+                return quick
         try:
             items = self._interpret(text, catalog, use_ai=catalog is None)
         except StorageError as exc:

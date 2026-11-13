@@ -99,6 +99,11 @@ def _check(expect: dict, svc, repo, user, replies, last) -> tuple[bool, list[str
             fails.append(f"se perdió {qty} × {sku} (quedó {items or '—'})")
     if expect.get("sin_pedido") and (draft is not None or orders):
         fails.append(f"quedó un {'pedido registrado' if orders else 'borrador'} y no debía")
+    if "pedidos" in expect and len(orders) != expect["pedidos"]:
+        fails.append(f"quedaron {len(orders)} pedidos registrados, se esperaban {expect['pedidos']}")
+    if "ultimo_pago" in expect and (not orders or orders[-1].payment_method != expect["ultimo_pago"]):
+        fails.append(f"el último pedido se pagó con «{orders[-1].payment_method if orders else '—'}», "
+                     f"se esperaba «{expect['ultimo_pago']}»")
     if "registrado" in expect and bool(orders) != expect["registrado"]:
         fails.append("se registró un pedido y no debía" if orders else "no se registró el pedido")
     if "esperando" in expect:

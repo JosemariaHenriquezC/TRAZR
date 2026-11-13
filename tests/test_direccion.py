@@ -43,9 +43,9 @@ def test_confirmar_y_cancelar_escribiendo(svc, repo):
     svc.handle_message(CLIENT, "1 fanta")
     assert "descarté" in plain(svc.handle_message(CLIENT, "no")[0].text)
     svc.handle_message(CLIENT, "1 fanta")
-    svc.handle_message(CLIENT, "/confirmar")
-    assert "¡Pedido completado!" in plain(pagar(svc, CLIENT, "transferencia")[0].text)
-    assert len(repo.list_orders()) == 2
+    # Ya compró: el resumen trae su medio de siempre y confirmar deja el pedido hecho.
+    assert "¡Pedido completado!" in plain(svc.handle_message(CLIENT, "/confirmar")[0].text)
+    assert len(repo.list_orders()) == 2 and repo.list_orders()[-1].payment_method == "efectivo"
     assert "No tengo ningún pedido para confirmar" in plain(svc.handle_message(CLIENT, "/confirmar")[0].text)
 
 
@@ -168,8 +168,7 @@ def test_responder_escribiendo_cual_direccion(svc, repo):
     # Ahora la guardada es Belgrano; un pedido a la dirección anterior vuelve a preguntar
     svc.handle_message(CLIENT, "1 sprite")
     svc.handle_message(CLIENT, f"/direccion {CLIENT_ADDRESS}")
-    svc.handle_message(CLIENT, "si")
-    pagar(svc, CLIENT)
+    svc.handle_message(CLIENT, "si")             # ya compró: confirma con su medio de siempre
     assert "sigo usando" in plain(svc.handle_message(CLIENT, "la de siempre")[0].text)
     assert repo.get_customer("telegram", str(CLIENT.id)).address == "Belgrano 300, Tafí Viejo"
 

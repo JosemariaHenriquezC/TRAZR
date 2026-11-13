@@ -35,7 +35,10 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 - Los mensajes del chat NO se guardan en la base: la memoria de Gemini vive en RAM (12 h).
 - Si Gemini no contesta: «dame un momento» (on_wait), reintentos (AI_RETRY_DELAYS) y si no,
   le pide al cliente que escriba en unos minutos + aviso en la web. Sin clave → reglas.
-- Pago: tras confirmar, el bot pregunta el medio (efectivo / transferencia) → pedido CONFIRMADO con
+- Pago: el PRIMER pedido pregunta el medio tras confirmar (efectivo / transferencia); desde el
+  segundo, el resumen trae el medio de siempre (`_usual_payment`, «como la última vez») con
+  [✅ Confirmar] [💳 Cambiar pago] [❌ Cancelar] y confirmar deja el pedido hecho (se escribe
+  «por transferencia» → confirma con ese medio) → pedido CONFIRMADO con
   pago «pendiente» (stock reservado) → el admin confirma el pago en la web → el bot avisa.
   Transferencia impaga se cancela sola a las PAGO_HORAS (estado CANCELADO, vuelve el stock).
   Pago = columnas pago_* en `pedidos`, aparte del estado. Mercado Pago (fase 6) llamará a
@@ -114,7 +117,13 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   (`Product.pack_label`). Web: Productos → unidades por caja y nombre; CSV: UnidadesPorCaja,
   NombreCaja. Catálogo de ejemplo con cajas (SPR1 sin caja, para probar la pregunta). Set: 65
   casos (bulto-01..11); reglas 53/65. Falta: correr bulto con Gemini; ¿la caja tiene otro precio?
-  (hoy = unidades × precio unitario).
+  (hoy = unidades × precio unitario). DECIDIDO: la caja cuesta lo mismo que sus unidades.
+- ETAPA 3 (parcial) — PAGO EN EL RESUMEN, programado: `Draft.payment` se precarga con el medio del
+  último pedido; `confirm_draft` coloca el pedido si hay medio; botón cp: (`change_payment`);
+  `_quick_answer` (sí/no/medio escrito/dirección suelta solo sin Gemini) antes de llamar a Gemini;
+  palabras «cambiar dirección», «cambiar pago». Primer pedido y modificaciones: como antes. Set:
+  68 casos (pago-05..07). Falta de la etapa 3: «lo de siempre» (repetir último pedido), un mensaje
+  por paso / resumen compacto, «sale hoy» según el corte de las 13, saludo con nombre.
   Detalle original: pendientes simples en el Draft
   (se arma con lo entendido, lo dudoso queda en Draft.pending; no se confirma con pendientes salvo
   «Seguir sin eso»; un número suelto completa el único pendiente), «un par» = 2 (parser + prompts),

@@ -108,6 +108,11 @@ queda la de siempre). `/direccion nueva dirección` la cambia directamente.
 Otros detalles: cada pedido guarda su **copia** de la dirección; un borrador sin confirmar
 vence a las 24 h.
 
+**Medio de pago en el resumen.** En el primer pedido, el bot pregunta cómo paga después de que el
+cliente confirma. Desde el segundo, el resumen ya muestra su medio de siempre («Pago: efectivo al
+recibir, como la última vez») con [✅ Confirmar] [💳 Cambiar pago] [❌ Cancelar]: confirmar deja
+el pedido hecho en un paso. Escribir «por transferencia» en el resumen confirma con ese medio.
+
 ## 4. Cómo conversa el bot (Gemini)
 
 Con cada mensaje, Gemini recibe: el catálogo (código, nombre, alias, categoría y si hay o

@@ -58,10 +58,13 @@ def button(out, prefix):
 def pedir(svc, user, text, pago="efectivo"):
     """Manda el pedido y, si el bot muestra el resumen, lo confirma (✅) y elige el medio de pago."""
     out = svc.handle_message(user, text)
-    data = button(out, "cf:")
-    if not data:
-        return out
-    out = svc.handle_callback(user, data)
+    if button(out, "cp:"):   # el resumen ya trae el medio de siempre: se elige el pedido en el test
+        out = svc.handle_callback(user, button(out, "cp:"))
+    else:
+        data = button(out, "cf:")
+        if not data:
+            return out
+        out = svc.handle_callback(user, data)
     data = button(out, "pe:" if pago == "efectivo" else "pt:")
     return svc.handle_callback(user, data) if data else out
 
