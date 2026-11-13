@@ -165,7 +165,7 @@ def test_catalogo_grande_primero_los_grupos(svc, repo):
     assert "¿Qué querés ver?" in txt and "• Whisky, gin, vodka, ron (4)" in txt
     assert "Vinos y espumantes (1)" in txt                     # el Malbec está agotado: solo el espumante
     assert labels(out) == ["Vinos y espumantes", "Cervezas", "Fernet y aperitivos", "Whisky, gin, vodka, ron",
-                           "Licores", "Sin alcohol", "Combos y regalería"]
+                           "Licores", "Sin alcohol", "Combos y regalería", "📋 Ver todo"]
     assert out[0].menu_label == "Ver categorías"
     out = svc.handle_callback(CLIENT, button(out, "cc:whisky gin vodka ron"))
     txt = plain(out[0].text)

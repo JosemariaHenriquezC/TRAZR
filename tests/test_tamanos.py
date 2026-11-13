@@ -103,3 +103,25 @@ def test_si_el_cliente_dijo_el_tamano_gemini_se_respeta(real, settings):
     svc = _svc(real, settings, _FakeModels(pedido([("FER002", "2 branca de litro", 2)])))
     svc.handle_message(CLIENT, "2 branca de litro")
     assert items(real) == [["FER002", 2]]
+
+
+# ---------------------------------------------------------------- catálogo completo
+@pytest.mark.parametrize("texto", ["ver todo", "quiero ver todo", "pasame el catálogo completo",
+                                   "mostrame todos los productos", "la lista completa", "todo el catálogo"])
+def test_ver_todo_manda_el_catalogo_entero_en_varios_mensajes(real, settings, texto):
+    out = BotService(real, settings).handle_message(CLIENT, texto)
+    joined = "\n".join(m.text for m in out)
+    assert len(out) > 1 and all(len(m.text) <= 3500 for m in out)
+    assert all(p.name.replace("&", "&amp;").replace("'", "&#x27;") in joined or p.name in joined for p in PRODUCTS)
+
+
+def test_el_menu_de_categorias_ofrece_ver_todo(real, settings):
+    svc = BotService(real, settings)
+    out = svc.handle_message(CLIENT, "catálogo")
+    assert ("📋 Ver todo", "cc:todo") in out[0].buttons and len(out[0].buttons) <= 10
+    assert len(svc.handle_callback(CLIENT, "cc:todo")) > 1
+
+
+def test_todos_los_vinos_sigue_siendo_la_categoria(real, settings):
+    out = BotService(real, settings).handle_message(CLIENT, "mostrame todos los vinos")
+    assert len(out) == 1 and "Vinos" in out[0].text and "Cerveza" not in out[0].text

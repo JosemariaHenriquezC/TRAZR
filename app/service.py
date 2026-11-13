@@ -52,6 +52,8 @@ WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "do
 CATALOG_WORDS = {"catalogo", "catalogos", "lista", "listado", "menu", "precios", "carta"}
 CATALOG_PHRASES = ("que tienen", "que tenes", "que hay", "que venden", "que vendes", "que ofrecen",
                    "que bebidas", "que productos", "que tienen para", "que me ofreces", "que manejan")
+ALL_WORDS = {"todo", "todos", "toda", "todas", "completo", "completa", "entero", "entera"}
+CHUNK = 3500     # largo máximo de cada mensaje del catálogo completo (Telegram y WhatsApp: 4096)
 ORDER_WORDS = {"quiero", "mandame", "necesito", "traeme", "anotame", "pasame", "dame"}
 
 
@@ -65,11 +67,14 @@ def _wants_catalog(t: str, names: set[str]) -> str | None:
     asks = bool(CATALOG_WORDS & set(words)) or any(p in t for p in CATALOG_PHRASES) or \
         bool({"mostrame", "muestrame", "mostrar", "ver"} & set(words)) or \
         (words[0] in ("que", "cuales") and bool({"tienen", "tenes", "hay", "venden", "manejan"} & set(words)))
-    if not asks:
+    if not asks and not (ALL_WORDS & set(words) and len(words) <= 3 and
+                         set(words) <= ALL_WORDS | {"ver", "quiero", "los", "las", "el", "la", "productos"}):
         return None
     for name in sorted(names, key=len, reverse=True):   # «qué vinos tienen» → Vinos
         if name and (f" {name} " in f" {t} " or f" {name}s " in f" {t} "):
             return name
+    if ALL_WORDS & set(words):     # «ver todo», «el catálogo completo», «todos los productos»
+        return "completo"
     if CATALOG_WORDS & set(words) or any(p in t for p in CATALOG_PHRASES):
         return "todo"
     return None
@@ -291,6 +296,8 @@ class BotService(CheckoutMixin, AdminMixin):
             wants = _wants_catalog(t, names)
             if wants == "todo":
                 return self.cmd_catalog
+            if wants == "completo":
+                return lambda user, args: self.full_catalog(user)
             if wants:
                 return lambda user, args: self.catalog_category(user, wants[:40])
         except StorageError:
@@ -409,8 +416,10 @@ class BotService(CheckoutMixin, AdminMixin):
         # Catálogo grande: primero el grupo (en WhatsApp, una lista que se abre con un botón).
         rows = ["📋 <b>Catálogo de bebidas</b>", "¿Qué querés ver?", ""]
         rows += [f"• {esc(name)} ({n})" for name, n in groups[:MAX_CATEGORIES]]
-        rows += ["", "Tocá una opción o escribime qué buscás (ej. «vinos», «fernet»). 🚚 Envío incluido, sin costo."]
-        buttons = [(name, f"cc:{clave(name)[:40]}") for name, _ in groups[:MAX_CATEGORIES]]
+        rows += ["", "Tocá una opción o escribime qué buscás (ej. «vinos», «fernet»). "
+                     "Para la lista entera, «ver todo». 🚚 Envío incluido, sin costo."]
+        buttons = [(name, f"cc:{clave(name)[:40]}") for name, _ in groups[:MAX_CATEGORIES - 1]]
+        buttons.append(("📋 Ver todo", "cc:todo"))
         return [Outgoing(user.id, "\n".join(rows), buttons, menu_label="Ver categorías")]
 
     @staticmethod
@@ -440,6 +449,8 @@ class BotService(CheckoutMixin, AdminMixin):
     def catalog_category(self, user, key: str) -> list:
         """Productos (con stock) de un grupo del chat o de una categoría: botón de la lista o
         su nombre escrito («vinos», «fernet»)."""
+        if key == "todo":
+            return self.full_catalog(user)
         try:
             sellable = self._sellable()
         except StorageError as exc:
@@ -453,6 +464,29 @@ class BotService(CheckoutMixin, AdminMixin):
             return [Outgoing(user.id, "En esa categoría no tengo nada ahora 😕.", [("📋 Ver catálogo", "ct:")])]
         return [Outgoing(user.id, self._catalog_text(products, title) + "\nPedime lo que quieras de acá.",
                          [("📋 Otra categoría", "ct:")])]
+
+    def full_catalog(self, user) -> list:
+        """Todo el catálogo, en varios mensajes si es largo (cortados entre categorías)."""
+        try:
+            products = self._sellable()
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "mostrar el catálogo")
+        if not products:
+            return [Outgoing(user.id, "Por ahora no tengo nada para ofrecerte 😕. Probá más tarde.")]
+        text = self._catalog_text(products, f"Catálogo completo ({len(products)} productos)")
+        text += "\nPedime lo que quieras de acá."
+        chunks: list[str] = []
+        for block in text.split("\n\n"):          # un bloque por categoría
+            lines = block.split("\n")
+            for i, line in enumerate(lines):
+                sep = "\n\n" if i == 0 else "\n"
+                if chunks and len(chunks[-1]) + len(sep) + len(line) <= CHUNK:
+                    chunks[-1] += sep + line
+                elif i and lines[0].startswith("<b>"):     # se corta a mitad de una categoría
+                    chunks.append(lines[0].replace("</b>", " (sigue)</b>") + "\n" + line)
+                else:
+                    chunks.append(line)
+        return [Outgoing(user.id, c) for c in chunks]
 
     def cmd_my_orders(self, user, args):
         try:
