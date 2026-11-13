@@ -180,15 +180,26 @@ def test_cambio_fuera_de_termino_avisa_al_admin(repo, settings):
     assert avisos(repo)[0].kind == "fuera_de_termino" and "3 cocas" in avisos(repo)[0].detail
 
 
-def test_si_gemini_no_contesta_pide_esperar_reintenta_y_si_no_pide_escribir_despues(repo, settings):
+def test_si_gemini_no_contesta_pide_esperar_reintenta_y_sigue_con_reglas(repo, settings):
     models = _FakeModels(error=RuntimeError("503 UNAVAILABLE"))
     svc = _svc(repo, settings, models)
     esperas = []
     out = svc.handle_message(CLIENT, "2 coca", on_wait=esperas.append)
     assert len(esperas) == 1 and "Dame un momento" in esperas[0].text and esperas[0].chat_id == CLIENT.id
     assert len(models.prompts) == 3              # 1 intento + 2 reintentos (settings.ai_retry_delays)
-    assert "Escribime de nuevo en unos minutos" in plain(out[0].text) and repo.list_orders() == []
-    assert any(n.kind == "falla" and "Gemini no responde" in n.title for n in repo.list_notices())
+    assert "Revisá tu pedido" in plain(out[0].text) and "2 × Coca-Cola" in plain(out[0].text)   # siguió con reglas
+    aviso = next(n for n in repo.list_notices() if n.kind == "falla" and "Gemini no responde" in n.title)
+    assert "intérprete por reglas" in aviso.detail
+    out = svc.handle_message(CLIENT, "si")       # el «sí» no necesita a Gemini
+    out = svc.handle_message(CLIENT, "efectivo")
+    assert len(repo.list_orders()) == 1
+
+
+def test_si_gemini_no_contesta_una_consulta_pide_escribirla_como_pedido(repo, settings):
+    models = _FakeModels(error=RuntimeError("503 UNAVAILABLE"))
+    svc = _svc(repo, settings, models)
+    out = svc.handle_message(CLIENT, "¿hasta qué hora reparten?")
+    assert "no puedo responder consultas" in plain(out[0].text) and "productos y cantidades" in plain(out[0].text)
 
 
 def test_si_gemini_vuelve_en_un_reintento_sigue_normal(repo, settings):

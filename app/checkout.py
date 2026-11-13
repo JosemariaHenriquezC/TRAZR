@@ -82,8 +82,9 @@ NO_ORDER_MSG = ("No encontré un pedido en tu mensaje 🤔. Escribí productos y
                 "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Si querés ver qué hay, escribí «catálogo».")
 WAIT_AI_MSG = ("Dame un momento que estoy procesando tu mensaje 🙏 "
                "Hay mucha demanda y tardo un poquito más de lo normal.")
-AI_DOWN_MSG = ("Uy, ahora no puedo procesar tu mensaje 😕. "
-               "Escribime de nuevo en unos minutos, por favor.")
+AI_DOWN_MSG = ("Uy, ahora no puedo responder consultas 😕. Si es un pedido, escribime productos y "
+               "cantidades (por ejemplo: <i>2 packs de coca y 3 aguas sin gas</i>) y te lo armo. "
+               "Si es otra cosa, escribime de nuevo en unos minutos, por favor.")
 NOT_AVAILABLE_NOTE = "Del resto que pediste no tengo ahora."
 NOTHING_AVAILABLE = "No tengo eso ahora 😕. Escribí «catálogo» para ver lo que hay hoy."
 ASK_ADDRESS = ("📍 ¿A qué dirección te lo enviamos? <b>El envío está incluido, sin costo.</b>\n"
@@ -1091,11 +1092,19 @@ class CheckoutMixin:
                 if reply is not None:
                     break
         if reply is None:
-            log.error("Gemini no respondió tras %d reintentos", len(self.s.ai_retry_delays))
+            # Gemini no contesta: el bot sigue con el intérprete por reglas. Los pedidos con
+            # productos y cantidades («2 packs de coca y 3 aguas») andan igual; lo que no se
+            # entiende sin Gemini (consultas, charla) recibe un mensaje claro.
+            log.error("Gemini no respondió tras %d reintentos: sigo con las reglas", len(self.s.ai_retry_delays))
             self._event(user, "ia_caida")
+            items = self._interpret(text, catalog, use_ai=False)
+            handled = draft is not None or any(it.product is not None for it in items)
             self.notify_admins("falla", "Gemini no responde",
-                               f"No se pudo atender un mensaje de {user.name}: «{text[:200]}». "
-                               "Se le pidió que escriba de nuevo en unos minutos.")
+                               f"Mensaje de {user.name}: «{text[:200]}». "
+                               + ("Se atendió con el intérprete por reglas." if handled
+                                  else "No se pudo responder: se le pidió que lo escriba como pedido o más tarde."))
+            if handled:
+                return self._converse_rules(user, text, draft, catalog)
             return [Outgoing(user.id, AI_DOWN_MSG)]
 
         def parsed():

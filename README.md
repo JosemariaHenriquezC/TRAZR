@@ -131,7 +131,8 @@ Devuelve la intención y un texto corto.
 
 **Si Gemini no contesta** (fallan los dos modelos), el bot le dice al cliente «Dame un momento
 que estoy procesando tu mensaje», reintenta una vez (`AI_RETRY_DELAYS`, por defecto a los 3 s; cada intento espera hasta `AI_TIMEOUT_SECONDS`, 8 s) y,
-si sigue sin contestar, le pide que escriba de nuevo en unos minutos y deja un aviso en la web.
+si sigue sin contestar, sigue con el intérprete por reglas: los pedidos con productos y cantidades
+se arman igual; una consulta recibe «escribilo como pedido o más tarde». Siempre deja un aviso en la web.
 Sin clave de Gemini (`GEMINI_API_KEY` vacía) interpreta el parser por reglas.
 
 | Intención | Qué hace el bot |

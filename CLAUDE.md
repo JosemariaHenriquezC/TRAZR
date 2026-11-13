@@ -37,7 +37,9 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
   MAX_ORDER_TOTAL queda opcional (0 = apagado, por defecto). Producto sin precio → revisión.
 - Los mensajes del chat NO se guardan en la base: la memoria de Gemini vive en RAM (12 h).
 - Si Gemini no contesta: «dame un momento» (on_wait), reintentos (AI_RETRY_DELAYS) y si no,
-  le pide al cliente que escriba en unos minutos + aviso en la web. Sin clave → reglas.
+  SIGUE CON REGLAS (decisión del usuario): si el mensaje nombra productos (o hay un borrador), lo
+  atiende `_converse_rules`; si es una consulta, `AI_DOWN_MSG` («escribilo como pedido o más
+  tarde»). Siempre aviso «Gemini no responde» en la web. Sin clave → reglas.
 - Pago: el PRIMER pedido pregunta el medio tras confirmar (efectivo / transferencia); desde el
   segundo, el resumen trae el medio de siempre (`_usual_payment`, «como la última vez») con
   [✅ Confirmar] [💳 Cambiar pago] [❌ Cancelar] y confirmar deja el pedido hecho (se escribe
