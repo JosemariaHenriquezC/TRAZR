@@ -95,7 +95,16 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   1 reintento; WhatsApp leído + «escribiendo»; «lo consulto con el equipo» → aviso "consulta";
   tabla `eventos` (sin texto) + `scripts/metricas.py`; set de prueba `tests/golden/casos.json`
   (56 casos) + `scripts/evaluar.py` (Gemini real, a mano; `--sin-ia`). Base con reglas: 42/56.
-  Falta: correr el set con Gemini real para el número base (lo hace el usuario).
+  Base con Gemini real (flash-lite): 53/56 (95 %), mediana ~1,5 s. Fallas: simple-09 («un par»
+  → 1), bulto-04 (un renglón con duda tira todo el mensaje), cambio-04 («cambiá X por Y» no
+  conserva la cantidad).
+- ETAPA 1 ACHICADA (consultor, opción C), falta el OK del usuario: pendientes simples en el Draft
+  (se arma con lo entendido, lo dudoso queda en Draft.pending; no se confirma con pendientes salvo
+  «Seguir sin eso»; un número suelto completa el único pendiente), «un par» = 2 (parser + prompts),
+  regla «cambiar X por Y conserva la cantidad» en CHAT_PROMPT. Operaciones (agregar/fijar/quitar)
+  POSTERGADAS; se reabren si falla el caso centinela cambio-08 (pedido largo). Casos nuevos:
+  bulto-06/07/08, simple-11, cambio-07, cambio-08. Listo = las 3 fallas + 6 nuevos pasan,
+  ≥59/62 con Gemini sin regresión (2 de 3 corridas), reglas ≥42/56.
 - Decisiones pendientes del usuario: cómo se venden los bultos; pago dentro del resumen; voz;
   funciones de WhatsApp (sí escribiendo/listas, no Flows/catálogo Meta); handoff; avisos con texto.
 
