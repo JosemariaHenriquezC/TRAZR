@@ -91,12 +91,12 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
    (utilidad, es_AR). Si no hubo mensaje del cliente en 23,5 h (memoria) → plantilla directa;
    si no, mensaje normal y, ante 131047 (en la respuesta o en un estado «failed» del webhook),
    plantilla. Se crean con `python -m scripts.plantillas_whatsapp --crear` (WHATSAPP_WABA_ID).
-   Falta: que el usuario las cree y Meta las apruebe.
+   Creadas por el usuario: en espera de aprobación de Meta.
    Política de privacidad pública en /privacidad (#borrar = instrucciones de borrado); NEGOCIO_CONTACTO.
 5. Pendiente (producción): token permanente (usuario del sistema), número propio,
    verificación del negocio, servidor con HTTPS.
 
-### Fase 4: web de administración — HECHA (falta crear los usuarios reales)
+### Fase 4: web de administración — HECHA (usuarios reales creados por el usuario)
 Decisiones tomadas (usuario + consultor):
 - **Revisión del admin solo en la web.** El chat es solo para clientes: se QUITAN los comandos
   de admin del chat (/stock, /setstock, /sumar, /precio, /revision, /pedido, /aprobar,
@@ -142,7 +142,7 @@ Orden de trabajo:
    (admin.py, auth.py, notifier.py, scripts/crear_admin.py; ADMIN_CHAT_IDS eliminado).
 3. Web: login, pantallas según el diseño aprobado, tests. HECHO (tests/test_web.py).
 4. Capturas con Playwright para revisar. HECHO (para el TFI se pueden repetir a escala 2).
-Pendiente de la fase 4: crear los usuarios reales en la PC del usuario (scripts/crear_admin.py).
+Usuarios reales creados en la PC del usuario: fase 4 cerrada.
 
 Ajustes posteriores (hechos): web que se refresca sola (/cambios), menú hamburguesa y tablas
 como tarjetas en el celular, tablero propio de Trazr (remito del día, el día en reparto con el
