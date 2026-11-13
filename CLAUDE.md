@@ -46,8 +46,8 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
   «por transferencia» → confirma con ese medio) → pedido CONFIRMADO con
   pago «pendiente» (stock reservado) → el admin confirma el pago en la web → el bot avisa.
   Transferencia impaga se cancela sola a las PAGO_HORAS (estado CANCELADO, vuelve el stock).
-  Pago = columnas pago_* en `pedidos`, aparte del estado. Mercado Pago (fase 6) llamará a
-  `confirm_payment` igual que el botón de la web.
+  Pago = columnas pago_* en `pedidos`, aparte del estado. El cobro lo confirma el admin
+  en la web (`confirm_payment`); Mercado Pago quedó DESCARTADO del plan.
 - Lo agotado no se nombra: catálogo, Gemini y el parser solo ven productos con stock (`_sellable`).
 - Stock: se verifica al armar el borrador y otra vez al confirmar. Si no alcanza, el cliente
   NO puede confirmar: el bot le dice la cantidad exacta que queda y ofrece ajustar
@@ -76,7 +76,8 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 3. Confirmación del pedido y de la dirección (botones), modificación de pedidos hechos — hecha
 4. **Web de administración** (FastAPI) — SOLO para el admin
 5. **WhatsApp Cloud API** (webhook en la misma app FastAPI) — EN CURSO (ver abajo)
-6. Mercado Pago (link de pago + webhook idempotente)
+6. ~~Mercado Pago~~ — DESCARTADO por el usuario (los pagos siguen: efectivo o transferencia,
+   confirmados por el admin en la web)
 7. Faltantes del TFI: crédito, recompra, planes. CRÉDITO (decidido, opción E): límite de deuda
    impaga por empresa; si un pedido lo supera, va a revisión o se pide pago anticipado.
 8. (A evaluar al final) web para clientes. Por ahora el canal del cliente es el chat.
@@ -84,7 +85,7 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 ## Próxima sesión — empezar por acá
 
 ### Plan de mejora del bot (con el consultor) — propuesto, falta el OK del usuario
-Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mercado Pago.
+Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Etapas 0 a 3 HECHAS.
 - Bugs confirmados en el simulador: esperando dirección, cualquier texto ≥8 letras se toma como
   dirección («esperá, agregale 2 fantas»); esperando pago, «no tengo plata, cancelá» elige efectivo
   y REGISTRA el pedido (answer_payment busca palabras sueltas, efectivo antes que cancelar).
@@ -93,7 +94,15 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   botones/listas; una sola voz (sistema) en pasos transaccionales.
 - Etapas: 0 red de seguridad (bugs, sí/no sin Gemini, timeout, «escribiendo» WhatsApp, golden set
   ~50 casos + eventos) → 1 pedido en curso → 2 bultos (unidades_por_bulto) → 3 voz/forma, pago en
-  el resumen, «lo de siempre» → Mercado Pago → 4 handoff a humano + métricas.
+  el resumen, «lo de siempre» → 4 handoff a humano + métricas (Mercado Pago descartado).
+- PRÓXIMO (a decidir con el usuario): ETAPA 4 = el admin habla con el cliente. Recomendado:
+  desde la web (el bot se pausa para ese cliente; aviso «necesita atención» con contador; la web
+  muestra la charla reciente desde la RAM —o guardarla, cambiando la regla—; el admin escribe y
+  sale por el mismo canal/número; «Devolver al bot»). Disparadores: pide una persona, 3
+  aclaraciones fallidas, «lo consulto con el equipo», Gemini caído con una consulta. Opcional:
+  aviso al celular del admin (hoy decidido que el admin no recibe nada por chat). Alternativa:
+  «coexistencia» de Meta (app WhatsApp Business + API en el mismo número) al pasar al número
+  propio. También pendiente: cargar la lista de bebidas del mayorista (el usuario la consigue).
 - ETAPA 0 HECHA: bugs de dirección (`_looks_like_address`: número o palabra de calle, y que no
   nombre productos ni empiece con «agregale/esperá…») y de pago (`_payment_choice`: un solo medio
   sin negar; cancelar primero; ante la duda vuelve a preguntar con botones); `_wants_confirm` /
