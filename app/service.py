@@ -48,6 +48,32 @@ log = logging.getLogger(__name__)
 HISTORY_WINDOW = timedelta(hours=12)
 HISTORY_MESSAGES = 10
 WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+CATALOG_WORDS = {"catalogo", "catalogos", "lista", "listado", "menu", "precios", "carta"}
+CATALOG_PHRASES = ("que tienen", "que tenes", "que hay", "que venden", "que vendes", "que ofrecen",
+                   "que bebidas", "que productos", "que tienen para", "que me ofreces", "que manejan")
+ORDER_WORDS = {"quiero", "mandame", "necesito", "traeme", "anotame", "pasame", "dame"}
+
+
+def _wants_catalog(t: str, names: set[str]) -> str | None:
+    """¿Pide ver el catálogo? «pasame el catálogo», «¿qué tienen?», «la lista de precios» →
+    "todo"; «¿qué vinos tienen?», «mostrame los gin» → la categoría o grupo nombrado. Un pedido
+    con cantidades («2 vinos») no: eso es un pedido."""
+    words = t.split()
+    if not words or len(words) > 10 or any(ch.isdigit() for ch in t):
+        return None
+    asks = bool(CATALOG_WORDS & set(words)) or any(p in t for p in CATALOG_PHRASES) or \
+        bool({"mostrame", "muestrame", "mostrar", "ver"} & set(words)) or \
+        (words[0] in ("que", "cuales") and bool({"tienen", "tenes", "hay", "venden", "manejan"} & set(words)))
+    if not asks:
+        return None
+    for name in sorted(names, key=len, reverse=True):   # «qué vinos tienen» → Vinos
+        if name and (f" {name} " in f" {t} " or f" {name}s " in f" {t} "):
+            return name
+    if CATALOG_WORDS & set(words) or any(p in t for p in CATALOG_PHRASES):
+        return "todo"
+    return None
+
+
 REPEAT_PHRASES = ("lo de siempre", "lo mismo que", "lo mismo de", "mismo pedido", "repeti", "repetir",
                   "repetime", "repetilo", "lo de la otra vez", "lo de la vez pasada", "lo mismo")
 REPEAT_STOP = {"pero", "sin", "menos", "mas", "agrega", "agregale", "saca", "sacale", "cambia", "cambiale",
@@ -261,6 +287,11 @@ class BotService(CheckoutMixin, AdminMixin):
             names = {clave(grupo_de(p.category)) for p in sellable} | {clave(p.category) for p in sellable if p.category}
             if t and clave(t) in names:
                 return lambda user, args: self.catalog_category(user, clave(t)[:40])
+            wants = _wants_catalog(t, names)
+            if wants == "todo":
+                return self.cmd_catalog
+            if wants:
+                return lambda user, args: self.catalog_category(user, wants[:40])
         except StorageError:
             pass
         if t in GREETINGS:
@@ -396,7 +427,7 @@ class BotService(CheckoutMixin, AdminMixin):
         for p in sorted(products, key=lambda p: (orden_de(p.category), p.name)):
             if (p.category or "Otras") != category:
                 category = p.category or "Otras"
-                if category != title:
+                if clave(category) != clave(title):
                     rows += ["", f"<b>{esc(category)}</b>"]
             price = self.money(p.price) if p.has_price() else "precio a confirmar"
             pack = f" · {esc(p.pack_name)} × {p.pack_size}" if p.pack_size else ""

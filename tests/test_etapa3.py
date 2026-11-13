@@ -210,3 +210,30 @@ def test_confirmacion_y_pregunta_de_direccion_en_un_mensaje(svc, repo):
     txt = plain(out[0].text)
     assert "¡Pedido completado!" in txt and "¿Qué dirección dejo guardada" in txt
     assert labels(out) == ["🏠 La de siempre", "📍 La nueva"]
+
+
+@pytest.mark.parametrize("texto", ["pasame el catálogo", "me pasás el catalogo?", "¿qué tienen?",
+                                   "el catálogo por favor", "quiero ver la lista de precios"])
+def test_pedir_el_catalogo_con_cualquier_frase(svc, texto):
+    out = svc.handle_message(CLIENT, texto)
+    assert "Catálogo de bebidas" in plain(out[0].text)
+
+
+@pytest.mark.parametrize("texto,esperado", [("¿qué cervezas tienen?", "Cerveza Rubia 1L"),
+                                            ("mostrame el fernet", "Fernet 750ml"),
+                                            ("cuáles energizantes tienen", "Bebida Energizante")])
+def test_pedir_una_categoria_con_una_frase(svc, texto, esperado):
+    txt = plain(svc.handle_message(CLIENT, texto)[0].text)
+    assert esperado in txt and "Coca-Cola" not in txt
+
+
+def test_un_pedido_con_cantidad_no_es_pedir_el_catalogo(svc):
+    assert "Revisá tu pedido" in plain(svc.handle_message(CLIENT, "2 cervezas")[0].text)
+
+
+def test_si_gemini_promete_el_catalogo_lo_manda(repo, settings):
+    from .test_gemini_en_el_bot import intent
+    models = _FakeModels(intent("charla", "¡Claro! Te paso el catálogo 👇"))
+    svc = _svc(repo, settings, models)
+    out = svc.handle_message(CLIENT, "che, contame un poco del negocio")
+    assert "Te paso el catálogo" in plain(out[0].text) and "Catálogo de bebidas" in plain(out[-1].text)

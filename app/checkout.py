@@ -1158,6 +1158,9 @@ class CheckoutMixin:
             msg += "\n\n🧾 Tu pedido sigue esperando confirmación: respondé «sí» o tocá ✅ en el resumen."
         elif draft is not None and draft.waiting == WAIT_STOCK:
             msg += "\n\n🧾 ¿Te ajusto el pedido a lo que hay? Respondé «sí», o mandame la lista como la querés."
+        if intent in ("consulta", "charla") and not reply.consulta_skus and "catalogo" in _norm(reply.respuesta):
+            # Gemini dijo «te paso el catálogo»: que llegue de verdad.
+            return [Outgoing(user.id, msg)] + self.cmd_catalog(user, [])
         return [Outgoing(user.id, msg)]
 
     def _converse_rules(self, user, text: str, draft: Draft | None, catalog=None) -> list:

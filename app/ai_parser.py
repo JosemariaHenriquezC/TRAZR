@@ -390,7 +390,7 @@ Con cada mensaje del cliente (mirando la conversación y el borrador actual):
      ("agregale al pedido", "cambiá la fanta", "me faltó…", "mandalo a otra dirección").
    - "cambio_pedido": NO hay borrador y quiere modificar un pedido YA HECHO
      (productos y/o dirección) o cancelarlo.
-   - "consulta": pregunta precios, si hay un producto, qué tienen, horarios, zona,
+   - "consulta": pregunta precios, si hay un producto, horarios, zona,
      pagos, el estado de un pedido, etc.
    - "charla": saludo, agradecimiento, queja, o una pregunta tuya para aclarar.
 2. En "pedido" y "cambio_pedido", "items" es la lista COMPLETA de cómo queda el
