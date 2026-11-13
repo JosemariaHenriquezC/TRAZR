@@ -114,11 +114,11 @@ def test_info_del_negocio_llega_a_gemini(repo, settings):
 
 
 def test_cambio_de_pedido_ya_hecho(repo, settings):
-    models = _FakeModels(pedido([("COC1", "2 coca", 2), ("FAN1", "1 fanta", 1)]), intent("confirmar"),
+    # «si» y «dale» se resuelven sin Gemini: solo el pedido y el cambio pasan por el modelo.
+    models = _FakeModels(pedido([("COC1", "2 coca", 2), ("FAN1", "1 fanta", 1)]),
                          intent("cambio_pedido", "Dale, te lo cambio. Fijate cómo queda 👇",
                                 items=[{"sku": "COC1", "texto": "2 coca", "cantidad": 2},
-                                       {"sku": "SPR1", "texto": "1 sprite", "cantidad": 1}]),
-                         intent("confirmar"))
+                                       {"sku": "SPR1", "texto": "1 sprite", "cantidad": 1}]))
     svc = _svc(repo, settings, models)
     svc.handle_message(CLIENT, "2 coca y 1 fanta")
     svc.handle_message(CLIENT, "si")
@@ -127,7 +127,7 @@ def test_cambio_de_pedido_ya_hecho(repo, settings):
     out = svc.handle_message(CLIENT, "che, cambiame la fanta por una sprite")
     txt = plain(out[0].text)
     assert txt.startswith("Dale, te lo cambio") and f"Así quedaría tu pedido {oid}" in txt
-    assert "CONFIRMADO; 2 x Coca-Cola 2.25L, 1 x Fanta Naranja 2.25L" in models.prompts[2]
+    assert "CONFIRMADO; 2 x Coca-Cola 2.25L, 1 x Fanta Naranja 2.25L" in models.prompts[1]
     out = svc.handle_message(CLIENT, "dale")
     assert "¡Pedido modificado y confirmado!" in plain(out[0].text)
     assert [(l.sku, l.qty) for l in repo.get_order(oid).lines] == [("COC1", 2), ("SPR1", 1)]

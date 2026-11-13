@@ -86,6 +86,16 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
 - Etapas: 0 red de seguridad (bugs, sí/no sin Gemini, timeout, «escribiendo» WhatsApp, golden set
   ~50 casos + eventos) → 1 pedido en curso → 2 bultos (unidades_por_bulto) → 3 voz/forma, pago en
   el resumen, «lo de siempre» → Mercado Pago → 4 handoff a humano + métricas.
+- ETAPA 0 HECHA: bugs de dirección (`_looks_like_address`: número o palabra de calle, y que no
+  nombre productos ni empiece con «agregale/esperá…») y de pago (`_payment_choice`: un solo medio
+  sin negar; cancelar primero; ante la duda vuelve a preguntar con botones); `_wants_confirm` /
+  `_wants_cancel` sin Gemini; palabras clave (`_keyword`: catálogo, mis pedidos, ayuda,
+  modificar, mi dirección; saludo sin Gemini → bienvenida); textos sin comandos con barra;
+  cajas/packs → error "bulto" (parser.BULK_WORDS, también si Gemini pone número); Gemini 8 s y
+  1 reintento; WhatsApp leído + «escribiendo»; «lo consulto con el equipo» → aviso "consulta";
+  tabla `eventos` (sin texto) + `scripts/metricas.py`; set de prueba `tests/golden/casos.json`
+  (56 casos) + `scripts/evaluar.py` (Gemini real, a mano; `--sin-ia`). Base con reglas: 42/56.
+  Falta: correr el set con Gemini real para el número base (lo hace el usuario).
 - Decisiones pendientes del usuario: cómo se venden los bultos; pago dentro del resumen; voz;
   funciones de WhatsApp (sí escribiendo/listas, no Flows/catálogo Meta); handoff; avisos con texto.
 

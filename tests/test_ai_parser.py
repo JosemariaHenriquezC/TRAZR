@@ -254,7 +254,7 @@ def test_load_ai_config_lee_el_entorno(monkeypatch):
     monkeypatch.setenv("AI_TIMEOUT_SECONDS", "abc")  # inválido -> default
     monkeypatch.setenv("AI_PARSER_ENABLED", "false")
     cfg = ai_parser.load_ai_config()
-    assert (cfg.model, cfg.fallback_model, cfg.timeout, cfg.enabled) == ("x", "y", 15.0, False)
+    assert (cfg.model, cfg.fallback_model, cfg.timeout, cfg.enabled) == ("x", "y", 8.0, False)
 
 
 @pytest.mark.parametrize("valor,esperado", [("si", True), ("1", True), ("no", False), ("", True)])

@@ -25,13 +25,14 @@ from __future__ import annotations
 import logging
 import secrets
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .admin import AdminMixin
-from .checkout import CheckoutMixin
+from .checkout import CheckoutMixin, _norm
 from .config import Settings
 from typing import Callable
 
@@ -45,6 +46,8 @@ log = logging.getLogger(__name__)
 # y se pierde al reiniciar el bot.
 HISTORY_WINDOW = timedelta(hours=12)
 HISTORY_MESSAGES = 10
+GREETINGS = {"hola", "holaa", "buenas", "buen dia", "buenos dias", "buenas tardes", "buenas noches",
+             "que tal", "hola que tal", "hola buenas", "hola buen dia", "hey", "holis"}
 
 
 @dataclass
@@ -131,6 +134,12 @@ class BotService(CheckoutMixin, AdminMixin):
                        on_wait: Callable[[Outgoing], None] | None = None) -> list[Outgoing]:
         """`on_wait`: el canal lo pasa para mandar en el momento un «esperame» mientras se
         reintenta con Gemini (el resto de las respuestas se devuelven al final)."""
+        t0 = time.monotonic()
+        out = self._handle_message(user, text, on_wait)
+        self._event(user, "mensaje", int((time.monotonic() - t0) * 1000))
+        return out
+
+    def _handle_message(self, user: User, text: str, on_wait) -> list[Outgoing]:
         text = (text or "").strip()
         if not text:
             return self._to_channel(user, [Outgoing(user.id, "Mandame tu pedido como texto, por ejemplo: "
@@ -148,10 +157,37 @@ class BotService(CheckoutMixin, AdminMixin):
             out = self.answer_payment(user, text, draft)
         elif draft is not None and draft.waiting == "guardar_direccion":
             out = self.answer_which_address(user, text, draft)
+        elif self._keyword(text) is not None:
+            out = self._keyword(text)(user, [])
         else:
             out = self.converse(user, text, draft, on_wait=on_wait)
         self._remember(user, text, out)
         return self._to_channel(user, out)
+
+    def _event(self, user: User, kind: str, latency_ms: int | None = None, detail: str = "") -> None:
+        """Registra un evento para medir al bot (sin el texto de los mensajes). Si la base
+        falla, se sigue igual: medir nunca debe frenar un pedido."""
+        try:
+            self.repo.add_event(kind, user.channel, str(user.id), self.stamp(), latency_ms, detail)
+        except Exception:
+            log.debug("No se pudo registrar el evento %s", kind, exc_info=True)
+
+    def _keyword(self, text: str):
+        """Palabras que hacen lo mismo que un comando, para canales sin menú de comandos
+        (WhatsApp): «catálogo», «mis pedidos», «ayuda», «modificar mi pedido»."""
+        t = _norm(text)
+        keywords = {
+            "catalogo": self.cmd_catalog, "el catalogo": self.cmd_catalog, "ver catalogo": self.cmd_catalog,
+            "lista": self.cmd_catalog, "lista de precios": self.cmd_catalog, "precios": self.cmd_catalog,
+            "mis pedidos": self.cmd_my_orders, "mi pedido": self.cmd_my_orders, "ayuda": self.cmd_help,
+            "menu": self.cmd_help, "modificar": self.cmd_modify, "modificar pedido": self.cmd_modify,
+            "modificar mi pedido": self.cmd_modify, "mi direccion": self.cmd_address,
+        }
+        if t in keywords:
+            return keywords[t]
+        if not self.s.ai.usable and self.ai_client is None and t in GREETINGS:
+            return self.cmd_start   # sin Gemini, un saludo recibe la bienvenida
+        return None
 
     # ------------------------------------------------------- conversación
     def _remember(self, user: User, text: str, out: list[Outgoing]) -> None:
@@ -181,6 +217,7 @@ class BotService(CheckoutMixin, AdminMixin):
         """Botones del cliente: 'cf:<token>' confirmar, 'cd:' cambiar dirección, 'cx:' cancelar,
         'aj:' ajustar a lo que hay en stock, 'dk:'/'dn:' dejar guardada la dirección de siempre / la nueva."""
         action, _, arg = data.partition(":")
+        self._event(user, "boton", detail=action)
         client = {"cf": (self.confirm_draft, "Confirmar"), "cd": (self.ask_new_address, "Cambiar dirección"),
                   "cx": (self.cancel_draft, "Cancelar"),
                   "aj": (self.adjust_to_stock, "Ajustar a lo que hay"),
@@ -214,8 +251,8 @@ class BotService(CheckoutMixin, AdminMixin):
         msg = (f"¡Hola {esc(user.name)}! 👋\nSoy el asistente de pedidos {shop}. Escribime lo que necesitás, "
                "por ejemplo:\n<i>Quiero 2 coca, 3 agua sin gas y 1 fernet</i>\n\n"
                "🚚 El envío está siempre incluido, sin costo.\n\n"
-               "/catalogo — bebidas y precios\n/direccion — ver o cambiar tu dirección de envío\n"
-               "/mispedidos — tus últimos pedidos\n/ayuda — más opciones")
+               "Escribí <b>catálogo</b> para ver bebidas y precios, <b>mis pedidos</b> para ver los "
+               "últimos, o <b>ayuda</b> para más opciones.")
         return [Outgoing(user.id, msg)]
 
     def cmd_help(self, user, args):
@@ -223,12 +260,12 @@ class BotService(CheckoutMixin, AdminMixin):
                "<i>2 coca, 3 agua sin gas y 1 fernet</i>  ·  <i>sprite x 4</i>  ·  <i>media docena de cervezas</i>\n\n"
                "Te muestro un resumen con precios, total y dirección, y el pedido se hace "
                "recién cuando lo confirmás.\n🚚 El envío está siempre incluido, sin costo.\n\n"
-               "/catalogo — bebidas y precios\n"
-               "/confirmar — confirmar el pedido del resumen\n"
-               "/cancelar — descartar el pedido sin confirmar\n"
-               "/modificar — cambiar tu último pedido (productos o dirección)\n"
-               "/direccion [nueva dirección] — ver o cambiar tu dirección de envío\n"
-               "/mispedidos — tus últimos pedidos")
+               "Podés escribirme:\n"
+               "• <b>catálogo</b> — bebidas y precios\n"
+               "• <b>sí</b> o <b>cancelar</b> — confirmar o descartar el pedido del resumen\n"
+               "• <b>modificar</b> — cambiar tu último pedido (productos o dirección)\n"
+               "• <b>mi dirección</b> — ver tu dirección de envío (para cambiarla, mandame la nueva)\n"
+               "• <b>mis pedidos</b> — tus últimos pedidos")
         return [Outgoing(user.id, msg)]
 
     def cmd_catalog(self, user, args):
@@ -272,9 +309,9 @@ class BotService(CheckoutMixin, AdminMixin):
                 customer = self.repo.get_customer(user.channel, str(user.id))
                 if customer and customer.address:
                     return [Outgoing(user.id, f"📍 Tu dirección de envío es:\n<b>{esc(customer.address)}</b>\n\n"
-                                              "Para cambiarla: /direccion nueva dirección")]
+                                              "Para cambiarla, escribime «cambiar dirección» y la nueva.")]
                 return [Outgoing(user.id, "Todavía no tenés dirección guardada.\n"
-                                          "Cargala así: /direccion Av. Mate de Luna 1234, San Miguel de Tucumán")]
+                                          "Mandámela cuando hagas tu primer pedido: calle, número y localidad.")]
         except StorageError as exc:
             return self._storage_failure(user, exc, "consultar la dirección")
         if draft is not None:  # hay un pedido sin confirmar: la dirección nueva va para ese pedido
@@ -287,7 +324,7 @@ class BotService(CheckoutMixin, AdminMixin):
         except StorageError as exc:
             return self._storage_failure(user, exc, "guardar la dirección")
         return [Outgoing(user.id, f"📍 Listo, tus próximos pedidos van a:\n<b>{esc(new)}</b>\n"
-                                  "(si querés cambiar la de un pedido ya hecho, usá /modificar)")]
+                                  "(si querés cambiar la de un pedido ya hecho, escribí «modificar»)")]
 
     def cmd_cancel(self, user, args):
         return self.cancel_draft(user)
@@ -308,9 +345,13 @@ class BotService(CheckoutMixin, AdminMixin):
                 opts = ", ".join(f"<b>{esc(c.name)}</b>" for c in it.candidates[:5])
                 msgs.append(f"«{esc(it.raw)}»: ¿cuál de estos? {opts}")
             elif it.error == "no_existe" and self.s.rules.on_unknown_product == "ask":
-                msgs.append(f"«{esc(it.unknown_name)}»: no está en nuestro catálogo (mirá /catalogo).")
+                msgs.append(f"«{esc(it.unknown_name)}»: no está en nuestro catálogo (escribí «catálogo» para ver lo que hay).")
             elif it.error == "sin_producto":
                 msgs.append(f"«{esc(it.raw)}»: no entendí qué producto querés.")
+            elif it.error == "bulto":
+                name = it.product.name if it.product else it.raw
+                msgs.append(f"«{esc(it.raw)}»: ¿cuántas unidades de {esc(name)} son en total? "
+                            "Todavía no tengo cargado cuántas trae cada caja o pack.")
             elif it.error == "sin_cantidad":
                 name = it.product.name if it.product else it.raw
                 msgs.append(f"«{esc(it.raw)}»: ¿cuántas unidades de {esc(name)}?")

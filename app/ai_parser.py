@@ -99,7 +99,7 @@ class AIConfig:
     api_key: str | None = None
     model: str = MODELO_POR_DEFECTO
     fallback_model: str | None = None
-    timeout: float = 15.0
+    timeout: float = 8.0
 
     @property
     def usable(self) -> bool:
@@ -129,7 +129,7 @@ def load_ai_config() -> AIConfig:
         api_key=os.getenv("GEMINI_API_KEY", "").strip() or None,
         model=os.getenv("GEMINI_MODEL", "").strip() or MODELO_POR_DEFECTO,
         fallback_model=os.getenv("GEMINI_FALLBACK_MODEL", "").strip() or None,
-        timeout=_float_env("AI_TIMEOUT_SECONDS", 15.0),
+        timeout=_float_env("AI_TIMEOUT_SECONDS", 8.0),
     )
 
 
@@ -274,6 +274,11 @@ def _ai_items_a_parsed(
     for ai in ai_items:
         if ai.sku is not None:
             item = ParsedItem(raw=ai.texto, product=por_sku[ai.sku])
+            if rules_parser.mentions_bulk(ai.texto):
+                # Pidió cajas o packs: aunque el modelo haya puesto un número, no se asume.
+                item.error = "bulto"
+                salida.append(item)
+                continue
             if ai.cantidad is not None:
                 item.qty = ai.cantidad
             else:
@@ -383,6 +388,8 @@ Con cada mensaje del cliente (mirando la conversación y el borrador actual):
    Si en un "cambio_pedido" solo cambia la dirección, dejá "items" vacío.
    - Usá solo SKUs del catálogo; si no hay coincidencia clara, sku=null.
    - Si falta la cantidad o no es un entero, cantidad=null. No inventes.
+   - Si pide cajas, cajones, packs, bultos o fardos, cantidad=null y en "texto" dejá
+     la palabra (ej. "2 cajas de coca"): el sistema le pregunta cuántas unidades son.
    - Si un producto es ambiguo (ej. "agua" y hay con y sin gas), NO lo pongas:
      elegí "charla" y preguntá cuál quiere.
    - "texto" describe el renglón (ej. "2 coca").

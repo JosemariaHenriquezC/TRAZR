@@ -117,7 +117,7 @@ en memoria**: los mensajes del chat **no se guardan en la base** y se olvidan al
 Devuelve la intención y un texto corto.
 
 **Si Gemini no contesta** (fallan los dos modelos), el bot le dice al cliente «Dame un momento
-que estoy procesando tu mensaje», reintenta (`AI_RETRY_DELAYS`, por defecto a los 4 y 8 s) y,
+que estoy procesando tu mensaje», reintenta una vez (`AI_RETRY_DELAYS`, por defecto a los 3 s; cada intento espera hasta `AI_TIMEOUT_SECONDS`, 8 s) y,
 si sigue sin contestar, le pide que escriba de nuevo en unos minutos y deja un aviso en la web.
 Sin clave de Gemini (`GEMINI_API_KEY` vacía) interpreta el parser por reglas.
 
@@ -129,6 +129,17 @@ Sin clave de Gemini (`GEMINI_API_KEY` vacía) interpreta el parser por reglas.
 | consulta | Muestra el texto de Gemini + precio y disponibilidad **tomados de la base**. |
 | cambio_pedido | Responde y le avisa al admin con el mensaje y el último pedido del cliente. |
 | charla | Responde el texto de Gemini (saludos, preguntas para aclarar, horarios, etc.). |
+
+### Medir al bot
+
+- **Set de conversaciones de prueba** (`tests/golden/casos.json`, 56 casos: pedidos simples,
+  jerga, ambigüedades, cajas y packs, cambios, confirmación, dirección, pago, consultas, stock y
+  seguridad). Se corre a mano, contra Gemini real, antes y después de cada cambio:
+  `python -m scripts.evaluar` (o `--sin-ia` para probar solo las reglas, `--solo duda -v` para
+  ver las respuestas). Muestra cuántos casos pasan por tema y cuánto tarda Gemini.
+- **Eventos** (tabla `eventos`): mensajes, botones, resúmenes, pedidos registrados o
+  descartados, aclaraciones y demoras de Gemini. Nunca guardan el texto de los mensajes.
+  Resumen: `python -m scripts.metricas` (o `--dias 30`).
 
 ## 5. Base de datos
 

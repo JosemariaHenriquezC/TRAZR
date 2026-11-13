@@ -266,6 +266,17 @@ class WhatsAppClient:
             data["error"] = {"message": f"HTTP {r.status_code}", "code": r.status_code}
         return data
 
+    async def typing(self, message_id: str) -> None:
+        """Marca el mensaje del cliente como leído (doble tilde azul) y muestra «escribiendo…»
+        hasta que salga la respuesta (o 25 s). Si falla, no importa: es solo cortesía."""
+        if not message_id:
+            return
+        try:
+            await self._post({"messaging_product": "whatsapp", "status": "read", "message_id": message_id,
+                              "typing_indicator": {"type": "text"}})
+        except Exception:
+            log.debug("WhatsApp: no se pudo marcar como leído %s", message_id, exc_info=True)
+
     async def close(self) -> None:
         if self._http is not None:
             await self._http.aclose()
@@ -394,6 +405,7 @@ def build_router(svc: BotService, cfg: WhatsAppConfig, client: WhatsAppClient) -
 
     async def handle(item: Incoming) -> None:
         user = User(id=int(item.wa_id), name=item.name, channel=CHANNEL)
+        await client.typing(item.message_id)
         try:
             if item.kind == "button":
                 out = await asyncio.to_thread(svc.handle_callback, user, item.value)

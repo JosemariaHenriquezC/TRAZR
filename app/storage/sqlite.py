@@ -119,6 +119,19 @@ CREATE TABLE IF NOT EXISTS admins (
 );
 
 -- Pedido ya interpretado que espera la dirección del cliente (uno por cliente).
+-- Eventos de la conversación, para medir al bot. NUNCA guarda el texto de los mensajes:
+-- solo qué pasó (tipo), por qué canal, de qué cliente, cuánto tardó y un detalle corto.
+CREATE TABLE IF NOT EXISTS eventos (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha        TEXT NOT NULL,
+    canal        TEXT NOT NULL DEFAULT '',
+    cliente_id   TEXT NOT NULL DEFAULT '',
+    tipo         TEXT NOT NULL,
+    latencia_ms  INTEGER,
+    detalle      TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ix_eventos_fecha ON eventos (fecha);
+
 CREATE TABLE IF NOT EXISTS pedidos_pendientes (
     canal       TEXT NOT NULL,
     externo_id  TEXT NOT NULL,
@@ -326,6 +339,17 @@ class SQLiteRepository(Repository):
         with self._tx() as c:
             c.execute("DELETE FROM pedidos_pendientes WHERE canal = ? AND externo_id = ?",
                       (channel, str(external_id)))
+
+    # --------------------------------------------------------------- eventos
+    def add_event(self, kind: str, channel: str, customer_id: str, stamp: str,
+                  latency_ms: int | None = None, detail: str = "") -> None:
+        with self._tx() as c:
+            c.execute("INSERT INTO eventos (fecha, canal, cliente_id, tipo, latencia_ms, detalle) "
+                      "VALUES (?, ?, ?, ?, ?, ?)", (stamp, channel, str(customer_id), kind, latency_ms, detail[:80]))
+
+    def list_events(self, since: str = "") -> list[dict]:
+        rows = self._query("SELECT * FROM eventos WHERE fecha >= ? ORDER BY id", (since,))
+        return [dict(r) for r in rows]
 
     # --------------------------------------------------------------- avisos
     def add_notice(self, kind: str, title: str, detail: str, order_id: str, stamp: str) -> None:

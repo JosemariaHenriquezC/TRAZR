@@ -133,7 +133,7 @@ def test_errores_de_interpretacion(svc, repo):
         "-3 sprite": "la cantidad debe ser un número entero",
         "5000 sprite": "entre 1 y 1000",
         "quiero coca": "¿cuántas unidades de Coca-Cola 2.25L?",
-        "hola": "No encontré un pedido en tu mensaje",
+        "hola": "¡Hola",                             # un saludo recibe la bienvenida
     }
     for msg, expected in cases.items():
         out = pedir(svc, CLIENT, msg)

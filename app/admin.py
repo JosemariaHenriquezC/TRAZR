@@ -132,7 +132,7 @@ class AdminMixin:
                 return AdminResult(False, f"No pude acceder a la base de datos: {exc}")
         msg = Outgoing(order.customer_id,
                        f"❌ Tu pedido <code>{esc(order.order_id)}</code> no pudo confirmarse.\n"
-                       f"<b>Motivo:</b> {esc(reason)}\n\nSi querés, mandá un pedido nuevo o consultá /catalogo.",
+                       f"<b>Motivo:</b> {esc(reason)}\n\nSi querés, mandame un pedido nuevo (o escribí «catálogo» para ver lo que hay).",
                        channel=order.channel, template=("pedido_no_confirmado", [order.order_id, reason]))
         return AdminResult(True, f"Pedido {order.order_id} rechazado: le avisamos al cliente el motivo.",
                            order, notify=[msg])

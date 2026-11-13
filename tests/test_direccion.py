@@ -219,8 +219,8 @@ def test_pedido_con_errores_pide_aclaracion_antes_que_direccion(svc, repo):
 
 def test_direccion_invalida_se_vuelve_a_pedir(svc, repo):
     svc.handle_message(NUEVO, "2 coca")
-    for bad in ("ok", "1234567890"):
-        assert "parece incompleta" in plain(svc.handle_message(NUEVO, bad)[0].text)
+    assert "calle y número" in plain(svc.handle_message(NUEVO, "ok")[0].text)
+    assert "parece incompleta" in plain(svc.handle_message(NUEVO, "1234567890")[0].text)
     assert "primero necesito la dirección" in plain(svc.handle_message(NUEVO, "¿cuánto tarda en llegar?")[0].text)
     assert repo.list_orders() == [] and draft(repo, NUEVO)["waiting"] == "direccion"
     assert "Revisá tu pedido" in plain(svc.handle_message(NUEVO, DIR)[0].text)

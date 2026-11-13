@@ -61,6 +61,15 @@ class Repository(ABC):
     @abstractmethod
     def clear_pending_order(self, channel: str, external_id: str) -> None: ...
 
+    # ---- eventos para medir al bot (sin el texto de los mensajes) ----
+    @abstractmethod
+    def add_event(self, kind: str, channel: str, customer_id: str, stamp: str,
+                  latency_ms: int | None = None, detail: str = "") -> None: ...
+
+    @abstractmethod
+    def list_events(self, since: str = "") -> list[dict]:
+        """Eventos desde la fecha `since` (texto «AAAA-MM-DD …»), del más viejo al más nuevo."""
+
     # ---- avisos para el admin (web) ----
     @abstractmethod
     def add_notice(self, kind: str, title: str, detail: str, order_id: str, stamp: str) -> None: ...

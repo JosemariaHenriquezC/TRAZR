@@ -166,7 +166,7 @@ class Settings:
     ai: AIConfig = field(default_factory=lambda: AIConfig(enabled=False))
     business: Business = field(default_factory=Business)
     # Si Gemini no contesta: se le pide al cliente que espere y se reintenta tras estas pausas (s)
-    ai_retry_delays: tuple[float, ...] = (4.0, 8.0)
+    ai_retry_delays: tuple[float, ...] = (3.0,)
     # Web de administración
     secret_key: str = ""                  # firma la cookie de sesión (vacío = se genera al arrancar)
     web_host: str = "127.0.0.1"
@@ -209,7 +209,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         timezone=os.getenv("TIMEZONE", "UTC").strip() or "UTC",
         rules=rules,
         ai=load_ai_config(),
-        ai_retry_delays=_delays("AI_RETRY_DELAYS", (4.0, 8.0)),
+        ai_retry_delays=_delays("AI_RETRY_DELAYS", (3.0,)),
         secret_key=os.getenv("SECRET_KEY", "").strip(),
         ngrok_domain=os.getenv("NGROK_DOMAIN", "").strip(),
         web_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",

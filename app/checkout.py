@@ -9,7 +9,7 @@ Flujo de un pedido nuevo (_next_step decide el paso siguiente):
     2. ¿Tiene dirección? Si no, se le pide (esperando "direccion").
     3. Resumen con precios, total y dirección + botones
          [✅ Confirmar] [📍 Cambiar dirección] [❌ Cancelar]
-  El cliente confirma (botón, «sí», /confirmar) → se vuelve a mirar el stock (otro
+  El cliente confirma (botón, «sí») → se vuelve a mirar el stock (otro
   cliente pudo llevárselo) y recién ahí se evalúa la regla y se registra
   CONFIRMADO o EN REVISION (revisión: solo si supera el total máximo; el admin la ve en la web).
 
@@ -25,7 +25,9 @@ registrado el pedido, el bot pregunta cuál dejar para la próxima
 [🏠 La de siempre] [📍 La nueva].
 
 Todo esto es independiente del canal: los botones son (texto, dato) genéricos
-y siempre hay una alternativa escrita («sí», /confirmar, /cancelar).
+y siempre hay una alternativa escrita («sí», «cancelar»). Los comandos con barra siguen
+andando (Telegram los muestra en el menú), pero los textos no los nombran: en WhatsApp
+se escriben palabras («catálogo», «cancelar»).
 """
 from __future__ import annotations
 
@@ -60,19 +62,43 @@ YES = {"si", "sii", "sip", "dale", "ok", "okey", "oka", "confirmo", "confirmar",
        "listo", "de una", "perfecto", "va", "bueno", "si dale", "dale si", "si confirmo",
        "si por favor", "si porfa", "correcto", "esta bien", "todo bien"}
 NO = {"no", "nop", "cancelar", "cancela", "cancelo", "no gracias", "deja", "dejalo", "nada"}
+# Palabras que, en cualquier parte del mensaje, piden descartar el pedido en curso.
+CANCEL_WORDS = {"cancelar", "cancela", "cancelalo", "cancelo", "anula", "anular", "anulalo",
+                "dejalo", "olvidate", "olvidalo", "descarta", "descartalo"}
+PAYMENT_WORDS = {
+    "efectivo": {"efectivo", "cash", "contado", "billete", "billetes"},
+    "transferencia": {"transferencia", "transferencias", "transfiero", "transferir", "transfer",
+                      "alias", "cbu", "banco", "mp", "mercadopago"},
+}
+# Una dirección casi siempre tiene número; si no, alguna de estas palabras.
+STREET_WORDS = {"calle", "av", "avenida", "pasaje", "pje", "ruta", "barrio", "bo", "manzana", "mza",
+                "mz", "lote", "km", "sn", "piso", "dpto", "depto", "local", "esquina", "esq"}
+# Un mensaje que empieza así es un cambio en el pedido, no una dirección.
+ORDER_VERBS = {"agrega", "agregale", "agregame", "agrego", "suma", "sumale", "sumame", "saca", "sacale",
+               "quita", "quitale", "cambia", "cambiale", "mejor", "espera", "pone", "ponele", "poneme",
+               "quiero", "mandame", "traeme", "falta", "faltan", "tambien", "ademas", "y"}
 
 NO_ORDER_MSG = ("No encontré un pedido en tu mensaje 🤔. Escribí productos y cantidades, "
-                "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Mirá /catalogo.")
+                "por ejemplo: <i>2 coca, 3 agua sin gas</i>. Si querés ver qué hay, escribí «catálogo».")
 WAIT_AI_MSG = ("Dame un momento que estoy procesando tu mensaje 🙏 "
                "Hay mucha demanda y tardo un poquito más de lo normal.")
 AI_DOWN_MSG = ("Uy, ahora no puedo procesar tu mensaje 😕. "
                "Escribime de nuevo en unos minutos, por favor.")
 NOT_AVAILABLE_NOTE = "Del resto que pediste no tengo ahora."
-NOTHING_AVAILABLE = "No tengo eso ahora 😕. Mirá /catalogo para ver lo que hay hoy."
+NOTHING_AVAILABLE = "No tengo eso ahora 😕. Escribí «catálogo» para ver lo que hay hoy."
 ASK_ADDRESS = ("📍 ¿A qué dirección te lo enviamos? <b>El envío está incluido, sin costo.</b>\n"
                "Respondé con calle, número y localidad, por ejemplo:\n"
                "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n"
-               "(o /cancelar para descartar el pedido)")
+               "(o escribí «cancelar» para descartar el pedido)")
+ADDRESS_INCOMPLETE = ("Para mandártelo necesito la dirección con <b>calle y número</b> (y la localidad), "
+                      "por ejemplo:\n<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n"
+                      "(o escribí «cancelar» para descartar el pedido)")
+
+
+def _promises_follow_up(text: str) -> bool:
+    """¿La respuesta promete consultar con el equipo? («lo consulto con el equipo y te aviso»)"""
+    t = _norm(text)
+    return "consult" in t and "equipo" in t
 
 
 def _norm(text: str) -> str:
@@ -270,7 +296,7 @@ class CheckoutMixin:
                     new_items.append([p.sku, n])
             if not new_items:
                 self._clear_draft(user)
-                return [Outgoing(user.id, "No me queda nada de lo que pediste 😕. Mirá /catalogo o pedime otra cosa.")]
+                return [Outgoing(user.id, "No me queda nada de lo que pediste 😕. Escribí «catálogo» para ver lo que hay, o pedime otra cosa.")]
             draft.items = new_items
             return self._next_step(user, draft, note="🔧 Listo, lo ajusté a lo que hay.")
         except StorageError as exc:
@@ -278,6 +304,7 @@ class CheckoutMixin:
 
     def _summary(self, user, draft: Draft, intro: str = "", note: str = "") -> list:
         """Resumen del borrador con precios y total de la base, y los botones."""
+        self._event(user, "resumen", detail="modificacion" if draft.modifies else "")
         products = self._products_for(draft)
         pairs, unknown = self._resolve(draft, products)
         ev = evaluate(pairs, self.s.rules, self.today(), unknown, self._is_new_customer(user))
@@ -313,6 +340,8 @@ class CheckoutMixin:
         ask_mode = self.s.rules.on_unknown_product == "ask"
         problems = self._clarifications([it for it in items if not (ask_mode and it.error == "no_existe")])
         if problems:
+            kinds = sorted({it.error for it in items if it.error})
+            self._event(user, "aclaracion", detail=",".join(kinds))
             return [Outgoing(user.id, "No pude armar el pedido todavía:\n• " + "\n• ".join(problems)
                              + "\n\nMandámelo de nuevo corregido, completo. 🙏")]
         pairs = self._merge(items)
@@ -344,10 +373,10 @@ class CheckoutMixin:
     def _address_problem(address: str) -> str | None:
         if "?" in address:  # es una pregunta, no una dirección
             return ("Para seguir primero necesito la dirección de envío: calle, número y localidad. "
-                    "Después te respondo lo que quieras 🙌\n(o /cancelar para descartar el pedido)")
+                    "Después te respondo lo que quieras 🙌\n(o escribí «cancelar» para descartar el pedido)")
         if len(address) < MIN_ADDRESS_LEN or not any(ch.isalpha() for ch in address):
             return ("Esa dirección parece incompleta 🤔. Mandame calle, número y localidad, por ejemplo:\n"
-                    "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n(o /cancelar para descartar el pedido)")
+                    "<i>Av. Mate de Luna 1234, San Miguel de Tucumán</i>\n(o escribí «cancelar» para descartar el pedido)")
         if len(address) > MAX_ADDRESS_LEN:
             return f"La dirección es muy larga (máximo {MAX_ADDRESS_LEN} caracteres)."
         return None
@@ -356,15 +385,64 @@ class CheckoutMixin:
         return self.repo.save_customer(Customer(user.channel, str(user.id), user.name, address.strip()),
                                        self.stamp())
 
+    @staticmethod
+    def _wants_cancel(text: str) -> bool:
+        """«no», «cancelá», «no, dejá», «no tengo plata, cancelá», «mejor no»."""
+        t = _norm(text)
+        words = t.split()
+        if t in NO or CANCEL_WORDS & set(words) or t.startswith(("no quiero", "mejor no")):
+            return True
+        return len(words) > 1 and words[0] == "no" and all(w in NO | {"gracias", "che", "mejor"} for w in words)
+
+    @staticmethod
+    def _wants_confirm(text: str) -> bool:
+        """«sí», «dale», «perfecto, confirmalo» (sin ningún «no» de por medio)."""
+        t = _norm(text)
+        words = set(t.split())
+        return t in YES or (bool(words & {"confirmalo", "confirma", "confirmo", "confirmar", "confirmame"})
+                            and "no" not in words)
+
+    def _looks_like_address(self, text: str) -> bool:
+        """¿Este mensaje es una dirección? Se pide número de calle (o una palabra de dirección)
+        y que no sea un cambio en el pedido («esperá, agregale 2 fantas»)."""
+        words = _norm(text).split()
+        if not words or "?" in text or words[0] in ORDER_VERBS:
+            return False
+        street = bool(STREET_WORDS & set(words)) or "s/n" in text.lower()
+        if not (any(ch.isdigit() for ch in text) or street):
+            return False
+        if street:
+            return True
+        try:   # «2 fantas» tiene número, pero es un producto del catálogo
+            items = rules_parser.parse_order(text, self._sellable(), self.s.rules.match_threshold,
+                                             self.s.rules.max_qty_per_item)
+        except StorageError:
+            return True
+        return not any(it.product is not None for it in items)
+
     def receive_address(self, user, address: str, draft: Draft) -> list:
-        """El cliente mandó la dirección que le pedimos."""
+        """El cliente respondió a «¿a qué dirección te lo enviamos?». Solo se toma como
+        dirección si lo parece; si no (un cambio en el pedido, una pregunta), se atiende como
+        cualquier mensaje y se le vuelve a pedir la dirección."""
         address = address.strip()
-        if _norm(address) in NO:
+        if self._wants_cancel(address):
             return self.cancel_draft(user)
-        problem = self._address_problem(address)
-        if problem:
-            return [Outgoing(user.id, problem)]
-        return self._set_address(user, draft, address)
+        if self._looks_like_address(address):
+            problem = self._address_problem(address)
+            if problem:
+                return [Outgoing(user.id, problem)]
+            return self._set_address(user, draft, address)
+        if self.ai_client is not None or self.s.ai.usable:
+            return self.converse(user, address, draft)   # Gemini contesta y vuelve a pedir la dirección
+        if "?" in address:
+            return [Outgoing(user.id, self._address_problem(address))]
+        try:   # sin Gemini: si nombra productos, es un cambio en el pedido
+            items = self._interpret(address, use_ai=False)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "leer el catálogo para un pedido")
+        if any(it.product is not None for it in items):
+            return self.start_order(user, address, items)
+        return [Outgoing(user.id, ADDRESS_INCOMPLETE)]
 
     def _save_address_if_first(self, user, address: str) -> None:
         """La primera dirección del cliente se guarda sola; después, solo si él lo elige."""
@@ -395,7 +473,7 @@ class CheckoutMixin:
         except StorageError as exc:
             return self._storage_failure(user, exc, "cambiar la dirección")
         return [Outgoing(user.id, "📍 Dale, mandame la nueva dirección: calle, número y localidad.\n"
-                                  "(o /cancelar para descartar)")]
+                                  "(o escribí «cancelar» para descartar)")]
 
     # ---------------------------------------------------- confirmar / cancelar
     def _stale(self, user) -> list:
@@ -451,17 +529,42 @@ class CheckoutMixin:
         draft.payment = method
         return self._place_order(user, draft)
 
+    @staticmethod
+    def _payment_choice(text: str) -> str | None:
+        """Medio de pago que eligió, solo si es uno y sin dudas. «efectivo no, transferencia»
+        → transferencia; «no tengo plata» o «no sé» → ninguno (se vuelve a preguntar)."""
+        words = _norm(text).split()
+        all_keys = set().union(*PAYMENT_WORDS.values())
+
+        def negated(i: int) -> bool:
+            if i + 1 < len(words) and words[i + 1] == "no":          # «efectivo no»
+                return True
+            for j in (i - 1, i - 2):                                 # «no en efectivo», «sin efectivo»
+                if j < 0:
+                    break
+                if words[j] in all_keys:                             # el «no» era de otro medio
+                    return False
+                if words[j] == "sin" or (words[j] == "no" and not (j > 0 and words[j - 1] in all_keys)):
+                    return True
+            return False
+
+        chosen = {method for i, w in enumerate(words) for method, keys in PAYMENT_WORDS.items()
+                  if w in keys and not negated(i)}
+        return chosen.pop() if len(chosen) == 1 else None
+
     def answer_payment(self, user, text: str, draft: Draft) -> list:
-        """Respuesta escrita a «¿cómo lo vas a pagar?»."""
-        words = set(_norm(text).split())
-        if words & {"efectivo", "cash", "contado", "billete", "billetes", "plata"}:
-            return self.choose_payment(user, "efectivo")
-        if words & {"transferencia", "transfiero", "transferir", "transfer", "alias", "cbu", "banco", "mp", "mercadopago"}:
-            return self.choose_payment(user, "transferencia")
-        if _norm(text) in NO:
+        """Respuesta escrita a «¿cómo lo vas a pagar?». Ante cualquier duda se vuelve a
+        preguntar: elegir un medio registra el pedido."""
+        if self._wants_cancel(text):
             return self.cancel_draft(user)
-        return [Outgoing(user.id, "Decime si pagás en <b>efectivo</b> al recibir o por <b>transferencia</b> "
-                                  "(o tocá un botón). Para descartar el pedido: /cancelar")]
+        method = self._payment_choice(text)
+        if method:
+            return self.choose_payment(user, method)
+        t = draft.token
+        return [Outgoing(user.id, "Para cerrar el pedido decime cómo lo pagás: <b>efectivo</b> al recibir o "
+                                  "<b>transferencia</b>. Si no lo querés, escribí «cancelar».",
+                         [("💵 Efectivo al recibir", f"pe:{t}"), ("🏦 Transferencia", f"pt:{t}"),
+                          ("❌ Cancelar", f"cx:{t}")])]
 
     def _payment_text(self, order: Order) -> str:
         """Qué tiene que hacer el cliente para pagar (sin inventar nada: sale de la config)."""
@@ -482,6 +585,7 @@ class CheckoutMixin:
             self._clear_draft(user)
         except StorageError as exc:
             return self._storage_failure(user, exc, "cancelar el pedido")
+        self._event(user, "pedido_cancelado", detail="modificacion" if draft.modifies else draft.waiting)
         if draft.modifies:
             return [Outgoing(user.id, f"❌ Listo, tu pedido <code>{draft.modifies}</code> queda como estaba.")]
         return [Outgoing(user.id, "❌ Listo, descarté ese pedido. Cuando quieras, mandame uno nuevo.")]
@@ -524,6 +628,7 @@ class CheckoutMixin:
             except StorageError as exc:
                 return self._storage_failure(user, exc, "armar el pedido")
 
+        self._event(user, "pedido_registrado", detail=order.status.lower())
         tail = f"\n\n✏️ Si necesitás cambiar algo, avisame en los próximos {self.s.rules.modify_minutes} minutos."
         if order.status == ESTADO_CONFIRMADO:
             out = [Outgoing(user.id, self.format_order(order, "✅ <b>¡Pedido completado!</b> Queda pendiente de pago.")
@@ -691,7 +796,7 @@ class CheckoutMixin:
             question = self._get_draft(user, include_save_question=True)
             if question is None or question.waiting != WAIT_SAVE or (token and token != question.token):
                 return [Outgoing(user.id, "Esa pregunta ya no está vigente. Si querés cambiar tu dirección "
-                                          "guardada, usá /direccion nueva dirección.")]
+                                          "guardada, escribime «cambiar dirección» y la nueva.")]
             self._clear_draft(user)
             if keep_old:
                 customer = self.repo.get_customer(*self._key(user))
@@ -731,6 +836,11 @@ class CheckoutMixin:
         reintenta; si sigue sin contestar, se le pide que escriba más tarde."""
         if self.ai_client is None and not self.s.ai.usable:
             return self._converse_rules(user, text, draft)
+        if draft is not None and draft.waiting != WAIT_ADDRESS:   # «sí» / «no» no necesitan a Gemini
+            if self._wants_confirm(text):
+                return self.confirm_draft(user)
+            if self._wants_cancel(text):
+                return self.cancel_draft(user)
         try:
             catalog = self._sellable()   # lo agotado no se le muestra a Gemini: no lo puede ofrecer
             history = self._history(user)
@@ -744,7 +854,14 @@ class CheckoutMixin:
                              negocio=self.s.business.as_text(), nombre_negocio=self.s.business.name,
                              max_qty=r.max_qty_per_item, config=self.s.ai, client=self.ai_client)
 
-        reply = ask()
+        def timed_ask():
+            t0 = time.monotonic()
+            result = ask()
+            self._event(user, "ia", int((time.monotonic() - t0) * 1000),
+                        result.intencion if result is not None else "sin_respuesta")
+            return result
+
+        reply = timed_ask()
         if reply is None and self.s.ai_retry_delays:
             if on_wait is not None:
                 try:
@@ -753,11 +870,12 @@ class CheckoutMixin:
                     log.exception("No pude mandar el aviso de espera")
             for delay in self.s.ai_retry_delays:
                 time.sleep(delay)
-                reply = ask()
+                reply = timed_ask()
                 if reply is not None:
                     break
         if reply is None:
             log.error("Gemini no respondió tras %d reintentos", len(self.s.ai_retry_delays))
+            self._event(user, "ia_caida")
             self.notify_admins("falla", "Gemini no responde",
                                f"No se pudo atender un mensaje de {user.name}: «{text[:200]}». "
                                "Se le pidió que escriba de nuevo en unos minutos.")
@@ -800,7 +918,13 @@ class CheckoutMixin:
             msg = esc(reply.respuesta) if reply.respuesta else "Buena pregunta 🤔 Lo consulto con el equipo y te aviso."
         else:  # charla, o confirmar/cancelar sin borrador
             msg = esc(reply.respuesta) if reply.respuesta else NO_ORDER_MSG
-        if draft is not None and draft.waiting == WAIT_CONFIRM:
+        if _promises_follow_up(msg):
+            # El bot prometió consultarlo: que alguien del equipo se entere.
+            self.notify_admins("consulta", f"Consulta sin responder de {user.name}",
+                               f"{user.channel}: «{text[:200]}». El bot le dijo que lo consultaba con el equipo.")
+        if draft is not None and draft.waiting == WAIT_ADDRESS:
+            msg += "\n\n📍 Para seguir con tu pedido me falta la dirección: calle, número y localidad."
+        elif draft is not None and draft.waiting == WAIT_CONFIRM:
             msg += "\n\n🧾 Tu pedido sigue esperando confirmación: respondé «sí» o tocá ✅ en el resumen."
         elif draft is not None and draft.waiting == WAIT_STOCK:
             msg += "\n\n🧾 ¿Te ajusto el pedido a lo que hay? Respondé «sí», o mandame la lista como la querés."
@@ -809,15 +933,17 @@ class CheckoutMixin:
     def _converse_rules(self, user, text: str, draft: Draft | None, catalog=None) -> list:
         """Sin Gemini: «sí»/«no» confirman o cancelan; lo demás se interpreta por reglas."""
         if draft is not None:
-            if _norm(text) in YES:
+            if self._wants_confirm(text):
                 return self.confirm_draft(user)
-            if _norm(text) in NO:
+            if self._wants_cancel(text):
                 return self.cancel_draft(user)
         try:
             items = self._interpret(text, catalog, use_ai=catalog is None)
         except StorageError as exc:
             return self._storage_failure(user, exc, "leer el catálogo para un pedido")
         if draft is not None and not items:
+            if draft.waiting == WAIT_ADDRESS:
+                return [Outgoing(user.id, ADDRESS_INCOMPLETE)]
             if draft.waiting == WAIT_STOCK:
                 return [Outgoing(user.id, "¿Te ajusto el pedido a lo que hay? Respondé «sí» para ajustarlo o "
                                           "«no» para cancelarlo, o mandame la lista completa como la querés.")]

@@ -162,6 +162,18 @@ def match_product(query: str, products: list[Product], threshold: float):
     return top, []
 
 
+# Presentaciones mayoristas: todavía no se sabe cuántas unidades trae cada una (ver el plan
+# de mejora, etapa 2). Si el cliente las nombra, NO se asume nada: se le pregunta.
+BULK_WORDS = {"caja", "cajas", "cajon", "cajones", "pack", "packs", "bulto", "bultos", "fardo", "fardos",
+              "sixpack", "sixpacks", "plancha", "planchas", "paquete", "paquetes", "jaula", "jaulas"}
+
+
+def mentions_bulk(text: str) -> bool:
+    """¿El renglón pide por caja, pack, bulto o fardo? («2 cajas de coca», «un six pack»)"""
+    t = normalize(text)
+    return bool(BULK_WORDS & set(t.split())) or "six pack" in t
+
+
 def parse_order(text: str, products: list[Product], threshold: float = 0.72,
                 max_qty: int = 1000) -> list[ParsedItem]:
     """Interpreta un mensaje y devuelve un ParsedItem por renglón reconocido."""
@@ -170,8 +182,10 @@ def parse_order(text: str, products: list[Product], threshold: float = 0.72,
         # Se quitan las palabras de relleno ANTES de buscar la cantidad
         # ("quiero 2 yerba" → "2 yerba").
         words = [w for w in line.split() if w and w not in FILLER]
+        bulk = bool(BULK_WORDS & set(words)) or "six pack" in line
+        words = [w for w in words if w not in BULK_WORDS and w != "six"]
         qty, valid, rest = _extract_qty(words)
-        name_words = [w for w in rest if w != "x"]
+        name_words = [w for w in rest if w not in ("x", "de")]
         if not name_words and qty is None:
             continue  # renglón de puro relleno ("hola", "gracias")
         item = ParsedItem(raw=line)
@@ -187,7 +201,9 @@ def parse_order(text: str, products: list[Product], threshold: float = 0.72,
             item.error, item.unknown_name = "no_existe", query
         else:
             item.product = product
-        if qty is None:
+        if bulk:   # «2 cajas»: no son 2 unidades; se pregunta cuántas son
+            item.error = item.error or "bulto"
+        elif qty is None:
             item.error = item.error or "sin_cantidad"
         elif not valid or qty > max_qty:
             item.qty = qty

@@ -26,9 +26,13 @@ class FakeGraph:
 
     def __init__(self):
         self.sent: list[dict] = []
+        self.reads: list[dict] = []        # «leído + escribiendo…» (no son mensajes)
         self.reject: set[str] = set()      # números que contestan «no permitido»
 
     async def post(self, payload):
+        if payload.get("status") == "read":
+            self.reads.append(payload)
+            return {"success": True}
         self.sent.append(payload)
         if payload["to"] in self.reject:
             return {"error": {"code": ERR_NOT_ALLOWED, "message": "Recipient not in allowed list"}}
@@ -210,6 +214,8 @@ class FakeGraphWindow(FakeGraph):
         self.sync_error = sync_error
 
     async def post(self, payload):
+        if payload.get("status") == "read":
+            return {"success": True}
         self.sent.append(payload)
         if payload["type"] != "template" and self.sync_error:
             return {"error": {"code": 131047, "message": "Re-engagement message"}}
@@ -305,3 +311,10 @@ def test_definiciones_de_plantillas_para_meta():
         assert "{shop}" not in body["text"] and "Trazr" in body["text"]
         assert body["text"].count("{{") == len(body["example"]["body_text"][0])
         assert not body["text"].startswith("{{") and not body["text"].rstrip(".!").endswith("}}")
+
+
+def test_marca_leido_y_muestra_escribiendo(wa):
+    client, graph, _ = wa
+    post(client, _event({"type": "text", "text": {"body": "/catalogo"}, "id": "wamid.leeme"}))
+    assert graph.reads == [{"messaging_product": "whatsapp", "status": "read", "message_id": "wamid.leeme",
+                            "typing_indicator": {"type": "text"}}]
