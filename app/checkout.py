@@ -117,6 +117,10 @@ class Draft:
     address: str = ""
     modifies: str = ""                              # ID del pedido que se modifica ("" = pedido nuevo)
     payment: str = ""                               # medio de pago elegido (efectivo | transferencia)
+    # Dudas sin resolver: lo entendido ya está en items, esto falta aclarar. Mientras haya
+    # alguna, no se puede confirmar (salvo «Seguir sin eso»). Cada una: {raw, tipo, sku,
+    # cantidad, candidatos, pregunta}; tipo = bulto | sin_cantidad | ambiguo.
+    pending: list[dict] = field(default_factory=list)
     waiting: str = WAIT_CONFIRM                     # qué se espera del cliente
     token: str = field(default_factory=lambda: secrets.token_hex(3))  # invalida botones viejos
 
@@ -186,7 +190,8 @@ class CheckoutMixin:
                 WAIT_STOCK: "no alcanza el stock: se le ofreció ajustar a lo que hay (si dice que sí, "
                             "es 'confirmar'; si pide otra cosa, es 'pedido' con la lista completa)",
                 }.get(draft.waiting, "esperando confirmación")
-        return f"{kind}; {items or '(sin productos)'}; dirección: {draft.address or '(falta)'}; {wait}"
+        doubts = "; falta aclarar: " + " | ".join(p["raw"] for p in draft.pending) if draft.pending else ""
+        return f"{kind}; {items or '(sin productos)'}; dirección: {draft.address or '(falta)'}; {wait}{doubts}"
 
     def _resolve(self, draft: Draft, products: dict[str, Product]) -> tuple[list[tuple[Product, int]], list[str]]:
         pairs, unknown = [], list(draft.unknown)
@@ -326,11 +331,96 @@ class CheckoutMixin:
         if ev.status == ESTADO_REVISION:
             rows += ["", "⚠️ Si lo confirmás, queda <b>en revisión</b> porque:"]
             rows += [f"• {esc(r)}" for r in ev.reasons]
-        rows += ["", "¿Lo confirmo? Respondé «sí», o decime qué querés cambiar."]
         t = draft.token
+        if draft.pending:
+            rows += ["", "❓ <b>Me falta saber:</b>"] + [f"• {p['pregunta']}" for p in draft.pending]
+            rows += ["", "Respondeme eso y te lo dejo listo para confirmar, o tocá «Seguir sin eso»."]
+            return [Outgoing(user.id, "\n".join(rows),
+                             [("Seguir sin eso", f"sp:{t}"), ("📍 Cambiar dirección", f"cd:{t}"),
+                              ("❌ Cancelar", f"cx:{t}")])]
+        rows += ["", "¿Lo confirmo? Respondé «sí», o decime qué querés cambiar."]
         return [Outgoing(user.id, "\n".join(rows),
                          [("✅ Confirmar", f"cf:{t}"), ("📍 Cambiar dirección", f"cd:{t}"),
                           ("❌ Cancelar", f"cx:{t}")])]
+
+    # ----------------------------------------------------------- pendientes
+    @staticmethod
+    def _can_wait(it: ParsedItem) -> bool:
+        """¿Esta duda puede quedar pendiente mientras se anota el resto del pedido?"""
+        return (it.error in ("bulto", "sin_cantidad") and it.product is not None) or \
+               (it.error == "ambiguo" and bool(it.candidates))
+
+    def _pending_from(self, it: ParsedItem) -> dict:
+        qty = it.qty
+        if it.error == "ambiguo" and qty is None:
+            words = rules_parser.normalize(it.raw).split()
+            found = rules_parser._extract_qty(words)
+            qty = int(found[0]) if found[0] is not None and found[1] else None
+        return {"raw": it.raw, "tipo": it.error, "sku": it.product.sku if it.product else None,
+                "cantidad": qty, "candidatos": [c.sku for c in it.candidates[:5]],
+                "pregunta": self._clarifications([it])[0]}
+
+    def resolve_pending(self, user, text: str, draft: Draft) -> list | None:
+        """Respuesta corta a una duda pendiente, sin pasar por Gemini: un número («24») completa
+        la cantidad que falta; un nombre («sin gas») elige entre los productos parecidos.
+        Devuelve None si el mensaje no es eso (sigue el camino normal)."""
+        if len(draft.pending) != 1:
+            return None
+        pend = draft.pending[0]
+        sku, qty = None, None
+        words = rules_parser.normalize(text).split()
+        if pend["tipo"] in ("bulto", "sin_cantidad") and pend["sku"]:
+            found = rules_parser._extract_qty([w for w in words if w not in rules_parser.FILLER])
+            rest = [w for w in found[2] if w not in ("x",)]
+            if found[0] is None or not found[1] or rest or found[0] > self.s.rules.max_qty_per_item:
+                return None
+            sku, qty = pend["sku"], int(found[0])
+        elif pend["tipo"] == "ambiguo" and pend["cantidad"]:
+            try:
+                candidates = [p for p in self._sellable() if p.sku in pend["candidatos"]]
+            except StorageError as exc:
+                return self._storage_failure(user, exc, "leer el catálogo para un pedido")
+            query = " ".join(w for w in words if w not in rules_parser.FILLER)
+            if not query:
+                return None
+            product, _ = rules_parser.match_product(query, candidates, 0.5)
+            if product is None:
+                return None
+            sku, qty = product.sku, int(pend["cantidad"])
+        else:
+            return None
+        draft.items = [[s, q] for s, q in self._merge_pairs((draft.items or []) + [[sku, qty]])]
+        draft.pending = []
+        try:
+            return self._next_step(user, draft)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "armar el pedido")
+
+    @staticmethod
+    def _merge_pairs(pairs) -> list[tuple[str, int]]:
+        out: dict[str, int] = {}
+        for sku, qty in pairs:
+            out[sku] = out.get(sku, 0) + int(qty)
+        return list(out.items())
+
+    def skip_pending(self, user, token: str | None = None) -> list:
+        """Botón «Seguir sin eso»: se descartan las dudas y se sigue con lo anotado."""
+        try:
+            draft = self._get_draft(user)
+            if draft is None or (token and token != draft.token):
+                return self._stale(user)
+            draft.pending = []
+            return self._next_step(user, draft)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "armar el pedido")
+
+    def _pending_question(self, user, draft: Draft, note: str = "") -> list:
+        """Repite lo que falta aclarar, con la salida «Seguir sin eso»."""
+        rows = ([note, ""] if note else []) + ["❓ <b>Antes de confirmarlo me falta saber:</b>"]
+        rows += [f"• {p['pregunta']}" for p in draft.pending]
+        rows += ["", "Respondeme eso, o tocá «Seguir sin eso» para confirmar solo lo demás."]
+        t = draft.token
+        return [Outgoing(user.id, "\n".join(rows), [("Seguir sin eso", f"sp:{t}"), ("❌ Cancelar", f"cx:{t}")])]
 
     # ----------------------------------------------------- armar el borrador
     def start_order(self, user, text: str, items: list[ParsedItem] | None, intro: str = "") -> list:
@@ -338,12 +428,26 @@ class CheckoutMixin:
         if not items:
             return [Outgoing(user.id, esc(intro) if intro else NO_ORDER_MSG)]
         ask_mode = self.s.rules.on_unknown_product == "ask"
-        problems = self._clarifications([it for it in items if not (ask_mode and it.error == "no_existe")])
-        if problems:
+        # Lo que no existe no es una duda: en modo "ask" no se nombra, en "review" va a revisión.
+        doubtful = [it for it in items if it.error and it.error != "no_existe"]
+        pending: list[dict] = []
+        if doubtful:
             kinds = sorted({it.error for it in items if it.error})
             self._event(user, "aclaracion", detail=",".join(kinds))
-            return [Outgoing(user.id, "No pude armar el pedido todavía:\n• " + "\n• ".join(problems)
-                             + "\n\nMandámelo de nuevo corregido, completo. 🙏")]
+            good = [it for it in items if not it.error]
+            try:
+                previous = self._get_draft(user)
+            except StorageError:
+                previous = None
+            modifying = previous is not None and bool(previous.modifies)
+            if good and not modifying and all(self._can_wait(it) for it in doubtful):
+                # Se anota lo que se entendió y se pregunta solo lo dudoso.
+                pending = [self._pending_from(it) for it in doubtful]
+                items = good + [it for it in items if it.error == "no_existe"]
+            else:
+                problems = self._clarifications(doubtful)
+                return [Outgoing(user.id, "No pude armar el pedido todavía:\n• " + "\n• ".join(problems)
+                                 + "\n\nMandámelo de nuevo corregido, completo. 🙏")]
         pairs = self._merge(items)
         note = ""
         if ask_mode:
@@ -357,7 +461,7 @@ class CheckoutMixin:
             unknown = [it.unknown_name for it in items if it.error == "no_existe"]  # modo "review"
         try:
             previous = self._get_draft(user)
-            draft = Draft(text=text, items=pairs, unknown=unknown)
+            draft = Draft(text=text, items=pairs, unknown=unknown, pending=pending)
             if previous is not None and previous.modifies:   # sigue siendo una modificación
                 draft.modifies, draft.address = previous.modifies, previous.address
             else:
@@ -493,6 +597,8 @@ class CheckoutMixin:
             return self._stale(user)
         if draft.waiting == WAIT_ADDRESS:
             return [Outgoing(user.id, ASK_ADDRESS)]
+        if draft.pending:   # con una duda abierta no se confirma: a una empresa le falta un renglón
+            return self._pending_question(user, draft)
         if draft.waiting == WAIT_STOCK:  # «sí» a «¿lo ajusto a lo que hay?»
             return self.adjust_to_stock(user)
         if draft.modifies:
@@ -592,6 +698,8 @@ class CheckoutMixin:
 
     # ------------------------------------------------------- registrar el pedido
     def _place_order(self, user, draft: Draft) -> list:
+        if draft.pending:   # red de seguridad: nunca se registra con una duda abierta
+            return self._pending_question(user, draft)
         with self._lock:
             try:
                 products = {p.sku.upper(): p for p in self.repo.list_products()}

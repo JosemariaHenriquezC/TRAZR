@@ -76,7 +76,7 @@ def split_lines(text: str) -> list[str]:
     text = re.sub(r"(?<!\d),|,(?!\d)", "\n", text)
     text = re.sub(r"[;+]", "\n", text)
     # " y " seguido de cantidad → nuevo renglón
-    text = re.sub(rf"\s+y\s+(?=(\d|(?:{numwords})\b))", "\n", text)
+    text = re.sub(rf"\s+y\s+(?=(\d|(?:{numwords}|media|medio|par)\b))", "\n", text)
     return [l.strip(" .") for l in text.split("\n") if l.strip(" .")]
 
 
@@ -100,6 +100,11 @@ def _extract_qty(words: list[str]):
     Devuelve (cantidad|None, valida, palabras_restantes)."""
     if not words:
         return None, True, words
+    # "un par" / "par" = 2
+    if len(words) >= 2 and words[0] in {"un", "1"} and words[1] == "par":
+        return 2, True, words[2:]
+    if words and words[0] == "par":
+        return 2, True, words[1:]
     # "media docena"
     if len(words) >= 2 and words[0] in {"media", "medio"} and words[1] == "docena":
         return 6, True, words[2:]

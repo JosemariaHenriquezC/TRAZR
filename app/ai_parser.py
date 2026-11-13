@@ -47,7 +47,7 @@ Tu única tarea es extraer qué productos y cuántas unidades pide.
 Reglas:
 - Usá solo SKUs del catálogo. Si no hay una coincidencia clara, poné sku=null.
 - Entendé jerga y abreviaturas regionales (ej. "gaseosa", "una coca", "x 3", \
-"media docena", "docena", "un par").
+"media docena", "docena", "un par"). Un par = 2, docena = 12, media docena = 6.
 - "texto" debe repetir el pedazo del mensaje original de ese renglón, tal cual.
 - Si falta la cantidad, poné cantidad=null. No inventes cantidades ni productos.
 - Si el cliente pide un cajón, caja o pack y el catálogo no dice cuántas \
@@ -388,6 +388,9 @@ Con cada mensaje del cliente (mirando la conversación y el borrador actual):
    Si en un "cambio_pedido" solo cambia la dirección, dejá "items" vacío.
    - Usá solo SKUs del catálogo; si no hay coincidencia clara, sku=null.
    - Si falta la cantidad o no es un entero, cantidad=null. No inventes.
+   - Un par = 2, docena = 12, media docena = 6.
+   - "Cambiá X por Y" reemplaza X por Y con la MISMA cantidad que tenía X, salvo que diga
+     otra (borrador 2 fanta: "cambiame la fanta por sprite" -> 2 sprite; "por 6 sprite" -> 6).
    - Si pide cajas, cajones, packs, bultos o fardos, cantidad=null y en "texto" dejá
      la palabra (ej. "2 cajas de coca"): el sistema le pregunta cuántas unidades son.
    - Si un producto es ambiguo (ej. "agua" y hay con y sin gas), NO lo pongas:

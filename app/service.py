@@ -150,7 +150,12 @@ class BotService(CheckoutMixin, AdminMixin):
             draft = self._get_draft(user, include_save_question=True)
         except StorageError as exc:
             return self._to_channel(user, self._storage_failure(user, exc, "leer un pedido pendiente"))
-        if draft is not None and draft.waiting == "direccion":
+        resolved = (self.resolve_pending(user, text, draft)
+                    if draft is not None and draft.pending and draft.waiting in ("direccion", "confirmacion")
+                    else None)
+        if resolved is not None:
+            out = resolved            # «24» o «sin gas» completan la duda pendiente, sin Gemini
+        elif draft is not None and draft.waiting == "direccion":
             # Le pedimos la dirección: este mensaje es la dirección.
             out = self.receive_address(user, text, draft)
         elif draft is not None and draft.waiting == "pago":
@@ -220,6 +225,7 @@ class BotService(CheckoutMixin, AdminMixin):
         self._event(user, "boton", detail=action)
         client = {"cf": (self.confirm_draft, "Confirmar"), "cd": (self.ask_new_address, "Cambiar dirección"),
                   "cx": (self.cancel_draft, "Cancelar"),
+                  "sp": (self.skip_pending, "Seguir sin eso"),
                   "aj": (self.adjust_to_stock, "Ajustar a lo que hay"),
                   "pe": (lambda u, t: self.choose_payment(u, "efectivo", t), "Efectivo al recibir"),
                   "pt": (lambda u, t: self.choose_payment(u, "transferencia", t), "Transferencia"),

@@ -98,7 +98,12 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   Base con Gemini real (flash-lite): 53/56 (95 %), mediana ~1,5 s. Fallas: simple-09 («un par»
   → 1), bulto-04 (un renglón con duda tira todo el mensaje), cambio-04 («cambiá X por Y» no
   conserva la cantidad).
-- ETAPA 1 ACHICADA (consultor, opción C), falta el OK del usuario: pendientes simples en el Draft
+- ETAPA 1 ACHICADA — PROGRAMADA (OK del usuario: bloquear «sí» con dudas, «un par» = 2, postergar
+  operaciones). `Draft.pending` + `_can_wait`/`_pending_from`/`resolve_pending`/`skip_pending`
+  (botón sp:) /`_pending_question`; `confirm_draft` y `_place_order` no avanzan con pendientes;
+  `_draft_for_ai` los pasa a Gemini. Solo en pedidos nuevos (no en modificaciones). Reglas: 50/62
+  (46/56 originales). Falta: correr el set con Gemini (≥59/62).
+  Detalle original: pendientes simples en el Draft
   (se arma con lo entendido, lo dudoso queda en Draft.pending; no se confirma con pendientes salvo
   «Seguir sin eso»; un número suelto completa el único pendiente), «un par» = 2 (parser + prompts),
   regla «cambiar X por Y conserva la cantidad» en CHAT_PROMPT. Operaciones (agregar/fijar/quitar)

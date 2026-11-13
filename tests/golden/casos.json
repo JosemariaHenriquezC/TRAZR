@@ -21,6 +21,7 @@
     {"id": "simple-08", "tema": "pedido simple", "turnos": ["media docena de sprite"], "espera": {"borrador": {"SPR1": 6}}},
     {"id": "simple-09", "tema": "pedido simple", "turnos": ["una docena de cocas y un par de fantas"], "espera": {"borrador": {"COC1": 12, "FAN1": 2}}},
     {"id": "simple-10", "tema": "pedido simple", "turnos": ["hola buen día, me mandás 3 cocas, 2 sprite y 1 fernet? gracias"], "espera": {"borrador": {"COC1": 3, "SPR1": 2, "FER1": 1}}},
+    {"id": "simple-11", "tema": "pedido simple", "turnos": ["un par de sprites y media docena de cervezas"], "espera": {"borrador": {"SPR1": 2, "CER1": 6}}},
 
     {"id": "jerga-01", "tema": "jerga y errores de tipeo", "turnos": ["3 birras"], "espera": {"borrador": {"CER1": 3}}},
     {"id": "jerga-02", "tema": "jerga y errores de tipeo", "turnos": ["2 koca"], "espera": {"borrador": {"COC1": 2}}},
@@ -42,6 +43,9 @@
     {"id": "bulto-03", "tema": "cajas y packs", "turnos": ["3 fardos de agua sin gas"], "espera": {"pregunta": true}},
     {"id": "bulto-04", "tema": "cajas y packs", "turnos": ["2 cajas de coca y 3 fantas"], "espera": {"pregunta": true, "conserva": {"FAN1": 3}}},
     {"id": "bulto-05", "tema": "cajas y packs", "turnos": ["un cajón de sprite"], "espera": {"pregunta": true}},
+    {"id": "bulto-06", "tema": "cajas y packs", "turnos": ["2 cajas de coca y 3 fantas", "24"], "espera": {"borrador": {"FAN1": 3, "COC1": 24}, "esperando": "confirmacion"}},
+    {"id": "bulto-07", "tema": "cajas y packs", "turnos": ["2 cajas de coca y 3 fantas", "si"], "espera": {"pregunta": true, "registrado": false, "conserva": {"FAN1": 3}, "esperando": "confirmacion"}},
+    {"id": "bulto-08", "tema": "cajas y packs", "turnos": ["2 cajas de coca y 3 fantas", ":sp"], "espera": {"borrador": {"FAN1": 3}, "esperando": "confirmacion"}},
 
     {"id": "cambio-01", "tema": "cambios en el borrador", "turnos": ["2 coca", "agregale 3 fanta"], "espera": {"borrador": {"COC1": 2, "FAN1": 3}}},
     {"id": "cambio-02", "tema": "cambios en el borrador", "turnos": ["2 coca y 1 sprite", "sacá la sprite"], "espera": {"borrador": {"COC1": 2}}},
@@ -49,6 +53,8 @@
     {"id": "cambio-04", "tema": "cambios en el borrador", "turnos": ["2 coca y 2 fanta", "cambiame la fanta por sprite"], "espera": {"borrador": {"COC1": 2, "SPR1": 2}}},
     {"id": "cambio-05", "tema": "cambios en el borrador", "turnos": ["3 jugos", "y sumale 2 fernet"], "espera": {"borrador": {"JUG1": 3, "FER1": 2}}},
     {"id": "cambio-06", "tema": "cambios en el borrador", "turnos": ["10 cocas, 5 sprites, 5 fantas, 4 aguas sin gas, 3 jugos", "agregale 2 energizantes"], "espera": {"borrador": {"COC1": 10, "SPR1": 5, "FAN1": 5, "AGU1": 4, "JUG1": 3, "ENE1": 2}}},
+    {"id": "cambio-07", "tema": "cambios en el borrador", "turnos": ["3 coca y 4 fanta", "cambiame la fanta por 6 sprite"], "espera": {"borrador": {"COC1": 3, "SPR1": 6}}},
+    {"id": "cambio-08", "tema": "cambios en el borrador", "turnos": ["10 cocas, 5 sprites, 5 fantas, 4 aguas sin gas, 4 aguas con gas, 3 birras, 2 fernet, 6 jugos y 12 energizantes", "sacá los jugos y que las cocas sean 20"], "espera": {"borrador": {"COC1": 20, "SPR1": 5, "FAN1": 5, "AGU1": 4, "AGU2": 4, "CER1": 3, "FER1": 2, "ENE1": 12}}},
 
     {"id": "confirma-01", "tema": "confirmar y cancelar", "turnos": ["2 coca", "si"], "espera": {"esperando": "pago", "registrado": false}},
     {"id": "confirma-02", "tema": "confirmar y cancelar", "turnos": ["2 coca", "dale"], "espera": {"esperando": "pago"}},
