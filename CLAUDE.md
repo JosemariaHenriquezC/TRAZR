@@ -84,6 +84,12 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 
 ## Próxima sesión — empezar por acá
 
+### Pendientes anotados por el usuario (hacer más adelante)
+- Aviso al confirmar el pago (`confirm_payment` en admin.py, y su plantilla `pago_recibido` de
+  WhatsApp): mensaje de AGRADECIMIENTO por la compra, corto y sencillo. Si fue TRANSFERENCIA (se
+  cobra antes de repartir): gracias + «pronto estaremos llegando con tu envío». Si fue EFECTIVO al
+  recibir (se cobra en la entrega): solo el agradecimiento.
+
 ### Plan de mejora del bot (con el consultor) — propuesto, falta el OK del usuario
 Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Etapas 0 a 3 HECHAS.
 - Bugs confirmados en el simulador: esperando dirección, cualquier texto ≥8 letras se toma como
