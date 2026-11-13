@@ -143,7 +143,8 @@ def _score(query: str, product: Product) -> float:
             return 1.0
         k_tokens = set(key.split())
         if q_tokens and (q_tokens <= k_tokens or k_tokens <= q_tokens):
-            best = max(best, 0.9)
+            # Gana el que comparte más palabras: «fernet buhero» es Buhero, no Branca (alias «fernet»).
+            best = max(best, 0.75 + 0.15 * len(q_tokens & k_tokens) / len(q_tokens))
             continue
         best = max(best, SequenceMatcher(None, query, key).ratio())
     return best

@@ -189,6 +189,7 @@ un producto no tiene caja cargada y el cliente pide cajas, el bot pregunta cuán
 ```bash
 python -m scripts.init_db --ejemplo           # 10 bebidas de ejemplo (si el catálogo está vacío)
 python -m scripts.init_db --csv catalogo.csv  # alta/actualización desde un CSV
+python -m scripts.init_db --csv catalogo/mayorista_tucuman.csv --reemplazar  # catálogo real del mayorista (lo demás queda inactivo)
 ```
 
 El CSV lleva el encabezado `SKU,Producto,Categoria,Alias,Stock,Precio,Activo`

@@ -102,7 +102,13 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Etapas 0 a 3 HECHAS.
   aclaraciones fallidas, «lo consulto con el equipo», Gemini caído con una consulta. Opcional:
   aviso al celular del admin (hoy decidido que el admin no recibe nada por chat). Alternativa:
   «coexistencia» de Meta (app WhatsApp Business + API en el mismo número) al pasar al número
-  propio. También pendiente: cargar la lista de bebidas del mayorista (el usuario la consigue).
+  propio.
+- CATÁLOGO REAL CARGADO: `catalogo/mayorista_tucuman.csv` (242 productos de la lista del mayorista,
+  precio por unidad = precio del bulto / unidades; «2 x $X» → X/2; promos ignoradas; stock de
+  distribuidora grande en cajas enteras). Se carga con
+  `python -m scripts.init_db --csv catalogo/mayorista_tucuman.csv --reemplazar` (lo que no está en el
+  CSV queda inactivo, no se borra). Parser: entre coincidencias parciales gana la que comparte más
+  palabras («fernet buhero» → Buhero).
 - ETAPA 0 HECHA: bugs de dirección (`_looks_like_address`: número o palabra de calle, y que no
   nombre productos ni empiece con «agregale/esperá…») y de pago (`_payment_choice`: un solo medio
   sin negar; cancelar primero; ante la duda vuelve a preguntar con botones); `_wants_confirm` /

@@ -5,6 +5,8 @@ Uso:
     python -m scripts.init_db                       # solo crea las tablas
     python -m scripts.init_db --ejemplo             # + bebidas de ejemplo (si el catálogo está vacío)
     python -m scripts.init_db --csv catalogo.csv    # alta/actualización de productos desde un CSV
+    python -m scripts.init_db --csv catalogo/mayorista_tucuman.csv --reemplazar
+        # el CSV pasa a ser TODO el catálogo: lo que no está en él queda inactivo (no se borra)
 
 El CSV lleva encabezado en la primera fila con estas columnas (el orden no importa;
 separador coma o punto y coma, así lo podés exportar desde Excel o Google Sheets):
@@ -13,13 +15,15 @@ separador coma o punto y coma, así lo podés exportar desde Excel o Google Shee
 - Activo: SI / NO (vacío = SI).
 Columnas opcionales para vender por caja (pack, fardo, cajón):
     UnidadesPorCaja (ej. 6; vacío o 0 = no se vende por caja), NombreCaja (ej. pack; vacío = caja)
-Si un SKU ya existe, se reemplazan sus datos. Nunca se borra nada.
+Si un SKU ya existe, se reemplazan sus datos. Nunca se borra nada: con --reemplazar, los
+productos que no están en el CSV quedan inactivos (los pedidos viejos los siguen mostrando).
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -73,6 +77,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ejemplo", action="store_true", help="cargar bebidas de ejemplo si el catálogo está vacío")
     ap.add_argument("--csv", metavar="ARCHIVO", help="cargar o actualizar productos desde un CSV")
+    ap.add_argument("--reemplazar", action="store_true",
+                    help="con --csv: desactivar los productos que no están en el CSV")
     args = ap.parse_args()
     try:
         s = load_settings(require_telegram=False)
@@ -90,10 +96,20 @@ def main() -> None:
                 to_load += sample_products()
         if args.csv:
             to_load += read_csv(args.csv)
+        if args.reemplazar and not args.csv:
+            raise ValueError("--reemplazar va junto con --csv")
         for p in to_load:
             repo.upsert_product(p, stamp)
         if to_load:
             print(f"  ✓ {len(to_load)} productos cargados/actualizados")
+        if args.reemplazar:
+            keep = {p.sku for p in to_load}
+            old = [p for p in repo.list_products() if p.sku not in keep and p.active]
+            for p in old:
+                repo.upsert_product(replace(p, active=False), stamp)
+            if old:
+                print(f"  · {len(old)} productos que no están en el CSV quedaron inactivos: "
+                      + ", ".join(p.sku for p in old))
         print(f"  Catálogo: {len(repo.list_products())} productos.")
     except (StorageError, ValueError, OSError) as exc:
         sys.exit(f"No se pudo inicializar: {exc}")

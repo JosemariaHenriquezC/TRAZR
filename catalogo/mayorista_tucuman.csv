@@ -1,0 +1,243 @@
+SKU;Producto;Categoria;Alias;Stock;Precio;Activo;UnidadesPorCaja;NombreCaja
+FER001;Fernet Branca 750ml;Fernet;branca, fernet branca, fernet;3600;16317;SI;12;caja
+FER002;Fernet Branca 1L;Fernet;branca litro, branca 1l, fernet branca litro;900;23500;SI;;
+FER003;Fernet Branca 450ml;Fernet;branca chico, branca 450;480;11000;SI;;
+FER004;Fernet Branca Miniatura;Fernet;branca miniatura, miniatura branca, branquita;240;3083;SI;12;caja
+FER005;Fernet Vaso Negro 700ml;Fernet;vaso negro;240;15000;SI;;
+FER006;Fernet Buhero Negro 700ml;Fernet;buhero, buhero negro;480;9000;SI;;
+FER007;Buhero Mandelo 700ml;Fernet;mandelo, buhero mandelo;120;9800;SI;;
+APE001;Aperol 750ml;Aperitivos;aperol;480;9800;SI;6;caja
+APE002;Campari 750ml;Aperitivos;campari;240;10500;SI;;
+APE003;Cinzano Rosso;Aperitivos;cinzano;240;8000;SI;;
+APE004;Carpano;Aperitivos;carpano;120;6000;SI;;
+APE005;Martini;Aperitivos;martini;120;11500;SI;;
+APE006;Cynar Rojo;Aperitivos;cynar, cynar rojo;120;11000;SI;;
+APE007;Cynar Negro;Aperitivos;cynar negro;72;12800;SI;;
+APE008;Gancia 950ml;Aperitivos;gancia;240;8500;SI;;
+APE009;Dr. Lemon;Aperitivos;dr lemon, doctor lemon;480;2658;SI;12;caja
+LIC001;Jägermeister;Licores;jager, jagger, jagermeister;120;34000;SI;;
+LIC002;Baileys;Licores;baileys;120;27000;SI;;
+LIC003;Amarula;Licores;amarula;72;35000;SI;;
+LIC004;Amarula Raspberry;Licores;amarula raspberry, amarula frambuesa;36;35000;SI;;
+LIC005;Amarula Coffee;Licores;amarula coffee, amarula cafe;36;35000;SI;;
+LIC006;Amarula 375ml;Licores;amarula chica, amarula 375;72;18000;SI;;
+LIC007;Malibú;Licores;malibu;72;17000;SI;;
+LIC008;Tía María Clásico;Licores;tia maria;72;9800;SI;;
+LIC009;Tía María Crema;Licores;tia maria crema;72;12500;SI;;
+LIC010;Borghetti;Licores;borghetti, borgheti;72;9000;SI;;
+LIC011;Café Coñac Tres Plumas;Licores;tres plumas, cafe coñac;120;7000;SI;;
+LIC012;Licor Legui;Licores;legui;120;6500;SI;;
+LIC013;Anís 8 Hermanos;Licores;anis, 8 hermanos, ocho hermanos;72;8500;SI;;
+LIC014;Reserva San Juan;Licores;reserva san juan;72;10500;SI;;
+RON001;Ron Havana Club Blanco;Ron;havana, havana blanco, ron havana;120;16500;SI;;
+RON002;Ron Havana Club Dorado;Ron;havana dorado;120;16500;SI;;
+RON003;Cachaça Capoeira;Ron;cachaza, cachaca, capoeira;72;8000;SI;;
+VOD001;Smirnoff;Vodka;smirnoff, smirnoff comun, vodka smirnoff;480;7250;SI;12;caja
+VOD002;Smirnoff Saborizado;Vodka;smirnoff sabor, smirnoff saborizado;240;8000;SI;6;caja
+VOD003;Skyy;Vodka;skyy, skyy comun;240;9000;SI;;
+VOD004;Skyy Saborizado;Vodka;skyy sabor;120;10500;SI;;
+VOD005;Skyy Cosmic;Vodka;skyy cosmic, cosmic;120;10500;SI;;
+VOD006;Sernova;Vodka;sernova;240;7000;SI;;
+VOD007;Sernova Saborizado;Vodka;sernova sabor;120;5900;SI;;
+VOD008;Absolut;Vodka;absolut;72;24000;SI;;
+VOD009;Absolut Saborizado;Vodka;absolut sabor;72;25500;SI;;
+VOD010;Smirnoff Ice Lata 473ml;Vodka;smirnoff lata, smirnoff ice;912;2708;SI;24;caja
+GIN001;Gin Brighton;Gin;brighton;240;8500;SI;;
+GIN002;Gin Brighton Pink;Gin;brighton pink;240;9500;SI;;
+GIN003;Gin Brighton Tangerine;Gin;brighton tangerine;240;9500;SI;;
+GIN004;Gin Siete Espíritus;Gin;siete espiritus;240;9800;SI;;
+GIN005;Gin Merle;Gin;merle;240;8000;SI;;
+GIN006;Gin Merle Pink;Gin;merle pink;240;9200;SI;;
+GIN007;Gin Merle Orange;Gin;merle orange;240;9200;SI;;
+GIN008;Gin Gordon's;Gin;gordons, gordon;240;11500;SI;;
+GIN009;Gin Gordon's Pink;Gin;gordons pink;120;14000;SI;;
+GIN010;Gin Gordon's Tropical;Gin;gordons tropical;120;14000;SI;;
+GIN011;Gin Mala Saña;Gin;mala saña, mala sana;240;9800;SI;;
+GIN012;Gin Mala Saña Pink;Gin;mala saña pink, mala sana pink;240;9800;SI;;
+GIN013;Gin Shelby;Gin;shelby;240;8000;SI;;
+GIN014;Gin Heráclito;Gin;heraclito;240;9800;SI;;
+GIN015;Gin Jardín Escondido;Gin;jardin escondido;120;16000;SI;;
+GIN016;Gin Heredero;Gin;heredero;120;14800;SI;;
+GIN017;Gin Príncipe de los Apóstoles Rosa Mosqueta;Gin;principe rosa mosqueta, principe de los apostoles;240;8500;SI;;
+GIN018;Gin Príncipe London Dry;Gin;principe london dry, principe;240;8500;SI;;
+GIN019;Gin Blue;Gin;gin blue;120;14500;SI;;
+GIN020;Gin Larios;Gin;larios;240;11000;SI;;
+GIN021;Gin Larios Rose;Gin;larios rose;120;15700;SI;;
+GIN022;Gin Aconcagua Azul;Gin;aconcagua azul;120;15000;SI;;
+GIN023;Gin Aconcagua Blanco;Gin;aconcagua blanco;120;17000;SI;;
+GIN024;Gin Aconcagua Verde;Gin;aconcagua verde;120;17000;SI;;
+GIN025;Gin Aconcagua Rosa;Gin;aconcagua rosa;120;17000;SI;;
+GIN026;Gin Restinga Dry;Gin;restinga;120;14000;SI;;
+GIN027;Gin Beefeater 700ml;Gin;beefeater;72;24000;SI;;
+GIN028;Gin Beefeater Pink;Gin;beefeater pink;72;27000;SI;;
+GIN029;Gin Beefeater 1L;Gin;beefeater litro, beefeater 1l;72;27000;SI;;
+GIN030;Gin Tanqueray London Dry;Gin;tanqueray;72;25000;SI;;
+GIN031;Gin Tanqueray Royale;Gin;tanqueray royale;72;33000;SI;;
+GIN032;Gin Tanqueray Sevilla;Gin;tanqueray sevilla;72;33000;SI;;
+GIN033;Gin Tanqueray Bossa Nova;Gin;tanqueray bossa nova;72;35000;SI;;
+GIN034;Gin Bulldog;Gin;bulldog;72;35000;SI;;
+GIN035;Gin Bombay Sapphire;Gin;bombay, bombay sapphire;72;31500;SI;;
+GIN036;Gin Hendrick's;Gin;hendricks, hendrick;36;53000;SI;;
+GIN037;Gin Hendrick's Edición Especial;Gin;hendricks variedad;36;69000;SI;;
+GIN038;Ginebra Llave;Gin;ginebra, llave, ginebra llave;120;9000;SI;;
+WHI001;Whisky Blender's Pride 1L;Whisky;blenders litro, blenders 1l;240;9800;SI;;
+WHI002;Whisky Blender's Pride 750ml;Whisky;blenders;240;9000;SI;;
+WHI003;Whisky Blender's Pride Honey;Whisky;blenders honey;120;9500;SI;;
+WHI004;Whisky White Horse;Whisky;white horse;240;15000;SI;;
+WHI005;Whisky J&B;Whisky;jyb, j&b, jb;120;23000;SI;;
+WHI006;Whisky Ballantine's 700ml;Whisky;ballantines;120;26500;SI;;
+WHI007;Whisky Ballantine's 1L;Whisky;ballantines litro;72;33500;SI;;
+WHI008;Whisky Ballantine's 7 Años;Whisky;ballantines 7;72;34000;SI;;
+WHI009;Whisky Johnnie Walker Red Label 750ml;Whisky;red label, jw red, etiqueta roja;120;29000;SI;;
+WHI010;Whisky Johnnie Walker Red Label 1L;Whisky;red label litro, jw red litro;72;34000;SI;;
+WHI011;Whisky Johnnie Walker Black Label 750ml;Whisky;black label, jw black, etiqueta negra;72;45500;SI;;
+WHI012;Whisky Johnnie Walker Black Label 1L;Whisky;black label litro, jw black litro;36;53800;SI;;
+WHI013;Whisky Johnnie Walker Double Black 750ml;Whisky;double black;36;55000;SI;;
+WHI014;Whisky Chivas Regal 12 Años 1L;Whisky;chivas, chivas 12;36;53800;SI;;
+WHI015;Whisky Old Parr;Whisky;old parr;36;45000;SI;;
+WHI016;Whisky Buchanan's;Whisky;buchanans;36;53500;SI;;
+WHI017;Whisky Jack Daniel's;Whisky;jack daniels, jack;72;45000;SI;;
+WHI018;Whisky Jack Daniel's Honey;Whisky;jack honey, jack daniels honey;36;45000;SI;;
+VIN001;Vino Don Valentín Lacrado 750ml;Vinos;valentin, valentin lacrado, don valentin;1800;2667;SI;6;caja
+VIN002;Vino Vieja Mendoza 750ml;Vinos;vieja mendoza;1800;1917;SI;6;caja
+VIN003;Vino Quara Tinto 750ml;Vinos;quara, quara tinto;1800;1783;SI;6;caja
+VIN004;Vino Nampe Tinto 750ml;Vinos;nampe;900;2750;SI;6;caja
+VIN005;Vino Prófugo 750ml;Vinos;profugo;900;3000;SI;6;caja
+VIN006;Vino Suter 750ml;Vinos;suter;900;2700;SI;6;caja
+VIN007;Vino Chacabuco Malbec 750ml;Vinos;chacabuco;480;4300;SI;6;caja
+VIN008;Vino Alaris 750ml;Vinos;alaris;900;3850;SI;6;caja
+VIN009;Vino Finca Las Moras 750ml;Vinos;las moras, finca las moras;900;3850;SI;6;caja
+VIN010;Vino Cafayate 750ml;Vinos;cafayate;900;4500;SI;6;caja
+VIN011;Vino Elementos 750ml;Vinos;elementos;480;4400;SI;6;caja
+VIN012;Vino Conejo Verde 750ml;Vinos;conejo verde;480;4300;SI;6;caja
+VIN013;Vino Los Árboles 750ml;Vinos;arboles, los arboles;480;4250;SI;6;caja
+VIN014;Vino Partridge 750ml;Vinos;partridge, partridg;480;4750;SI;6;caja
+VIN015;Vino Cordero con Piel de Lobo 750ml;Vinos;cordero;900;3950;SI;6;caja
+VIN016;Vino Los Cardos 750ml;Vinos;los cardos, cardos;480;3900;SI;6;caja
+VIN017;Vino Alma Mora 750ml;Vinos;alma mora;480;5100;SI;6;caja
+VIN018;Vino Alma Mora Reserva 750ml;Vinos;alma mora reserva;240;5400;SI;6;caja
+VIN019;Vino Familia Gascón 750ml;Vinos;gascon, familia gascon;480;5400;SI;6;caja
+VIN020;Vino Dadá 750ml;Vinos;dada;480;5250;SI;6;caja
+VIN021;Vino Loscano 750ml;Vinos;loscano;240;8250;SI;6;caja
+VIN022;Vino Intocables 750ml;Vinos;intocables;240;8250;SI;6;caja
+VIN023;Vino Portillo 750ml;Vinos;portillo;480;4900;SI;6;caja
+VIN024;Vino Siete Vacas Tinto 750ml;Vinos;siete vacas;240;8500;SI;6;caja
+VIN025;Vino Perro Callejero 750ml;Vinos;perro callejero;240;5500;SI;6;caja
+VIN026;Vino Colección Privada 750ml;Vinos;coleccion privada, navarro correas coleccion;240;5750;SI;6;caja
+VIN027;Vino Don David 750ml;Vinos;don david;240;6250;SI;6;caja
+VIN028;Vino Fond de Cave 750ml;Vinos;fond de cave;240;6250;SI;6;caja
+VIN029;Vino Doña Paula 750ml;Vinos;doña paula, dona paula;240;5800;SI;6;caja
+VIN030;Vino Trapiche Reserva 750ml;Vinos;trapiche, trapiche reserva;240;6250;SI;6;caja
+VIN031;Vino Las Perdices Malbec 750ml;Vinos;perdices, las perdices;240;7250;SI;6;caja
+VIN032;Vino Las Perdices Reserva 750ml;Vinos;perdices reserva;120;10900;SI;6;caja
+VIN033;Vino Trumpeter 750ml;Vinos;trumpeter;240;8000;SI;6;caja
+VIN034;Vino Trumpeter Reserva 750ml;Vinos;trumpeter reserva;120;10750;SI;6;caja
+VIN035;Vino Nicasia 750ml;Vinos;nicasia, nicassia;120;8000;SI;6;caja
+VIN036;Vino Saint Felicien 750ml;Vinos;saint felicien, saint felicient;120;9250;SI;6;caja
+VIN037;Vino Nubes Malbec 750ml;Vinos;nubes, nubes malbec;120;8750;SI;6;caja
+VIN038;Vino Salentein Reserva 750ml;Vinos;salentein, salentein reserva;120;10500;SI;6;caja
+VIN039;Vino Piattelli Reserva 750ml;Vinos;piattelli, piatelli;120;11500;SI;6;caja
+VIN040;Vino DV Catena Cabernet-Malbec 750ml;Vinos;dv catena, catena;72;12750;SI;6;caja
+VIN041;Vino Rutini Cabernet-Malbec 750ml;Vinos;rutini;72;13700;SI;6;caja
+VIN042;Vino Luigi Bosca 750ml;Vinos;luigi bosca;72;13400;SI;6;caja
+VIN043;Vino El Enemigo 750ml;Vinos;enemigo, el enemigo;36;20000;SI;6;caja
+VIN044;Vino Catena Zapata Malbec Argentino 750ml;Vinos;malbec argentino;12;68500;SI;6;caja
+VIN045;Vino Nicolás Catena Zapata 750ml;Vinos;nicolas catena;12;74700;SI;6;caja
+VIN046;Vino Santa Julia Tinto Dulce 750ml;Vinos;santa julia, santa julia dulce;240;7000;SI;6;caja
+VIN047;Vino Más Loco que una Cabra Frutos Rojos;Vinos;mas loco que una cabra, cabra frutos rojos;480;3450;SI;6;caja
+VIN048;Vino Más Loco que una Cabra Durazno;Vinos;cabra durazno;480;3450;SI;6;caja
+VBR001;Vino Quara Rosado 750ml;Vinos Blancos/Rosados;quara rosado;900;1783;SI;6;caja
+VBR002;Vino Etchart Privado Torrontés 750ml;Vinos Blancos/Rosados;etchart, etchart torrontes;480;4200;SI;6;caja
+VBR003;Vino Dilema Blanco Dulce 750ml;Vinos Blancos/Rosados;dilema, dilema blanco;900;3150;SI;6;caja
+VBR004;Vino Dilema Rosado Dulce 750ml;Vinos Blancos/Rosados;dilema rosado;480;3150;SI;6;caja
+VBR005;Vino Alaris Blanco Dulce 750ml;Vinos Blancos/Rosados;alaris blanco;480;3850;SI;6;caja
+VBR006;Vino Nampe Blanco Dulce 750ml;Vinos Blancos/Rosados;nampe blanco;480;3300;SI;6;caja
+VBR007;Vino Cafayate Blanco Dulce 750ml;Vinos Blancos/Rosados;cafayate blanco;480;4150;SI;6;caja
+VBR008;Vino López Blanco 750ml;Vinos Blancos/Rosados;lopez, lopez blanco;240;4000;SI;6;caja
+VBR009;Vino Norton Cosecha Tardía Blanco 750ml;Vinos Blancos/Rosados;norton tardio, norton cosecha tardia;240;4800;SI;6;caja
+VBR010;Vino Conejo Verde Chenin 750ml;Vinos Blancos/Rosados;conejo verde chenin;120;6750;SI;6;caja
+VBR011;Vino Cordero Blanco Dulce 750ml;Vinos Blancos/Rosados;cordero dulce, cordero blanco;480;3950;SI;6;caja
+VBR012;Vino Nubes Blanco Dulce 750ml;Vinos Blancos/Rosados;nubes blanco;120;8750;SI;6;caja
+ESP001;Espumante Chandon 750ml;Espumante;chandon;240;16500;SI;6;caja
+ESP002;Espumante Salentein 750ml;Espumante;salentein espumante;120;11117;SI;6;caja
+ESP003;Espumante Amalaya Brut 750ml;Espumante;amalaya;120;11500;SI;6;caja
+ESP004;Espumante Partridge 750ml;Espumante;partridge espumante;120;6750;SI;6;caja
+ESP005;Espumante Las Perdices Extra Brut 750ml;Espumante;perdices extra brut;120;7850;SI;6;caja
+ESP006;Espumante Las Perdices Sweet 750ml;Espumante;perdices sweet;120;7950;SI;6;caja
+ESP007;Espumante Cordero 750ml;Espumante;cordero espumante;120;6750;SI;6;caja
+ESP008;Espumante Dadá 7 750ml;Espumante;dada espumante, dada 7;120;7000;SI;6;caja
+ESP009;Espumante Navarro Correas 750ml;Espumante;navarro correas;120;9350;SI;6;caja
+ESP010;Espumante Deseado 750ml;Espumante;deseado;120;12500;SI;6;caja
+ESP011;Sidra 1888 750ml;Espumante;sidra, 1888, sidra 1888;480;7800;SI;6;caja
+ESP012;Frizzé 1L;Espumante;frizze, frizzé;480;2417;SI;6;caja
+CER001;Cerveza Isenbeck Lata 473ml;Cervezas;isenbeck lata, isenbeck;3600;1312;SI;24;bulto
+CER002;Cerveza Quilmes 1890 Lata 473ml;Cervezas;quilmes 1890 lata, quilmes 1890;1800;1312;SI;24;bulto
+CER003;Cerveza Schneider Lata 473ml;Cervezas;schneider lata, schneider;3600;1458;SI;24;bulto
+CER004;Cerveza Norte Lata 473ml;Cervezas;norte lata, norte;7200;1500;SI;24;bulto
+CER005;Cerveza Salta Negra Lata 473ml;Cervezas;salta negra lata, salta negra;912;1583;SI;24;bulto
+CER006;Cerveza Budweiser Lata 473ml;Cervezas;budweiser lata, budweiser;3600;1625;SI;24;bulto
+CER007;Cerveza Quilmes Clásica Lata 473ml;Cervezas;quilmes clásica lata, quilmes clásica;7200;1604;SI;24;bulto
+CER008;Cerveza Michelob Ultra Lata 473ml;Cervezas;michelob ultra lata, michelob ultra;1800;1575;SI;24;bulto
+CER009;Cerveza Amstel Lata 473ml;Cervezas;amstel lata, amstel;1800;1562;SI;24;bulto
+CER010;Cerveza Warsteiner Lata 473ml;Cervezas;warsteiner lata, warsteiner;912;1658;SI;24;bulto
+CER011;Cerveza Imperial Lager Lata 473ml;Cervezas;imperial lager lata, imperial lager;3600;1700;SI;24;bulto
+CER012;Cerveza Imperial Golden Lata 473ml;Cervezas;imperial golden lata, imperial golden;1800;1700;SI;24;bulto
+CER013;Cerveza Imperial IPA Lata 473ml;Cervezas;imperial ipa lata, imperial ipa;480;2271;SI;24;bulto
+CER014;Cerveza Imperial APA Lata 473ml;Cervezas;imperial apa lata, imperial apa;480;2271;SI;24;bulto
+CER015;Cerveza Imperial Roja Lata 473ml;Cervezas;imperial roja lata, imperial roja;480;2271;SI;24;bulto
+CER016;Cerveza Imperial Negra Lata 473ml;Cervezas;imperial negra lata, imperial negra;480;2271;SI;24;bulto
+CER017;Cerveza Andes Origen Negra Lata 473ml;Cervezas;andes origen negra lata, andes origen negra;480;1783;SI;24;bulto
+CER018;Cerveza Andes Origen Roja Lata 473ml;Cervezas;andes origen roja lata, andes origen roja;480;1783;SI;24;bulto
+CER019;Cerveza Andes Origen IPA Lata 473ml;Cervezas;andes origen ipa lata, andes origen ipa;480;1783;SI;24;bulto
+CER020;Cerveza Grolsch Lata 473ml;Cervezas;grolsch lata, grolsch;912;1950;SI;24;bulto
+CER021;Cerveza Stella Artois Lata 473ml;Cervezas;stella artois lata, stella artois;1800;2158;SI;24;bulto
+CER022;Cerveza Stella Artois Sin TACC Lata 473ml;Cervezas;stella artois sin tacc lata, stella artois sin tacc;480;2062;SI;24;bulto
+CER023;Cerveza Heineken Lata 473ml;Cervezas;heineken lata, heineken;1800;2450;SI;24;bulto
+CER024;Cerveza Brahma Lata 354ml;Cervezas;brahmita, brahma, brahma lata;3600;1000;SI;24;bulto
+CER025;Cerveza Corona 710ml;Cervezas;corona, corona 710;900;4292;SI;12;caja
+CER026;Cerveza Budweiser Porrón 330ml;Cervezas;budweiser porron, porron budweiser;1800;1292;SI;24;caja
+CER027;Cerveza Stella Artois Porrón 330ml;Cervezas;stella artois porron, porron stella artois;912;2075;SI;24;caja
+CER028;Cerveza Imperial Golden Porrón 330ml;Cervezas;imperial golden porron, porron imperial golden;1800;1750;SI;24;caja
+CER029;Cerveza Miller Porrón 330ml;Cervezas;miller porron, porron miller;912;1750;SI;24;caja
+CER030;Cerveza Heineken Porrón 330ml;Cervezas;heineken porron, porron heineken;912;2417;SI;24;caja
+CER031;Cerveza Corona Cero Porrón 330ml;Cervezas;corona cero, corona cero porron, cerveza sin alcohol;480;2021;SI;24;caja
+CER032;Cerveza Stella Artois Sin Alcohol Porrón 330ml;Cervezas;stella artois sin alcohol, stella artois sin alcohol porron, cerveza sin alcohol;480;1917;SI;24;caja
+CER033;Cerveza Heineken 0.0 Porrón 330ml;Cervezas;heineken 0.0, heineken 0.0 porron, cerveza sin alcohol;480;2417;SI;24;caja
+SAL001;Coca-Cola 3L;Sin Alcohol;coca 3l, coca de 3, coca grande;3600;4500;SI;6;pack
+SAL002;Coca-Cola 2.25L;Sin Alcohol;coca, coca cola, coca 2 1/4, coca 2.25;7200;4000;SI;6;pack
+SAL003;Coca-Cola Zero 2.25L;Sin Alcohol;coca zero;1800;4000;SI;6;pack
+SAL004;Sprite 2.25L;Sin Alcohol;sprite;1800;3467;SI;6;pack
+SAL005;Fanta Naranja 2.25L;Sin Alcohol;fanta;1800;3467;SI;6;pack
+SAL006;Pepsi 2L;Sin Alcohol;pepsi;1800;2475;SI;8;pack
+SAL007;Mirinda 2L;Sin Alcohol;mirinda;896;2475;SI;8;pack
+SAL008;7Up 2L;Sin Alcohol;7up, seven up, seven;896;2475;SI;8;pack
+SAL009;Pepsi Black 2.25L;Sin Alcohol;pepsi black;896;2250;SI;8;pack
+SAL010;7Up Free 2.25L;Sin Alcohol;seven free, 7up free;896;2250;SI;8;pack
+SAL011;Coca-Cola Lata 375ml;Sin Alcohol;coca lata, coca chica, latita de coca;1800;1167;SI;12;pack
+SAL012;Coca-Cola Zero Lata 375ml;Sin Alcohol;coca zero lata;900;1167;SI;12;pack
+SAL013;Fanta Lata 375ml;Sin Alcohol;fanta lata;900;1167;SI;12;pack
+SAL014;Sprite Lata 375ml;Sin Alcohol;sprite lata;900;1167;SI;12;pack
+SAL015;Agua Mineral 500ml;Sin Alcohol;agua chica, agua 500;1800;450;SI;12;pack
+SAL016;Soda 500ml;Sin Alcohol;soda chica, soda 500;900;450;SI;12;pack
+SAL017;Agua Mineral 2L;Sin Alcohol;agua, agua 2l;3600;800;SI;6;pack
+SAL018;Soda Torasso 2L;Sin Alcohol;soda, torasso, soda torasso;1800;1250;SI;6;pack
+SAL019;Agua Bidón San Miguel 6L;Sin Alcohol;bidon, bidon san miguel, agua bidon;900;1800;SI;;
+SAL020;Agua Saborizada Fresh 1.5L;Sin Alcohol;fresh, agua saborizada;900;1217;SI;6;pack
+SAL021;Tónica Secco 1.5L;Sin Alcohol;secco, tonica secco;900;1250;SI;6;pack
+SAL022;Paso de los Toros Tónica 1.5L;Sin Alcohol;paso de los toros tonica, tonica;900;2750;SI;6;pack
+SAL023;Paso de los Toros Tónica Sin Azúcar 1.5L;Sin Alcohol;tonica sin azucar;480;2750;SI;6;pack
+SAL024;Paso de los Toros Pomelo 1.5L;Sin Alcohol;paso de los toros pomelo, pomelo, paso toros;900;2750;SI;6;pack
+SAL025;Paso de los Toros Pomelo Sin Azúcar 1.5L;Sin Alcohol;pomelo sin azucar;480;2750;SI;6;pack
+SAL026;Jugo Cepita 1.5L;Sin Alcohol;cepita, jugo cepita;900;2700;SI;4;pack
+SAL027;Granadina Triestina;Sin Alcohol;granadina, triestina;120;5500;SI;;
+SAL028;Granadina Cusenier;Sin Alcohol;granadina cusenier, cusenier;120;5500;SI;;
+SAL029;Pepsi Lata 354ml;Sin Alcohol;pepsi lata;0;979;SI;24;pack
+ENE001;Monster 473ml;Energizantes;monster;900;2583;SI;6;pack
+ENE002;Speed XL;Energizantes;speed xl, speed grande;900;2208;SI;12;pack
+ENE003;Speed 250ml;Energizantes;speed, speed chico, speed lata;1800;1396;SI;24;pack
+COM001;Combo Fernet Branca 750ml + Coca-Cola 3L;Combos;combo branca coca 3, branca con coca 3l;480;20000;SI;;
+COM002;Combo Fernet Branca 750ml + Coca-Cola 2.25L;Combos;combo branca coca, branca con coca;480;19500;SI;;
+COM003;Combo Buhero Negro + Coca-Cola 2.25L;Combos;combo buhero, buhero con coca;240;11500;SI;;
+COM004;Combo Gin Jardín Escondido + Tónica de regalo;Combos;combo jardin escondido, jardin escondido con tonica;120;16000;SI;;
+COM005;Combo Amargo Obrero + Paso de los Toros Pomelo 1.5L;Combos;amargo obrero, combo obrero, obrero con pomelo;240;6500;SI;;
+REG001;Estuche Aperol + Cinzano Spritz;Regalería;estuche aperol, estuche spritz;72;15000;SI;;
