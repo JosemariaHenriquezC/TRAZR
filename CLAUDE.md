@@ -102,7 +102,9 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   operaciones). `Draft.pending` + `_can_wait`/`_pending_from`/`resolve_pending`/`skip_pending`
   (botón sp:) /`_pending_question`; `confirm_draft` y `_place_order` no avanzan con pendientes;
   `_draft_for_ai` los pasa a Gemini. Solo en pedidos nuevos (no en modificaciones). Reglas: 50/62
-  (46/56 originales). Falta: correr el set con Gemini (≥59/62).
+  (46/56 originales). Con Gemini: simple 11/11, bulto 8/8, cambio 8/8 (centinela cambio-08 OK →
+  operaciones siguen postergadas), duda 5/5. Falta correr el resto de los grupos para confirmar
+  que no hubo regresión.
   Detalle original: pendientes simples en el Draft
   (se arma con lo entendido, lo dudoso queda en Draft.pending; no se confirma con pendientes salvo
   «Seguir sin eso»; un número suelto completa el único pendiente), «un par» = 2 (parser + prompts),
