@@ -33,6 +33,7 @@ from zoneinfo import ZoneInfo
 
 from .admin import AdminMixin
 from .categorias import GRUPOS, clave, grupo_de, orden_de
+from . import parser as rules_parser
 from .checkout import CheckoutMixin, _norm
 from .config import Settings
 from typing import Callable
@@ -332,6 +333,7 @@ class BotService(CheckoutMixin, AdminMixin):
         client = {"cf": (self.confirm_draft, "Confirmar"), "cd": (self.ask_new_address, "Cambiar dirección"),
                   "cx": (self.cancel_draft, "Cancelar"),
                   "sp": (self.skip_pending, "Seguir sin eso"),
+                  "pk": (self.pick_pending, "Elegir opción"),
                   "cp": (self.change_payment, "Cambiar pago"),
                   "ct": (lambda u, t: self.cmd_catalog(u, []), "Ver catálogo"),
                   "cc": (self.catalog_category, "Categoría"),
@@ -507,7 +509,15 @@ class BotService(CheckoutMixin, AdminMixin):
         msgs = []
         max_q = self.s.rules.max_qty_per_item
         for it in items:
-            if it.error == "ambiguo":
+            if it.error == "ambiguo" and len({rules_parser.family(c) for c in it.candidates}) == 1:
+                # Mismo producto en varios tamaños o envases: se pregunta cuál.
+                labels = [f"<b>{esc(rules_parser.size_label(c, it.candidates))}</b>" for c in it.candidates[:5]]
+                if len(labels) == 1:
+                    msgs.append(f"«{esc(it.raw)}»: de ese tamaño no tengo; hay {labels[0]}. ¿Te sirve?")
+                else:
+                    opts = ", ".join(labels[:-1]) + f" o {labels[-1]}"
+                    msgs.append(f"«{esc(it.raw)}»: ¿de qué tamaño? Tengo {opts}.")
+            elif it.error == "ambiguo":
                 opts = ", ".join(f"<b>{esc(c.name)}</b>" for c in it.candidates[:5])
                 msgs.append(f"«{esc(it.raw)}»: ¿cuál de estos? {opts}")
             elif it.error == "no_existe" and self.s.rules.on_unknown_product == "ask":

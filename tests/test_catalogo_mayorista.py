@@ -21,7 +21,7 @@ def test_el_csv_del_mayorista_es_valido():
 
 def test_con_el_catalogo_real_se_entienden_los_pedidos():
     products = [p for p in init_db.read_csv(str(CSV)) if p.stock]
-    items = parse_order("2 cajas de branca, 3 bultos de norte, 2 fernet buhero", products)
+    items = parse_order("2 cajas de branca 750, 3 bultos de norte, 2 fernet buhero", products)
     got = {i.product.name: i.qty for i in items}
     assert got == {"Fernet Branca 750ml": 24, "Cerveza Norte Lata 473ml": 72, "Fernet Buhero Negro 700ml": 2}
 

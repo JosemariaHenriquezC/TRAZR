@@ -109,6 +109,13 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Etapas 0 a 3 HECHAS.
   `python -m scripts.init_db --csv catalogo/mayorista_tucuman.csv --reemplazar` (lo que no está en el
   CSV queda inactivo, no se borra). Parser: entre coincidencias parciales gana la que comparte más
   palabras («fernet buhero» → Buhero).
+- TAMAÑOS: `parser.pull_size`/`family`/`pick_size`: productos de la misma familia (nombre sin
+  tamaño ni envase) se eligen por lo que dice el cliente («de litro», «750», «2 1/4», «lata», «latón»,
+  «porrón», «chico» = la más chica sin contar miniatura, «grande»). Sin tamaño → duda «¿de qué
+  tamaño?» con un botón por opción (pk:<token>:<sku>) o escribiendo («la de 750»). «2 cajas de
+  branca» → al elegir, cajas de esa presentación (sin caja cargada → pregunta unidades). Si Gemini
+  elige un SKU y el texto no dice tamaño, igual se pregunta. Productos nuevos del CSV van al FINAL
+  de su categoría (los SKU son por orden: no correrlos).
 - ETAPA 0 HECHA: bugs de dirección (`_looks_like_address`: número o palabra de calle, y que no
   nombre productos ni empiece con «agregale/esperá…») y de pago (`_payment_choice`: un solo medio
   sin negar; cancelar primero; ante la duda vuelve a preguntar con botones); `_wants_confirm` /

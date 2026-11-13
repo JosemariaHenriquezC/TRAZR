@@ -272,6 +272,14 @@ def _ai_items_a_parsed(
     por_sku = {p.sku: p for p in products}
     salida: list[ParsedItem] = []
     for ai in ai_items:
+        if ai.sku is not None and not rules_parser.mentions_size(ai.texto):
+            # Si ese producto viene en varios tamaños y el cliente no dijo cuál, se le pregunta
+            # (el modelo tiende a elegir uno por su cuenta).
+            _, hermanos = rules_parser.pick_size([por_sku[ai.sku]], products, None, None)
+            if len(hermanos) > 1:
+                qty = ai.cantidad if not rules_parser.mentions_bulk(ai.texto) else None
+                salida.append(ParsedItem(raw=ai.texto, qty=qty, error="ambiguo", candidates=hermanos))
+                continue
         if ai.sku is not None:
             item = ParsedItem(raw=ai.texto, product=por_sku[ai.sku])
             if rules_parser.mentions_bulk(ai.texto):
@@ -408,6 +416,10 @@ Con cada mensaje del cliente (mirando la conversación y el borrador actual):
      ("2 cajas de coca" y "3 coca sueltas").
    - Si un producto es ambiguo (ej. "agua" y hay con y sin gas), NO lo pongas:
      elegí "charla" y preguntá cuál quiere.
+   - Si el producto viene en varios tamaños o envases (750ml / 1L, lata / porrón) y el
+     cliente no dijo cuál, poné el SKU de cualquiera y en "texto" copiá lo que dijo sin
+     inventar tamaño: el sistema le pregunta. Si lo dijo («de litro», «lata», «750»),
+     ponelo en "texto" (ej. "3 branca de litro").
    - "texto" describe el renglón (ej. "2 coca").
 3. En "consulta" sobre productos, poné sus SKUs en "consulta_skus".
 4. "respuesta":

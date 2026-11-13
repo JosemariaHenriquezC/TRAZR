@@ -356,6 +356,7 @@ class CheckoutMixin:
             rows += ["", "❓ <b>Me falta saber:</b>"] + [f"• {p['pregunta']}" for p in draft.pending]
             rows += ["", "Respondeme eso y te lo dejo listo para confirmar, o tocá «Seguir sin eso»."]
             return [Outgoing(user.id, "\n".join(rows),
+                             self._pending_buttons(draft) +
                              [("Seguir sin eso", f"sp:{t}"), ("📍 Cambiar dirección", f"cd:{t}"),
                               ("❌ Cancelar", f"cx:{t}")])]
         if draft.payment and not draft.modifies:
@@ -453,6 +454,7 @@ class CheckoutMixin:
             qty = int(found[0]) if found[0] is not None and found[1] else None
         return {"raw": it.raw, "tipo": it.error, "sku": it.product.sku if it.product else None,
                 "cantidad": qty, "candidatos": [c.sku for c in it.candidates[:5]],
+                "cajas": it.error == "ambiguo" and rules_parser.mentions_bulk(it.raw),
                 "pregunta": self._clarifications([it])[0]}
 
     def resolve_pending(self, user, text: str, draft: Draft) -> list | None:
@@ -481,10 +483,30 @@ class CheckoutMixin:
             product, _ = rules_parser.match_product(query, candidates, 0.5)
             if product is None:
                 return None
-            sku, qty = product.sku, int(pend["cantidad"])
+            return self._apply_choice(user, draft, product)
         else:
             return None
         draft.items = [[s, q] for s, q in self._merge_pairs((draft.items or []) + [[sku, qty]])]
+        draft.pending = []
+        try:
+            return self._next_step(user, draft)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "armar el pedido")
+
+    def _apply_choice(self, user, draft: Draft, product) -> list:
+        """El cliente eligió una opción de la duda pendiente. Si había pedido cajas («2 cajas de
+        branca»), son cajas de la opción elegida; si esa no tiene caja cargada, se pregunta cuántas
+        unidades son."""
+        pend = draft.pending[0]
+        qty = int(pend["cantidad"])
+        if pend.get("cajas"):
+            if product.pack_size > 0 and qty * product.pack_size <= self.s.rules.max_qty_per_item:
+                qty *= product.pack_size
+            else:
+                it = ParsedItem(raw=pend["raw"], product=product, error="bulto")
+                draft.pending = [self._pending_from(it)]
+                return self._next_step(user, draft)
+        draft.items = [[s, q] for s, q in self._merge_pairs((draft.items or []) + [[product.sku, qty]])]
         draft.pending = []
         try:
             return self._next_step(user, draft)
@@ -515,7 +537,34 @@ class CheckoutMixin:
         rows += [f"• {p['pregunta']}" for p in draft.pending]
         rows += ["", "Respondeme eso, o tocá «Seguir sin eso» para confirmar solo lo demás."]
         t = draft.token
-        return [Outgoing(user.id, "\n".join(rows), [("Seguir sin eso", f"sp:{t}"), ("❌ Cancelar", f"cx:{t}")])]
+        return [Outgoing(user.id, "\n".join(rows),
+                         self._pending_buttons(draft) + [("Seguir sin eso", f"sp:{t}"), ("❌ Cancelar", f"cx:{t}")])]
+
+    def _pending_buttons(self, draft: Draft) -> list[tuple[str, str]]:
+        """Con una sola duda entre productos (ej. el tamaño), un botón por opción."""
+        if len(draft.pending) != 1 or draft.pending[0]["tipo"] != "ambiguo" or not draft.pending[0]["cantidad"]:
+            return []
+        try:
+            by_sku = {p.sku: p for p in self._sellable()}
+        except StorageError:
+            return []
+        cands = [by_sku[s] for s in draft.pending[0]["candidatos"] if s in by_sku]
+        return [(rules_parser.size_label(c, cands)[:24], f"pk:{draft.token}:{c.sku}") for c in cands]
+
+    def pick_pending(self, user, arg: str) -> list:
+        """Botón de una opción de la duda pendiente (ej. «750ml»): se anota y se sigue."""
+        token, _, sku = arg.partition(":")
+        try:
+            draft = self._get_draft(user)
+            if draft is None or token != draft.token or len(draft.pending) != 1:
+                return self._stale(user)
+            pend = draft.pending[0]
+            product = next((p for p in self._sellable() if p.sku == sku), None)
+            if product is None or sku not in pend["candidatos"] or not pend["cantidad"]:
+                return self._stale(user)
+            return self._apply_choice(user, draft, product)
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "armar el pedido")
 
     # ----------------------------------------------------- armar el borrador
     def start_order(self, user, text: str, items: list[ParsedItem] | None, intro: str = "") -> list:
