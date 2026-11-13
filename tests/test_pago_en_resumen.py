@@ -81,3 +81,30 @@ def test_con_gemini_el_si_confirma_sin_llamarlo(repo, settings):
     svc.handle_message(CLIENT, "3 fanta")
     out = svc.handle_message(CLIENT, "dale")
     assert "¡Pedido completado!" in plain(out[0].text) and len(models.prompts) == 2
+
+
+def test_productos_despues_de_un_pedido_son_un_pedido_nuevo(repo, settings):
+    """Gemini a veces lo toma como cambio al pedido anterior (que todavía se puede modificar):
+    si el cliente no dice que cambia algo, es un pedido nuevo con el pago de siempre."""
+    from .test_gemini_en_el_bot import intent
+    models = _FakeModels(pedido([("COC1", "2 coca", 2)]),
+                         intent("cambio_pedido", "Dale", items=[{"sku": "FAN1", "texto": "3 fanta", "cantidad": 3}]))
+    svc = _svc(repo, settings, models)
+    out = svc.handle_message(CLIENT, "2 coca")
+    out = svc.handle_callback(CLIENT, button(out, "cf:"))
+    svc.handle_callback(CLIENT, button(out, "pe:"))
+    out = svc.handle_message(CLIENT, "3 fanta")
+    assert "💳 Cambiar pago" in labels(out) and "Así quedaría tu pedido" not in plain(out[0].text)
+
+
+def test_agregale_al_pedido_sigue_siendo_un_cambio(repo, settings):
+    from .test_gemini_en_el_bot import intent
+    models = _FakeModels(pedido([("COC1", "2 coca", 2)]),
+                         intent("cambio_pedido", "Dale", items=[{"sku": "COC1", "texto": "2 coca", "cantidad": 2},
+                                                                {"sku": "FAN1", "texto": "3 fanta", "cantidad": 3}]))
+    svc = _svc(repo, settings, models)
+    out = svc.handle_message(CLIENT, "2 coca")
+    out = svc.handle_callback(CLIENT, button(out, "cf:"))
+    svc.handle_callback(CLIENT, button(out, "pe:"))
+    out = svc.handle_message(CLIENT, "agregale 3 fanta al pedido")
+    assert "Así quedaría tu pedido" in plain(out[0].text)

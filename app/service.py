@@ -62,6 +62,8 @@ def _wants_repeat(t: str) -> bool:
     return any(t.startswith(p) or f" {p}" in f" {t}" for p in REPEAT_PHRASES)
 
 
+CATALOG_INLINE = 15    # hasta esta cantidad de productos, el catálogo va entero en un mensaje
+MAX_CATEGORIES = 10    # una lista de WhatsApp tiene hasta 10 opciones
 GREETINGS = {"hola", "holaa", "buenas", "buen dia", "buenos dias", "buenas tardes", "buenas noches",
              "que tal", "hola que tal", "hola buenas", "hola buen dia", "hey", "holis"}
 
@@ -253,6 +255,11 @@ class BotService(CheckoutMixin, AdminMixin):
         }
         if t in keywords:
             return keywords[t]
+        try:
+            if t and t in {_norm(p.category)[:40] for p in self._sellable() if p.category}:
+                return lambda user, args: self.catalog_category(user, t[:40])
+        except StorageError:
+            pass
         if t in GREETINGS:
             return self.cmd_start   # un saludo: bienvenida con el catálogo a mano
         if _wants_repeat(t):
@@ -293,6 +300,7 @@ class BotService(CheckoutMixin, AdminMixin):
                   "sp": (self.skip_pending, "Seguir sin eso"),
                   "cp": (self.change_payment, "Cambiar pago"),
                   "ct": (lambda u, t: self.cmd_catalog(u, []), "Ver catálogo"),
+                  "cc": (self.catalog_category, "Categoría"),
                   "rp": (lambda u, t: self.repeat_last_order(u), "Lo de siempre"),
                   "aj": (self.adjust_to_stock, "Ajustar a lo que hay"),
                   "pe": (lambda u, t: self.choose_payment(u, "efectivo", t), "Efectivo al recibir"),
@@ -359,16 +367,48 @@ class BotService(CheckoutMixin, AdminMixin):
             return self._storage_failure(user, exc, "mostrar el catálogo")
         if not products:
             return [Outgoing(user.id, "Por ahora no tengo nada para ofrecerte 😕. Probá más tarde.")]
-        rows = ["<b>Catálogo de bebidas</b>"]
+        categories = self._categories(products)
+        if len(products) <= CATALOG_INLINE or len(categories) <= 1:
+            return [Outgoing(user.id, self._catalog_text(products, "Catálogo de bebidas"))]
+        # Catálogo grande: primero la categoría (en WhatsApp, una lista que se abre con un botón).
+        rows = ["📋 <b>Catálogo de bebidas</b>", "¿Qué querés ver?", ""]
+        rows += [f"• {esc(name)} ({n})" for name, n in categories[:MAX_CATEGORIES]]
+        rows += ["", "Tocá una categoría o escribime su nombre. 🚚 Envío incluido, sin costo."]
+        buttons = [(name, f"cc:{_norm(name)[:40]}") for name, _ in categories[:MAX_CATEGORIES]]
+        return [Outgoing(user.id, "\n".join(rows), buttons, menu_label="Ver categorías")]
+
+    @staticmethod
+    def _categories(products) -> list[tuple[str, int]]:
+        counts: dict[str, int] = {}
+        for p in products:
+            name = p.category or "Otras"
+            counts[name] = counts.get(name, 0) + 1
+        return list(counts.items())
+
+    def _catalog_text(self, products, title: str) -> str:
+        rows = [f"<b>{esc(title)}</b>"]
         category = None
         for p in products:
-            if p.category != category:
-                category = p.category
-                rows += ["", f"<b>{esc(category or 'Otras')}</b>"]
+            if (p.category or "Otras") != category and title == "Catálogo de bebidas":
+                category = p.category or "Otras"
+                rows += ["", f"<b>{esc(category)}</b>"]
             price = self.money(p.price) if p.has_price() else "precio a confirmar"
-            rows.append(f"• {esc(p.name)} — {price}")
+            pack = f" · {esc(p.pack_name)} × {p.pack_size}" if p.pack_size else ""
+            rows.append(f"• {esc(p.name)} — {price}{pack}")
         rows += ["", "🚚 Envío incluido, sin costo."]
-        return [Outgoing(user.id, "\n".join(rows))]
+        return "\n".join(rows)
+
+    def catalog_category(self, user, key: str) -> list:
+        """Los productos (con stock) de una categoría: botón de la lista o su nombre escrito."""
+        try:
+            products = [p for p in self._sellable() if _norm(p.category or "Otras")[:40] == key]
+        except StorageError as exc:
+            return self._storage_failure(user, exc, "mostrar el catálogo")
+        if not products:
+            return [Outgoing(user.id, "En esa categoría no tengo nada ahora 😕.", [("📋 Ver catálogo", "ct:")])]
+        title = products[0].category or "Otras"
+        return [Outgoing(user.id, self._catalog_text(products, title) + "\nPedime lo que quieras de acá.",
+                         [("📋 Otra categoría", "ct:")])]
 
     def cmd_my_orders(self, user, args):
         try:

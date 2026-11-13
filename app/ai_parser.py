@@ -385,6 +385,9 @@ Con cada mensaje del cliente (mirando la conversación y el borrador actual):
    - Si quiere repetir un pedido anterior CON cambios ("lo mismo que la otra vez pero
      sin fanta", "lo de siempre y 2 cocas más"), es "pedido" con la lista completa armada
      a partir de ULTIMOS PEDIDOS DEL CLIENTE.
+   - Si solo manda productos sin decir que cambia algo ("3 fanta"), es un pedido NUEVO
+     ("pedido") aunque tenga un pedido reciente. "cambio_pedido" es solo si lo dice
+     ("agregale al pedido", "cambiá la fanta", "me faltó…", "mandalo a otra dirección").
    - "cambio_pedido": NO hay borrador y quiere modificar un pedido YA HECHO
      (productos y/o dirección) o cancelarlo.
    - "consulta": pregunta precios, si hay un producto, qué tienen, horarios, zona,

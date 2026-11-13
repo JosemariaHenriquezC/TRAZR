@@ -132,7 +132,12 @@ Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Hacerlo ANTES de Mer
   hoy a la tarde (17 a 21); si no, próximo día (NEGOCIO_DIAS_REPARTO lun-sab) a la mañana; en resumen y
   comprobante; plata sin «,00»; comprobante compacto (fecha «13/11 10:22», sin «Estado» si hay
   pago, «Total · envío incluido»). Horario nuevo (usuario): lunes a sábado 9–13 y 17–21
-  (TRAZR, NEGOCIO_HORA_CIERRE=21). Set: 74 casos; reglas 61/74.
+  (TRAZR, NEGOCIO_HORA_CIERRE=21). Set: 74 casos; reglas 61/74. Con Gemini: siempre 6/6.
+  Catálogo: hasta 15 productos va entero; si no, primero categorías (botones cc:<categoría>, en
+  WhatsApp lista «Ver categorías», `Outgoing.menu_label`), o escribiendo el nombre de la categoría.
+  Un mensaje por paso: `_join` une la pregunta «¿qué dirección dejo guardada?» al comprobante.
+  Arreglo: Gemini tomaba «3 fanta» después de un pedido como cambio al anterior → si no hay
+  palabras de cambio (`CHANGE_CUES`), «cambio_pedido» sin borrador se trata como pedido nuevo.
   Detalle original: pendientes simples en el Draft
   (se arma con lo entendido, lo dudoso queda en Draft.pending; no se confirma con pendientes salvo
   «Seguir sin eso»; un número suelto completa el único pendiente), «un par» = 2 (parser + prompts),

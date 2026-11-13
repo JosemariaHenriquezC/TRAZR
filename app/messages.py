@@ -16,6 +16,8 @@ class Outgoing:
     # tiempo (WhatsApp: 24 h desde el último mensaje del cliente). Es (clave, [valores]); el
     # canal lo traduce a su plantilla aprobada. Ver PLANTILLAS en whatsapp.py.
     template: tuple[str, list[str]] | None = None
+    # Con más de 3 opciones, WhatsApp las muestra como lista detrás de un botón: su texto.
+    menu_label: str = ""
 
 
 def esc(value) -> str:

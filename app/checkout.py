@@ -95,6 +95,18 @@ ADDRESS_INCOMPLETE = ("Para mandártelo necesito la dirección con <b>calle y n�
                       "(o escribí «cancelar» para descartar el pedido)")
 
 
+CHANGE_CUES = {"agrega", "agregale", "agregame", "agregar", "suma", "sumale", "sumame", "cambia", "cambiale",
+               "cambiame", "cambiar", "saca", "sacale", "sacame", "quita", "quitale", "quitame", "modifica",
+               "modificar", "modificalo", "anterior", "ultimo", "tambien", "mejor", "lugar", "vez", "direccion",
+               "mandalo", "envialo", "llevalo", "cancela", "cancelar", "cancelalo", "anula", "anular", "falto",
+               "faltaron", "olvide"}
+
+
+def _asks_for_change(text: str) -> bool:
+    """¿El mensaje habla de cambiar algo («agregale», «cambiá», «el pedido anterior»)?"""
+    return bool(CHANGE_CUES & set(_norm(text).split()))
+
+
 def _promises_follow_up(text: str) -> bool:
     """¿La respuesta promete consultar con el equipo? («lo consulto con el equipo y te aviso»)"""
     t = _norm(text)
@@ -833,7 +845,7 @@ class CheckoutMixin:
                             + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva"
                             " y ahí te digo cómo pagarlo." + tail)]
             self._notify_review(order, f"Pedido {order.order_id} en revisión")
-        return out + self._ask_which_address(user, order.address)
+        return self._join(out, self._ask_which_address(user, order.address))
 
     def _notify_review(self, order: Order, title: str) -> None:
         """Aviso en la web: el admin revisa los pedidos ahí, no en el chat."""
@@ -963,9 +975,20 @@ class CheckoutMixin:
             out = [Outgoing(user.id, self.format_order(order, "✏️ <b>Modificamos tu pedido</b>")
                             + "\n\nQuedó <b>en revisión</b>; te aviso apenas el área administrativa lo resuelva.")]
             self._notify_review(order, f"Pedido {order.order_id} modificado: quedó en revisión")
-        return out + self._ask_which_address(user, order.address)
+        return self._join(out, self._ask_which_address(user, order.address))
 
     # ------------------------------------------------- ¿qué dirección guardo?
+    @staticmethod
+    def _join(out: list, extra: list) -> list:
+        """Une la pregunta que sigue (ej. «¿qué dirección dejo guardada?») al mismo mensaje,
+        con sus botones: un mensaje por paso en vez de dos burbujas seguidas."""
+        if not extra or not out or out[-1].buttons or out[-1].chat_id != extra[0].chat_id:
+            return out + extra
+        last = out[-1]
+        last.text = f"{last.text}\n\n{extra[0].text}"
+        last.buttons = list(extra[0].buttons)
+        return out + extra[1:]
+
     def _ask_which_address(self, user, used: str) -> list:
         """Si el pedido fue a otra dirección que la guardada, pregunta cuál dejar para la próxima."""
         try:
@@ -1080,6 +1103,10 @@ class CheckoutMixin:
             return items or self._interpret(text, catalog, use_ai=False)
 
         intent = reply.intencion
+        if intent == "cambio_pedido" and draft is None and not _asks_for_change(text):
+            # Solo productos («3 fanta») después de un pedido: es un pedido NUEVO, no un cambio
+            # al anterior. Para cambiar el anterior lo tiene que decir («agregale», «cambiá»…).
+            intent = "pedido"
         if draft is not None and intent == "confirmar":
             return self.confirm_draft(user)
         if draft is not None and intent == "cancelar":

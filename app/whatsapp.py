@@ -136,7 +136,8 @@ def build_payloads(m: Outgoing) -> list[dict]:
     else:
         rows = [{"id": data[:200], "title": _fit(t, MAX_LIST_TITLE)} for t, data in m.buttons[:MAX_LIST_ROWS]]
         interactive = {"type": "list", "body": {"text": body},
-                       "action": {"button": "Ver opciones", "sections": [{"title": "Opciones", "rows": rows}]}}
+                       "action": {"button": _fit(m.menu_label or "Ver opciones", MAX_BUTTON_TITLE),
+                                  "sections": [{"title": "Opciones", "rows": rows}]}}
     return pre + [{**base, "type": "interactive", "interactive": interactive}]
 
 

@@ -139,3 +139,56 @@ def test_dias_de_reparto_desde_el_env(monkeypatch):
     assert _days("X_DIAS", ()) == (0, 1, 2, 3, 4)
     monkeypatch.setenv("X_DIAS", "lun,mie,sab")
     assert _days("X_DIAS", ()) == (0, 2, 5)
+
+
+# ---------------------------------------------------------------- catálogo por categorías
+def _catalogo_grande(repo):
+    from app.models import Product
+    for i in range(8):
+        repo.upsert_product(Product(f"GAS{i}", f"Gaseosa Sabor {i} 2L", [f"sabor {i}"], 20, 2500, True, "Gaseosas"),
+                            "2026-01-01 00:00:00")
+
+
+def test_catalogo_chico_va_entero(svc):
+    out = svc.handle_message(CLIENT, "catálogo")
+    assert "Catálogo de bebidas" in plain(out[0].text) and "Coca-Cola 2.25L — $ 3.200 · pack × 6" in plain(out[0].text)
+    assert labels(out) == []
+
+
+def test_catalogo_grande_primero_las_categorias(svc, repo):
+    _catalogo_grande(repo)
+    out = svc.handle_message(CLIENT, "catálogo")
+    txt = plain(out[0].text)
+    assert "¿Qué querés ver?" in txt and "• Gaseosas (11)" in txt and "Vinos" not in txt   # lo agotado no se nombra
+    assert labels(out)[:2] == ["Aguas", "Aperitivos"] and out[0].menu_label == "Ver categorías"
+    out = svc.handle_callback(CLIENT, button(out, "cc:gaseosas"))
+    txt = plain(out[0].text)
+    assert txt.startswith("Gaseosas") and "Gaseosa Sabor 3 2L" in txt and "Agua" not in txt
+    assert labels(out) == ["📋 Otra categoría"]
+
+
+def test_escribir_la_categoria_la_muestra(svc, repo):
+    _catalogo_grande(repo)
+    out = svc.handle_message(CLIENT, "Gaseosas")
+    assert "Gaseosa Sabor 0 2L" in plain(out[0].text)
+
+
+def test_en_whatsapp_las_categorias_van_como_lista(svc, repo):
+    from app.whatsapp import build_payloads
+    _catalogo_grande(repo)
+    [m] = svc.handle_message(CLIENT, "catálogo")
+    [p] = build_payloads(m)
+    assert p["interactive"]["type"] == "list" and p["interactive"]["action"]["button"] == "Ver categorías"
+    assert len(p["interactive"]["action"]["sections"][0]["rows"]) <= 10
+
+
+# ---------------------------------------------------------------- un mensaje por paso
+def test_confirmacion_y_pregunta_de_direccion_en_un_mensaje(svc, repo):
+    out = svc.handle_message(CLIENT, "2 coca")
+    out = svc.handle_message(CLIENT, "/direccion Belgrano 300, Tafí Viejo")
+    out = svc.handle_callback(CLIENT, button(out, "cf:"))
+    out = svc.handle_callback(CLIENT, button(out, "pe:"))
+    assert len(out) == 1
+    txt = plain(out[0].text)
+    assert "¡Pedido completado!" in txt and "¿Qué dirección dejo guardada" in txt
+    assert labels(out) == ["🏠 La de siempre", "📍 La nueva"]
