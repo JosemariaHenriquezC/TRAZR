@@ -87,15 +87,15 @@ def test_la_web_guarda_las_unidades_por_caja(svc, repo, settings):
     client = TestClient(create_app(svc, Notifier(), settings))
     assert svc.create_admin("lucia", "Lucía Fernández", "limones123").ok
     assert login(client).status_code == 303
-    csrf = read_csrf(client.get("/productos?editar=SPR1").text)
-    r = client.post("/productos/guardar", data={"csrf_token": csrf, "es_nuevo": "0", "sku": "SPR1",
+    csrf = read_csrf(client.get("/admin/productos?editar=SPR1").text)
+    r = client.post("/admin/productos/guardar", data={"csrf_token": csrf, "es_nuevo": "0", "sku": "SPR1",
                                                 "nombre": "Sprite 2.25L", "alias": "sprite", "categoria": "Gaseosas",
                                                 "precio": "3000", "stock": "40", "activo": "1",
                                                 "unidades_caja": "6", "nombre_caja": "Pack"}, follow_redirects=False)
     assert r.status_code == 303
     p = repo.get_product("SPR1")
     assert (p.pack_size, p.pack_name) == (6, "pack")
-    r = client.post("/productos/guardar", data={"csrf_token": csrf, "es_nuevo": "0", "sku": "SPR1",
+    r = client.post("/admin/productos/guardar", data={"csrf_token": csrf, "es_nuevo": "0", "sku": "SPR1",
                                                 "nombre": "Sprite 2.25L", "precio": "3000", "stock": "40",
                                                 "unidades_caja": "seis"}, follow_redirects=False)
     assert repo.get_product("SPR1").pack_size == 6        # no se guardó lo inválido

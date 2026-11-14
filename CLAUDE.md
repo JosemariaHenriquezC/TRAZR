@@ -7,7 +7,8 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
 
 ## Arquitectura
 - `app/server.py` — `python -m app.server`: web + bot de Telegram en un proceso
-- `app/web/` — web de admin: `main.py` (rutas FastAPI, login, CSRF), `templates/` (Jinja2), `static/` (CSS del diseño)
+- `landing/` — landing en React (se sirve en `/`; ver landing/README.md)
+- `app/web/` — web de admin en `/admin`: `main.py` (rutas FastAPI, login, CSRF), `templates/` (Jinja2), `static/` (CSS del diseño)
 - `app/bot.py` — capa de Telegram, sin lógica de negocio
 - `app/tunnel.py` — túnel de ngrok que abre el servidor si hay NGROK_DOMAIN
 - `app/whatsapp.py` — canal WhatsApp (Cloud API): webhook `/whatsapp/webhook` (firma
@@ -85,7 +86,7 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
 
 ## Próxima sesión — empezar por acá
 
-### Landing page (TFI) — EN CURSO
+### Landing page (TFI) — HECHA
 - Decidido: para DISTRIBUIDORAS (Trazr empresa de software), React (Vite) en `landing/`, compilada a
   estáticos que sirve FastAPI en `/`; la web del admin pasa a `/admin` (/privacidad y
   /whatsapp/webhook no se mueven). Conexión: botones «Probar el bot» (wa.me / t.me desde el .env) e
@@ -93,8 +94,13 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   NO dar datos del negocio de prueba (catálogo, mayorista, cantidades, horarios): Trazr se vende a
   muchas distribuidoras; hablar en genérico («tus categorías», «tus horarios»).
   Separar «Hoy» de «Próximamente» (crédito, handoff, recompra, Tango): no prometer lo que no está.
-- Diseño primero (como la web del admin): canvas https://claude.ai/artifact/JSU973J8yFvvhyP7jE8DwD
-  (escritorio + celular, sistema de diseño Trazr, logo de la tapita). Falta el OK del usuario.
+- Diseño: canvas https://claude.ai/artifact/JSU973J8yFvvhyP7jE8DwD (aprobado; aviso de demo: «Es una
+  demo: pedí lo que quieras, no se cobra ni se entrega nada»).
+- PROGRAMADA: `landing/` (React 18 + Vite 5; textos en `src/contenido.js`; `npm run build` →
+  `app/web/landing/`, que SE COMMITEA para no necesitar Node). `main.py`: GET `/` sirve el index
+  reemplazando `__TRAZR_CONFIG__` por los links (LANDING_WHATSAPP → wa.me, LANDING_TELEGRAM o el
+  usuario del bot en marcha → t.me; sin link, el botón no se muestra); `/landing/assets` estático.
+  Panel movido a `/admin` (login `/admin/ingresar`); links viejos (/ingresar, /pedidos…) redirigen.
 - La beta anterior (React + API en C#, otro equipo) se descartó: prometía Tango/facturación.
 
 ### Pendientes anotados por el usuario (hacer más adelante)

@@ -249,7 +249,7 @@ baja sin borrar) y `--activar usuario`.
 python -m app.server
 ```
 
-Abrí **http://127.0.0.1:8000** e ingresá con el usuario del paso 2. El bot de Telegram corre en
+En **http://127.0.0.1:8000** queda la landing de Trazr; el panel está en **http://127.0.0.1:8000/admin**: ingresá con el usuario del paso 2. El bot de Telegram corre en
 el mismo proceso: cuando aprobás o rechazás un pedido en la web, el aviso le llega al cliente por
 el chat. Sin `TELEGRAM_BOT_TOKEN` arranca solo la web. Poné una `SECRET_KEY` en el `.env` (ver
 `.env.example`) para no tener que volver a ingresar cada vez que reiniciás.
@@ -273,7 +273,7 @@ confirmado) les llegan por WhatsApp.
    (`winget install ngrok.ngrok`), conectalo con `ngrok config add-authtoken TU_TOKEN`, copiá tu
    dominio del panel (Domains) a `NGROK_DOMAIN` en el `.env`, y listo: `python -m app.server`
    abre el túnel solo (un comando levanta web + bot + túnel; Ctrl+C apaga todo). Límites del plan gratis:
-   20.000 pedidos y 1 GB por mes; usá la web de admin por `http://127.0.0.1:8000`, no por ngrok.
+   20.000 pedidos y 1 GB por mes; usá la web de admin por `http://127.0.0.1:8000/admin`, no por ngrok.
 4. En Meta, **Configuración → Webhook**: URL `https://<tu-túnel>/whatsapp/webhook`, el mismo
    token de verificación, y suscribite al campo **messages**.
 5. Si el webhook se verifica pero los mensajes reales no llegan, la app no quedó suscripta a la

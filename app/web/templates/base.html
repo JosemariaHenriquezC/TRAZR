@@ -16,7 +16,7 @@
 <div class="app">
   <aside class="side" id="side">
     <div class="side__top">
-      <a class="brand" href="/"><img class="brand__mark" src="/static/marca/trazr-simbolo.svg" alt="" width="30" height="30">{{ shop }}</a>
+      <a class="brand" href="/admin"><img class="brand__mark" src="/static/marca/trazr-simbolo.svg" alt="" width="30" height="30">{{ shop }}</a>
       <button class="menu-toggle" type="button" aria-controls="menu" aria-expanded="false" aria-label="Abrir menú">
         <span class="menu-toggle__bars" aria-hidden="true"></span>
         {% if pending_count %}<span class="menu-toggle__dot" aria-hidden="true"></span>{% endif %}
@@ -24,14 +24,14 @@
     </div>
     <div class="side__menu" id="menu">
       <nav class="nav" aria-label="Secciones">
-        <a href="/" {% if page == 'tablero' %}aria-current="page"{% endif %}>Tablero</a>
-        <a href="/pedidos" {% if page == 'pedidos' %}aria-current="page"{% endif %}>Pedidos {% if pending_count %}<span class="count" aria-label="{{ pending_count }} en revisión">{{ pending_count }}</span>{% endif %}</a>
-        <a href="/productos" {% if page == 'productos' %}aria-current="page"{% endif %}>Productos y stock</a>
-        <a href="/clientes" {% if page == 'clientes' %}aria-current="page"{% endif %}>Clientes</a>
+        <a href="/admin" {% if page == 'tablero' %}aria-current="page"{% endif %}>Tablero</a>
+        <a href="/admin/pedidos" {% if page == 'pedidos' %}aria-current="page"{% endif %}>Pedidos {% if pending_count %}<span class="count" aria-label="{{ pending_count }} en revisión">{{ pending_count }}</span>{% endif %}</a>
+        <a href="/admin/productos" {% if page == 'productos' %}aria-current="page"{% endif %}>Productos y stock</a>
+        <a href="/admin/clientes" {% if page == 'clientes' %}aria-current="page"{% endif %}>Clientes</a>
       </nav>
       <div class="side__foot">
         <strong>{{ admin.name }}</strong><span>Administración</span>
-        <form method="post" action="/salir"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Salir</button></form>
+        <form method="post" action="/admin/salir"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Salir</button></form>
       </div>
     </div>
   </aside>
@@ -68,7 +68,7 @@
   document.getElementById("live-reload").addEventListener("click", function (e) { e.preventDefault(); location.reload(); });
   function check() {
     if (document.hidden || !version) return;
-    fetch("/cambios", { credentials: "same-origin", cache: "no-store" })
+    fetch("/admin/cambios", { credentials: "same-origin", cache: "no-store" })
       .then(function (r) { return r.ok ? r.text() : null; })
       .then(function (v) {
         if (!v || v === version) return;

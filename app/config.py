@@ -200,6 +200,8 @@ class Settings:
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
     # Túnel de ngrok que abre `python -m app.server` (vacío = sin túnel)
     ngrok_domain: str = ""
+    landing_whatsapp: str = ""    # número del bot para «Probar el bot» en la landing (ej. 5493815551234)
+    landing_telegram: str = ""    # usuario del bot de Telegram (sin @); vacío = el del bot en marcha
 
 
 def load_settings(require_telegram: bool = True, env_file: str | None = None) -> Settings:
@@ -237,6 +239,8 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         ai_retry_delays=_delays("AI_RETRY_DELAYS", (3.0,)),
         secret_key=os.getenv("SECRET_KEY", "").strip(),
         ngrok_domain=os.getenv("NGROK_DOMAIN", "").strip(),
+        landing_whatsapp="".join(ch for ch in os.getenv("LANDING_WHATSAPP", "") if ch.isdigit()),
+        landing_telegram=os.getenv("LANDING_TELEGRAM", "").strip().lstrip("@"),
         web_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",
         web_port=_int("WEB_PORT", 8000),
         whatsapp=WhatsAppConfig(

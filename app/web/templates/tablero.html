@@ -77,7 +77,7 @@
     </section>
 
     <section class="tz-panel" aria-labelledby="cola-t">
-      <div class="panel-head"><h2 class="section" id="cola-t">Esperan tu decisión</h2>{% if d.pending %}<a href="/pedidos?estado=revision">Ver en pedidos</a>{% endif %}</div>
+      <div class="panel-head"><h2 class="section" id="cola-t">Esperan tu decisión</h2>{% if d.pending %}<a href="/admin/pedidos?estado=revision">Ver en pedidos</a>{% endif %}</div>
       {% if d.pending %}
       <ul class="queue">
         {% for o in d.pending[:6] %}
@@ -89,7 +89,7 @@
           </div>
           <div class="queue__side">
             <span class="queue__total">{{ o.total|money }}</span>
-            <a class="tz-btn tz-btn--primary btn-sm" href="/pedidos/{{ o.order_id }}">Decidir</a>
+            <a class="tz-btn tz-btn--primary btn-sm" href="/admin/pedidos/{{ o.order_id }}">Decidir</a>
           </div>
         </li>
         {% endfor %}
@@ -100,19 +100,19 @@
     </section>
 
     <section class="tz-panel" aria-labelledby="cobro-t">
-      <div class="panel-head"><h2 class="section" id="cobro-t">Por cobrar</h2>{% if d.unpaid %}<a href="/pedidos?estado=por_cobrar">Ver todos</a>{% endif %}</div>
+      <div class="panel-head"><h2 class="section" id="cobro-t">Por cobrar</h2>{% if d.unpaid %}<a href="/admin/pedidos?estado=por_cobrar">Ver todos</a>{% endif %}</div>
       {% if d.unpaid %}
       <ul class="queue">
         {% for o in d.unpaid[:6] %}
         <li class="queue__item">
           <div>
-            <div class="queue__who"><a href="/pedidos/{{ o.order_id }}"><strong>{{ o.customer_name }}</strong></a><span class="queue__id">{{ o.order_id }} · {{ o.created_at|fecha }}</span></div>
+            <div class="queue__who"><a href="/admin/pedidos/{{ o.order_id }}"><strong>{{ o.customer_name }}</strong></a><span class="queue__id">{{ o.order_id }} · {{ o.created_at|fecha }}</span></div>
             <div class="queue__what">{{ o.payment_label }}{% if o.payment_method == 'transferencia' %} · se cancela sola si no se acredita{% endif %}</div>
           </div>
           <div class="queue__side">
             <span class="queue__total">{{ o.total|money }}</span>
-            <form method="post" action="/pedidos/{{ o.order_id }}/pago">
-              <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="volver" value="/">
+            <form method="post" action="/admin/pedidos/{{ o.order_id }}/pago">
+              <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="volver" value="/admin">
               <button class="tz-btn tz-btn--secondary btn-sm" type="submit">Pago recibido</button>
             </form>
           </div>
@@ -127,7 +127,7 @@
 
   <div class="stack-lg">
     <section class="tz-panel" aria-labelledby="low-t">
-      <div class="panel-head"><h2 class="section" id="low-t">Se está por acabar</h2><a href="/productos?filtro=poco">Sumar stock</a></div>
+      <div class="panel-head"><h2 class="section" id="low-t">Se está por acabar</h2><a href="/admin/productos?filtro=poco">Sumar stock</a></div>
       {% if d.low_stock %}
       <ul class="low">
         {% for p in d.low_stock %}
@@ -147,13 +147,13 @@
       <div class="panel-head">
         <h2 class="section" id="avisos-t">Avisos</h2>
         {% if unread %}
-        <form method="post" action="/avisos/leidos"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Marcar {{ unread }} como leído{{ 's' if unread != 1 }}</button></form>
+        <form method="post" action="/admin/avisos/leidos"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Marcar {{ unread }} como leído{{ 's' if unread != 1 }}</button></form>
         {% endif %}
       </div>
       <div class="notice-feed">
         {% for n_ in notices %}
         <div class="tz-notice {{ 'tz-notice--unread' if not n_.read }} {{ 'tz-notice--error' if n_.kind == 'falla' }}">
-          <strong>{% if n_.order_id %}<a href="/pedidos/{{ n_.order_id }}">{{ n_.title }}</a>{% else %}{{ n_.title }}{% endif %}</strong>
+          <strong>{% if n_.order_id %}<a href="/admin/pedidos/{{ n_.order_id }}">{{ n_.title }}</a>{% else %}{{ n_.title }}{% endif %}</strong>
           {% if n_.detail %}<span>{{ n_.detail }}</span>{% endif %}
           <span class="tz-notice__meta">{{ n_.created_at|fecha }}</span>
         </div>

@@ -3,7 +3,7 @@
 {% block content %}
 {% set o = order %}
 {% set verbo = {'CONFIRMADO': 'Aprobado', 'RECHAZADO': 'Rechazado', 'CANCELADO': 'Cancelado'} %}
-<a href="/pedidos">← Volver a pedidos</a>
+<a href="/admin/pedidos">← Volver a pedidos</a>
 <div class="head">
   <div>
     <span class="eyebrow">Pedido</span>
@@ -74,7 +74,7 @@
         <dt>Envío a</dt><dd>{{ o.address }}</dd>
         <dt>Pago</dt><dd>{{ o.payment_label }}{% if o.is_paid %} · pagado{% elif o.payment_status == 'pendiente' and o.status in ('CONFIRMADO', 'EN REVISION') %} · pendiente{% endif %}</dd>
         {% if customer and customer.address != o.address %}<dt>Guardada</dt><dd>{{ customer.address }}</dd>{% endif %}
-        <dt>Pedidos</dt><dd>{{ customer_orders }} en total · <a href="/clientes?c={{ (o.channel ~ ':' ~ o.customer_id)|urlq }}">ver cliente</a></dd>
+        <dt>Pedidos</dt><dd>{{ customer_orders }} en total · <a href="/admin/clientes?c={{ (o.channel ~ ':' ~ o.customer_id)|urlq }}">ver cliente</a></dd>
       </dl>
     </section>
 
@@ -82,12 +82,12 @@
     <section class="tz-panel">
       <div class="panel-head"><h2 class="section">Decisión</h2></div>
       <div class="stack panel-body" style="gap: 16px">
-        <form method="post" action="/pedidos/{{ o.order_id }}/aprobar" class="stack" style="gap: 16px">
+        <form method="post" action="/admin/pedidos/{{ o.order_id }}/aprobar" class="stack" style="gap: 16px">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <p class="muted" style="margin:0">Se toma el precio actual de cada producto, se vuelve a mirar el stock, se descuenta y le avisamos al cliente por el chat.</p>
           <button class="tz-btn tz-btn--primary" type="submit" style="justify-content: center">Aprobar y avisar al cliente</button>
         </form>
-        <form method="post" action="/pedidos/{{ o.order_id }}/rechazar" class="stack" style="gap: 16px">
+        <form method="post" action="/admin/pedidos/{{ o.order_id }}/rechazar" class="stack" style="gap: 16px">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <div class="tz-field">
             <label for="motivo">Motivo del rechazo</label>
@@ -109,13 +109,13 @@
           <dt>A cobrar</dt><dd><strong>{{ o.total|money }}</strong></dd>
         </dl>
         <p class="muted" style="margin:0">{% if o.payment_method == 'transferencia' %}Confirmalo cuando veas la transferencia acreditada. Si no llega en {{ payment_hours }} h, el pedido se cancela solo y el stock vuelve.{% else %}Confirmalo cuando el repartidor cobre el efectivo.{% endif %}</p>
-        <form method="post" action="/pedidos/{{ o.order_id }}/pago">
+        <form method="post" action="/admin/pedidos/{{ o.order_id }}/pago">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <button class="tz-btn tz-btn--primary" type="submit" style="justify-content: center; width: 100%">Confirmar pago recibido</button>
         </form>
         <details>
           <summary class="muted" style="cursor: pointer">Cancelar por falta de pago</summary>
-          <form method="post" action="/pedidos/{{ o.order_id }}/cancelar" class="stack" style="gap: 12px; margin-top: 12px">
+          <form method="post" action="/admin/pedidos/{{ o.order_id }}/cancelar" class="stack" style="gap: 12px; margin-top: 12px">
             <input type="hidden" name="csrf_token" value="{{ csrf }}">
             <div class="tz-field">
               <label for="motivo-c">Motivo (se lo mandamos al cliente)</label>

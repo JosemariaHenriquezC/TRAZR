@@ -6,14 +6,14 @@
     <h1>Productos y stock</h1>
     <p>Lo que ve el cliente en el catálogo. Sumá stock cuando entra mercadería; el bot descuenta solo con cada pedido.</p>
   </div>
-  <a class="tz-btn tz-btn--primary" href="/productos?nuevo=1#editar">Nuevo producto</a>
+  <a class="tz-btn tz-btn--primary" href="/admin/productos?nuevo=1#editar">Nuevo producto</a>
 </div>
 
 {% if editing or new %}
 {% set p = editing %}
 <section class="tz-panel" id="editar" aria-labelledby="edit-title">
   <div class="panel-head"><h2 class="section" id="edit-title">{% if new %}Nuevo producto{% else %}Editar {{ p.name }} <span class="id muted">{{ p.sku }}</span>{% endif %}</h2></div>
-  <form method="post" action="/productos/guardar" class="panel-body">
+  <form method="post" action="/admin/productos/guardar" class="panel-body">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <input type="hidden" name="es_nuevo" value="{{ '1' if new else '0' }}">
     <div class="form-grid">
@@ -33,7 +33,7 @@
     </div>
     <div class="actions" style="margin-top: 16px">
       <button class="tz-btn tz-btn--primary" type="submit">{{ 'Crear producto' if new else 'Guardar cambios' }}</button>
-      <a class="tz-btn tz-btn--secondary" href="/productos">Cancelar</a>
+      <a class="tz-btn tz-btn--secondary" href="/admin/productos">Cancelar</a>
     </div>
   </form>
 </section>
@@ -41,11 +41,11 @@
 
 <div class="toolbar">
   <nav class="tabs" aria-label="Filtrar">
-    <a href="/productos" {% if filtro == 'todos' %}aria-current="page"{% endif %}>Todos · {{ total }}</a>
-    <a href="/productos?filtro=poco" {% if filtro == 'poco' %}aria-current="page"{% endif %}>Poco stock · {{ counts.poco }}</a>
-    <a href="/productos?filtro=inactivos" {% if filtro == 'inactivos' %}aria-current="page"{% endif %}>Ocultos · {{ counts.inactivos }}</a>
+    <a href="/admin/productos" {% if filtro == 'todos' %}aria-current="page"{% endif %}>Todos · {{ total }}</a>
+    <a href="/admin/productos?filtro=poco" {% if filtro == 'poco' %}aria-current="page"{% endif %}>Poco stock · {{ counts.poco }}</a>
+    <a href="/admin/productos?filtro=inactivos" {% if filtro == 'inactivos' %}aria-current="page"{% endif %}>Ocultos · {{ counts.inactivos }}</a>
   </nav>
-  <form class="search" method="get" action="/productos" role="search">
+  <form class="search" method="get" action="/admin/productos" role="search">
     <input type="hidden" name="filtro" value="{{ filtro }}">
     <label class="eyebrow" for="buscar-p">Buscar</label>
     <input id="buscar-p" name="q" type="search" value="{{ q }}" placeholder="Nombre, alias o SKU">
@@ -66,9 +66,9 @@
         <td class="num" data-label="Precio">{{ p.price|money }}</td>
         <td class="num" data-label="Stock">{{ p.stock|qty }}{% if p.pack_size %}<span class="muted" style="display:block;font-size:12px">{{ p.pack_name }} × {{ p.pack_size }}</span>{% endif %}</td>
         <td data-label="Sumar stock">
-          <form class="inline-form" method="post" action="/productos/{{ p.sku }}/sumar">
+          <form class="inline-form" method="post" action="/admin/productos/{{ p.sku }}/sumar">
             <input type="hidden" name="csrf_token" value="{{ csrf }}">
-            <input type="hidden" name="volver" value="/productos?filtro={{ filtro }}">
+            <input type="hidden" name="volver" value="/admin/productos?filtro={{ filtro }}">
             <label class="sr-only" for="s-{{ p.sku }}">Sumar a {{ p.name }}</label>
             <input id="s-{{ p.sku }}" name="cantidad" inputmode="numeric" placeholder="+0" required>
             <button class="tz-btn tz-btn--secondary btn-sm" type="submit">Sumar</button>
@@ -81,7 +81,7 @@
           {% elif p.stock < LOW_STOCK %}<span class="tz-badge tz-badge--warn">Poco stock</span>
           {% else %}<span class="tz-badge tz-badge--ok">Con stock</span>{% endif %}
         </td>
-        <td class="right" data-label=""><a href="/productos?editar={{ p.sku }}#editar">Editar</a></td>
+        <td class="right" data-label=""><a href="/admin/productos?editar={{ p.sku }}#editar">Editar</a></td>
       </tr>
     {% endfor %}
     </tbody>

@@ -10,13 +10,13 @@
 
 <div class="toolbar">
   <nav class="tabs" aria-label="Filtrar por estado">
-    <a href="/pedidos?estado=todos" {% if estado == 'todos' %}aria-current="page"{% endif %}>Todos · {{ total }}</a>
-    <a href="/pedidos?estado=revision" {% if estado == 'revision' %}aria-current="page"{% endif %}>En revisión · {{ counts.revision }}</a>
-    <a href="/pedidos?estado=por_cobrar" {% if estado == 'por_cobrar' %}aria-current="page"{% endif %}>Por cobrar · {{ counts.por_cobrar }}</a>
-    <a href="/pedidos?estado=pagados" {% if estado == 'pagados' %}aria-current="page"{% endif %}>Pagados · {{ counts.pagados }}</a>
-    <a href="/pedidos?estado=rechazados" {% if estado == 'rechazados' %}aria-current="page"{% endif %}>Rechazados y cancelados · {{ counts.rechazados }}</a>
+    <a href="/admin/pedidos?estado=todos" {% if estado == 'todos' %}aria-current="page"{% endif %}>Todos · {{ total }}</a>
+    <a href="/admin/pedidos?estado=revision" {% if estado == 'revision' %}aria-current="page"{% endif %}>En revisión · {{ counts.revision }}</a>
+    <a href="/admin/pedidos?estado=por_cobrar" {% if estado == 'por_cobrar' %}aria-current="page"{% endif %}>Por cobrar · {{ counts.por_cobrar }}</a>
+    <a href="/admin/pedidos?estado=pagados" {% if estado == 'pagados' %}aria-current="page"{% endif %}>Pagados · {{ counts.pagados }}</a>
+    <a href="/admin/pedidos?estado=rechazados" {% if estado == 'rechazados' %}aria-current="page"{% endif %}>Rechazados y cancelados · {{ counts.rechazados }}</a>
   </nav>
-  <form class="search" method="get" action="/pedidos" role="search">
+  <form class="search" method="get" action="/admin/pedidos" role="search">
     <input type="hidden" name="estado" value="{{ estado }}">
     <label class="eyebrow" for="buscar">Buscar</label>
     <input id="buscar" name="q" type="search" value="{{ q }}" placeholder="Pedido, cliente o producto">
@@ -38,7 +38,7 @@
         <td data-label="Pago">{{ o.payment_label }}</td>
         <td class="num" data-label="Total">{{ o.total|money }}</td>
         <td data-label="Estado">{% include "_badge.html" %}</td>
-        <td class="right" data-label=""><a class="tz-btn tz-btn--secondary btn-sm" href="/pedidos/{{ o.order_id }}">{{ 'Revisar' if o.status == 'EN REVISION' else ('Cobrar' if o.awaiting_payment else 'Ver') }}</a></td>
+        <td class="right" data-label=""><a class="tz-btn tz-btn--secondary btn-sm" href="/admin/pedidos/{{ o.order_id }}">{{ 'Revisar' if o.status == 'EN REVISION' else ('Cobrar' if o.awaiting_payment else 'Ver') }}</a></td>
       </tr>
     {% endfor %}
     </tbody>

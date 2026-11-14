@@ -12,6 +12,7 @@ y /salud pide sesión de un admin activo (el webhook de WhatsApp exige la firma 
 from __future__ import annotations
 
 import logging
+import json
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -49,6 +50,9 @@ DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Doming
 
 class LoginRequired(Exception):
     pass
+
+
+LANDING = HERE / "landing"   # la landing compilada (ver landing/README.md)
 
 
 def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan=None) -> FastAPI:
@@ -119,7 +123,7 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
 
     @app.exception_handler(LoginRequired)
     async def _login_required(request: Request, exc: LoginRequired):
-        return back("/ingresar")
+        return back("/admin/ingresar")
 
     @app.exception_handler(StorageError)
     async def _storage(request: Request, exc: StorageError):
@@ -128,11 +132,11 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
                             status_code=503)
 
     # ------------------------------------------------------------ ingreso
-    @app.get("/ingresar", response_class=HTMLResponse)
+    @app.get("/admin/ingresar", response_class=HTMLResponse)
     def login_form(request: Request):
         return render(request, "login.html", error=False, username="")
 
-    @app.post("/ingresar")
+    @app.post("/admin/ingresar")
     def login(request: Request, usuario: str = Form(""), clave: str = Form(""), csrf_token: str = Form("")):
         check_csrf(request, csrf_token)
         admin = svc.authenticate(usuario, clave)
@@ -141,16 +145,16 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             return render(request, "login.html", error=True, username=usuario)
         request.session.clear()
         request.session["admin"] = admin.username
-        return back("/")
+        return back("/admin")
 
-    @app.post("/salir")
+    @app.post("/admin/salir")
     def logout(request: Request, csrf_token: str = Form("")):
         check_csrf(request, csrf_token)
         request.session.clear()
-        return back("/ingresar")
+        return back("/admin/ingresar")
 
     # ------------------------------------------------------------ tablero
-    @app.get("/", response_class=HTMLResponse)
+    @app.get("/admin", response_class=HTMLResponse)
     def dashboard(request: Request):
         admin = current_admin(request)
         d = svc.dashboard()
@@ -162,16 +166,16 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
         return render(request, "tablero.html", admin, d=d, greeting=greeting, today_label=today_label,
                       notices=notices, page="tablero")
 
-    @app.post("/avisos/leidos")
+    @app.post("/admin/avisos/leidos")
     def notices_read(request: Request, csrf_token: str = Form("")):
         current_admin(request)
         check_csrf(request, csrf_token)
         svc.repo.mark_notices_read()
         flash(request, "Avisos marcados como leídos.")
-        return back("/")
+        return back("/admin")
 
     # ------------------------------------------------------------ pedidos
-    @app.get("/pedidos", response_class=HTMLResponse)
+    @app.get("/admin/pedidos", response_class=HTMLResponse)
     def orders(request: Request, estado: str = "revision", q: str = ""):
         admin = current_admin(request)
         all_orders = list(reversed(svc.repo.list_orders()))
@@ -185,13 +189,13 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
         return render(request, "pedidos.html", admin, orders=rows, estado=estado, q=q, counts=counts,
                       total=len(all_orders), page="pedidos")
 
-    @app.get("/pedidos/{order_id}", response_class=HTMLResponse)
+    @app.get("/admin/pedidos/{order_id}", response_class=HTMLResponse)
     def order_detail(request: Request, order_id: str):
         admin = current_admin(request)
         order = svc.repo.get_order(order_id)
         if order is None:
             flash(request, f"No encontré el pedido {order_id}.", ok=False)
-            return back("/pedidos")
+            return back("/admin/pedidos")
         products = {p.sku.upper(): p for p in svc.repo.list_products()}
         lines = []
         for l in order.lines:
@@ -205,7 +209,7 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
                       payment_hours=settings.rules.payment_hours,
                       customer=customer, customer_orders=customer_orders, page="pedidos")
 
-    @app.post("/pedidos/{order_id}/aprobar")
+    @app.post("/admin/pedidos/{order_id}/aprobar")
     async def approve(request: Request, order_id: str):
         admin = current_admin(request)
         form = await request.form()
@@ -218,9 +222,9 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             flash(request, msg, ok=True)
         else:
             flash(request, result.message, ok=False)
-        return back(f"/pedidos/{order_id}")
+        return back(f"/admin/pedidos/{order_id}")
 
-    @app.post("/pedidos/{order_id}/rechazar")
+    @app.post("/admin/pedidos/{order_id}/rechazar")
     async def reject(request: Request, order_id: str, motivo: str = Form(""), csrf_token: str = Form("")):
         admin = current_admin(request)
         check_csrf(request, csrf_token)
@@ -232,7 +236,7 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             flash(request, msg, ok=True)
         else:
             flash(request, result.message, ok=False)
-        return back(f"/pedidos/{order_id}")
+        return back(f"/admin/pedidos/{order_id}")
 
     async def _admin_action(request: Request, order_id: str, fn, *args, volver: str = ""):
         """Corre una acción de admin, avisa al cliente por su canal y deja el resultado en pantalla."""
@@ -243,22 +247,22 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
                   else result.message + " (No se pudo avisar al cliente por el chat.)", ok=True)
         else:
             flash(request, result.message, ok=False)
-        return back(volver if volver in ("/", "/pedidos?estado=por_cobrar") else f"/pedidos/{order_id}")
+        return back(volver if volver in ("/admin", "/admin/pedidos?estado=por_cobrar") else f"/admin/pedidos/{order_id}")
 
-    @app.post("/pedidos/{order_id}/pago")
+    @app.post("/admin/pedidos/{order_id}/pago")
     async def confirm_payment(request: Request, order_id: str, csrf_token: str = Form(""), volver: str = Form("")):
         admin = current_admin(request)
         check_csrf(request, csrf_token)
         return await _admin_action(request, order_id, svc.confirm_payment, order_id, admin.name, volver=volver)
 
-    @app.post("/pedidos/{order_id}/cancelar")
+    @app.post("/admin/pedidos/{order_id}/cancelar")
     async def cancel_unpaid(request: Request, order_id: str, motivo: str = Form(""), csrf_token: str = Form("")):
         admin = current_admin(request)
         check_csrf(request, csrf_token)
         return await _admin_action(request, order_id, svc.cancel_unpaid, order_id, admin.name, motivo)
 
     # ------------------------------------------------------------ productos
-    @app.get("/productos", response_class=HTMLResponse)
+    @app.get("/admin/productos", response_class=HTMLResponse)
     def products(request: Request, filtro: str = "todos", q: str = "", editar: str = "", nuevo: int = 0):
         admin = current_admin(request)
         items = svc.repo.list_products()
@@ -279,9 +283,9 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
                       total=len(svc.repo.list_products()), editing=editing, new=bool(nuevo),
                       categories=categories, page="productos")
 
-    @app.post("/productos/{sku}/sumar")
+    @app.post("/admin/productos/{sku}/sumar")
     def add_stock(request: Request, sku: str, cantidad: str = Form(""), csrf_token: str = Form(""),
-                  volver: str = Form("/productos")):
+                  volver: str = Form("/admin/productos")):
         current_admin(request)
         check_csrf(request, csrf_token)
         n = to_number(cantidad)
@@ -291,9 +295,9 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             flash(request, "Escribí una cantidad entera para sumar (o negativa para restar).", ok=False)
         else:
             flash(request, result.message, ok=result.ok)
-        return back(volver if volver.startswith("/productos") else "/productos")
+        return back(volver if volver.startswith("/admin/productos") else "/admin/productos")
 
-    @app.post("/productos/guardar")
+    @app.post("/admin/productos/guardar")
     def save_product(request: Request, csrf_token: str = Form(""), es_nuevo: str = Form("0"),
                      sku: str = Form(""), nombre: str = Form(""), alias: str = Form(""),
                      categoria: str = Form(""), precio: str = Form(""),
@@ -313,18 +317,18 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             error = "Escribí el stock en unidades."
         if error:
             flash(request, error, ok=False)
-            return back("/productos?nuevo=1" if is_new else f"/productos?editar={quote(sku)}")
+            return back("/admin/productos?nuevo=1" if is_new else f"/admin/productos?editar={quote(sku)}")
         product = Product(sku=sku, name=nombre, aliases=alias.split(","), stock=qty, price=price,
                           active=activo == "1", category=categoria.strip(),
                           pack_size=int(pack), pack_name=(nombre_caja or "caja").strip().lower() or "caja")
         result = svc.save_product(product, is_new)
         flash(request, result.message, ok=result.ok)
         if not result.ok:
-            return back("/productos?nuevo=1" if is_new else f"/productos?editar={quote(sku)}")
-        return back("/productos")
+            return back("/admin/productos?nuevo=1" if is_new else f"/admin/productos?editar={quote(sku)}")
+        return back("/admin/productos")
 
     # ------------------------------------------------------------ clientes
-    @app.get("/clientes", response_class=HTMLResponse)
+    @app.get("/admin/clientes", response_class=HTMLResponse)
     def customers(request: Request, q: str = "", c: str = ""):
         admin = current_admin(request)
         orders = svc.repo.list_orders()
@@ -349,12 +353,40 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
             selected["top"] = [n for n, _ in sorted(counter.items(), key=lambda kv: -kv[1])[:3]]
         return render(request, "clientes.html", admin, rows=rows, q=q, selected=selected, page="clientes")
 
-    @app.get("/cambios")
+    @app.get("/admin/cambios")
     def changes(request: Request) -> Response:
         """Firma del estado actual: la página la consulta cada pocos segundos y se refresca sola
         cuando cambia (entra un pedido, cambia el stock, llega un aviso)."""
         current_admin(request)
         return Response(svc.version(), media_type="text/plain", headers={"Cache-Control": "no-store"})
+
+    # ------------------------------------------------------------ landing (/)
+    # La landing es React (carpeta landing/ del repo) compilada en app/web/landing. El servidor
+    # le pasa los links de «Probar el bot» al servirla, así cambian con el .env sin recompilar.
+    if (LANDING / "assets").is_dir():
+        app.mount("/landing", StaticFiles(directory=LANDING), name="landing")
+
+    def landing_links() -> dict:
+        links = {}
+        if settings.landing_whatsapp:
+            links["whatsapp"] = f"https://wa.me/{settings.landing_whatsapp}?text={quote('Hola')}"
+        telegram = settings.landing_telegram or getattr(app.state, "telegram_username", "") or ""
+        if telegram:
+            links["telegram"] = f"https://t.me/{quote(telegram)}"
+        return links
+
+    @app.get("/", response_class=HTMLResponse)
+    def landing():
+        page = LANDING / "index.html"
+        if not page.is_file():   # sin compilar: directo al panel
+            return back("/admin")
+        config = json.dumps(landing_links()).replace("<", "\\u003c")
+        return HTMLResponse(page.read_text(encoding="utf-8").replace("__TRAZR_CONFIG__", config))
+
+    # Links viejos (de antes de la landing) → el panel en /admin
+    for old in ("/ingresar", "/pedidos", "/productos", "/clientes"):
+        app.add_api_route(old, (lambda o: lambda: back("/admin" + o))(old), methods=["GET"],
+                          include_in_schema=False)
 
     @app.get("/privacidad", response_class=HTMLResponse)
     def privacy(request: Request):

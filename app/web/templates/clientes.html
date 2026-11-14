@@ -6,7 +6,7 @@
     <h1>Clientes</h1>
     <p>Quienes pidieron por el chat, con la dirección que tienen guardada para los envíos.</p>
   </div>
-  <form class="search" method="get" action="/clientes" role="search">
+  <form class="search" method="get" action="/admin/clientes" role="search">
     <label class="eyebrow" for="buscar-c">Buscar</label>
     <input id="buscar-c" name="q" type="search" value="{{ q }}" placeholder="Nombre o dirección">
   </form>
@@ -20,7 +20,7 @@
       <tbody>
       {% for r in rows %}
         <tr {% if selected and r.key == selected.key %}class="is-selected"{% endif %}>
-          <td class="lead" data-label="Cliente"><a href="/clientes?c={{ r.key|urlq }}{{ '&q=' ~ q|urlq if q }}">{{ r.customer.name or 'Sin nombre' }}</a>{% if not r.verified %} <span class="tz-badge tz-badge--warn">Nuevo</span>{% endif %}</td>
+          <td class="lead" data-label="Cliente"><a href="/admin/clientes?c={{ r.key|urlq }}{{ '&q=' ~ q|urlq if q }}">{{ r.customer.name or 'Sin nombre' }}</a>{% if not r.verified %} <span class="tz-badge tz-badge--warn">Nuevo</span>{% endif %}</td>
           <td data-label="Canal">{{ 'Telegram' if r.customer.channel == 'telegram' else r.customer.channel|capitalize }}</td>
           <td data-label="Dirección">{% if r.customer.address %}{{ r.customer.address }}{% else %}<span class="muted">sin dirección todavía</span>{% endif %}</td>
           <td class="num" data-label="Pedidos">{{ r.count }}</td>
@@ -47,7 +47,7 @@
       <thead><tr><th>Pedido</th><th>Fecha</th><th class="num">Total</th><th>Estado</th></tr></thead>
       <tbody>
       {% for o in selected.orders|reverse %}{% if loop.index <= 8 %}
-        <tr><td class="id lead" data-label="Pedido"><a href="/pedidos/{{ o.order_id }}">{{ o.order_id }}</a></td><td data-label="Fecha">{{ o.created_at|fecha }}</td><td class="num" data-label="Total">{{ o.total|money }}</td><td data-label="Estado">{% include "_badge.html" %}</td></tr>
+        <tr><td class="id lead" data-label="Pedido"><a href="/admin/pedidos/{{ o.order_id }}">{{ o.order_id }}</a></td><td data-label="Fecha">{{ o.created_at|fecha }}</td><td class="num" data-label="Total">{{ o.total|money }}</td><td data-label="Estado">{% include "_badge.html" %}</td></tr>
       {% endif %}{% endfor %}
       </tbody>
     </table>

@@ -54,6 +54,7 @@ def build(settings: Settings):
             await tg.updater.start_polling(allowed_updates=["message", "callback_query"])
             notifier.register("telegram", telegram_sender(tg.bot))
             me = await tg.bot.get_me()
+            app.state.telegram_username = me.username   # para el botón de la landing
             log.info("Bot @%s en marcha junto con la web.", me.username)
         else:
             log.warning("Sin TELEGRAM_BOT_TOKEN: el bot de Telegram no arranca.")
