@@ -90,6 +90,8 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   estáticos que sirve FastAPI en `/`; la web del admin pasa a `/admin` (/privacidad y
   /whatsapp/webhook no se mueven). Conexión: botones «Probar el bot» (wa.me / t.me desde el .env) e
   «Ingresar» al panel. Textos en el código (sin API, nunca «Cargando…»). SIN planes ni precios.
+  NO dar datos del negocio de prueba (catálogo, mayorista, cantidades, horarios): Trazr se vende a
+  muchas distribuidoras; hablar en genérico («tus categorías», «tus horarios»).
   Separar «Hoy» de «Próximamente» (crédito, handoff, recompra, Tango): no prometer lo que no está.
 - Diseño primero (como la web del admin): canvas https://claude.ai/artifact/JSU973J8yFvvhyP7jE8DwD
   (escritorio + celular, sistema de diseño Trazr, logo de la tapita). Falta el OK del usuario.
