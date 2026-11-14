@@ -2,7 +2,8 @@
 
 Bot de Telegram en Python que recibe pedidos de bebidas en lenguaje natural,
 valida stock y precio contra la base SQLite, confirma o deriva a revisión del
-admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
+admin. TFI de Administración de Sistemas de Información, UTN-FRT, comisión 4K1.
+Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (solo nombres, sin roles).
 
 ## Arquitectura
 - `app/server.py` — `python -m app.server`: web + bot de Telegram en un proceso
@@ -83,6 +84,16 @@ admin. TFI de Administración de Recursos, UTN-FRT, comisión 4K1.
 8. (A evaluar al final) web para clientes. Por ahora el canal del cliente es el chat.
 
 ## Próxima sesión — empezar por acá
+
+### Landing page (TFI) — EN CURSO
+- Decidido: para DISTRIBUIDORAS (Trazr empresa de software), React (Vite) en `landing/`, compilada a
+  estáticos que sirve FastAPI en `/`; la web del admin pasa a `/admin` (/privacidad y
+  /whatsapp/webhook no se mueven). Conexión: botones «Probar el bot» (wa.me / t.me desde el .env) e
+  «Ingresar» al panel. Textos en el código (sin API, nunca «Cargando…»). SIN planes ni precios.
+  Separar «Hoy» de «Próximamente» (crédito, handoff, recompra, Tango): no prometer lo que no está.
+- Diseño primero (como la web del admin): canvas https://claude.ai/artifact/JSU973J8yFvvhyP7jE8DwD
+  (escritorio + celular, sistema de diseño Trazr, logo de la tapita). Falta el OK del usuario.
+- La beta anterior (React + API en C#, otro equipo) se descartó: prometía Tango/facturación.
 
 ### Pendientes anotados por el usuario (hacer más adelante)
 - Aviso al confirmar el pago (`confirm_payment` en admin.py, y su plantilla `pago_recibido` de
