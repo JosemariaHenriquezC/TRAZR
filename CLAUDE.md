@@ -104,6 +104,11 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   Panel movido a `/admin` (login `/admin/ingresar`); links viejos (/ingresar, /pedidos…) redirigen.
 - La beta anterior (React + API en C#, otro equipo) se descartó: prometía Tango/facturación.
 
+### Documento del TFI — ACTUALIZADO (18/11)
+- Word/PDF armado con docx-js (script fuera del repo, en el scratchpad de la sesión). Materia: «Administración
+  de Sistemas de Información». Sin Mercado Pago, SIN planes ni precios (se sacó «Cómo facturamos»: el
+  usuario decidió que ya no se hace). ERS al día (RF01–RF21, landing = RF21), figuras: chat, panel, landing.
+
 ### Agradecimiento al cobrar — HECHO
 - `confirm_payment` → `_thanks(order)`: transferencia = «¡Gracias por tu compra! Recibimos tu transferencia:
   pronto estaremos llegando con tu envío»; efectivo = «¡Gracias por tu compra! Te esperamos en el próximo
