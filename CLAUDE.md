@@ -107,7 +107,9 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
 ### Documento del TFI — ACTUALIZADO (18/11)
 - Word/PDF armado con docx-js (script fuera del repo, en el scratchpad de la sesión). Materia: «Administración
   de Sistemas de Información». Sin Mercado Pago, SIN planes ni precios (se sacó «Cómo facturamos»: el
-  usuario decidió que ya no se hace). ERS al día (RF01–RF21, landing = RF21), figuras: chat, panel, landing.
+  usuario decidió que ya no se hace); en su lugar «Modelo de negocio»: Trazr gana dinero VENDIENDO el sistema
+  a distribuidoras de bebidas (incluye instalación, catálogo, configuración, canales, capacitación,
+  acompañamiento; adaptaciones a medida aparte; sin precios). ERS al día (RF01–RF21, landing = RF21), figuras: chat, panel, landing.
 
 ### Agradecimiento al cobrar — HECHO
 - `confirm_payment` → `_thanks(order)`: transferencia = «¡Gracias por tu compra! Recibimos tu transferencia:
