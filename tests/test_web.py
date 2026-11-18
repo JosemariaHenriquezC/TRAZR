@@ -119,7 +119,7 @@ def test_aprobar_avisa_al_cliente(admin, svc, repo, tg):
     r = admin.post(f"/admin/pedidos/{oid}/pago", data={"csrf_token": csrf(r.text)})
     assert "Pago del pedido" in r.text and repo.get_order(oid).is_paid
     assert repo.get_order(oid).paid_by == "Lucía Fernández"
-    assert "Recibimos tu pago" in tg.sent[1].text and tg.sent[1].chat_id == CLIENT.id
+    assert "Gracias por tu compra" in tg.sent[1].text and "envío" not in tg.sent[1].text and tg.sent[1].chat_id == CLIENT.id
     assert "ya figura como pagado" in admin.post(f"/admin/pedidos/{oid}/pago", data={"csrf_token": csrf(r.text)}).text
 
 

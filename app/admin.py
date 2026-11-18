@@ -155,12 +155,20 @@ class AdminMixin:
                 order = self.repo.update_order(order)
             except StorageError as exc:
                 return AdminResult(False, f"No pude acceder a la base de datos: {exc}")
-        msg = Outgoing(order.customer_id,
-                       f"💰 <b>¡Recibimos tu pago!</b>\nTu pedido <code>{esc(order.order_id)}</code> "
-                       f"({self.money(order.total)}, {esc(order.payment_label.lower())}) quedó pagado. ¡Gracias!",
-                       channel=order.channel, template=("pago_recibido", [order.order_id, self.money(order.total)]))
+        text, template = self._thanks(order)
+        msg = Outgoing(order.customer_id, text, channel=order.channel, template=template)
         return AdminResult(True, f"Pago del pedido {order.order_id} registrado: le avisamos al cliente.",
                            order, notify=[msg])
+
+    @staticmethod
+    def _thanks(order) -> tuple[str, tuple]:
+        """Agradecimiento al registrar el pago, corto. Transferencia (se cobra antes de repartir):
+        gracias + «pronto llegamos». Efectivo (se cobra en la entrega): solo gracias."""
+        if order.payment_method == "transferencia":
+            return ("💰 <b>¡Gracias por tu compra!</b> Recibimos tu transferencia: pronto estaremos "
+                    "llegando con tu envío 🚚", ("gracias_transferencia", [order.order_id]))
+        return ("🙌 <b>¡Gracias por tu compra!</b> Te esperamos en el próximo pedido.",
+                ("gracias_efectivo", [order.order_id]))
 
     def cancel_unpaid(self, order_id: str, admin_name: str, reason: str = "") -> AdminResult:
         """Cancela un pedido confirmado que no se pagó: devuelve el stock y avisa al cliente."""

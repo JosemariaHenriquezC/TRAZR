@@ -176,7 +176,7 @@ def test_pedido_completo_por_whatsapp_y_aviso_de_pago(wa, svc, repo):
     assert result.ok and result.notify[0].channel == "whatsapp"
     import asyncio
     assert asyncio.run(notifier.send(result.notify)) == 1
-    assert "pago" in graph.texts()[-1].lower()
+    assert "gracias por tu compra" in graph.texts()[-1].lower()
 
 
 def test_mensaje_repetido_por_meta_se_contesta_una_vez(wa):
@@ -297,14 +297,14 @@ def test_los_avisos_de_la_web_traen_su_plantilla(svc, repo):
     pedir(svc, nuevo, "Av. Sarmiento 450, Yerba Buena")
     [order] = repo.list_orders()
     r = svc.confirm_payment(order.order_id, ADMIN)
-    assert r.notify[0].template == ("pago_recibido", [order.order_id, svc.money(order.total)])
+    assert r.notify[0].template == ("gracias_efectivo", [order.order_id])
 
 
 def test_definiciones_de_plantillas_para_meta():
     from scripts.plantillas_whatsapp import definitions
     from app.whatsapp import PLANTILLAS
     defs = definitions("Trazr", "es_AR")
-    assert len(defs) == len(PLANTILLAS) == 4
+    assert len(defs) == len(PLANTILLAS) == 5
     for d in defs:
         body = d["components"][0]
         assert d["category"] == "UTILITY" and d["name"].startswith("trazr_")
@@ -318,3 +318,16 @@ def test_marca_leido_y_muestra_escribiendo(wa):
     post(client, _event({"type": "text", "text": {"body": "/catalogo"}, "id": "wamid.leeme"}))
     assert graph.reads == [{"messaging_product": "whatsapp", "status": "read", "message_id": "wamid.leeme",
                             "typing_indicator": {"type": "text"}}]
+
+
+def test_al_cobrar_una_transferencia_agradece_y_avisa_que_sale_el_envio(svc, repo):
+    from .conftest import pedir
+    from app.service import User
+    nuevo = User(int(WA), "Distribuidora Norte", "whatsapp")
+    svc.handle_message(nuevo, "2 coca")
+    pedir(svc, nuevo, "Av. Sarmiento 450, Yerba Buena", pago="transferencia")
+    [order] = repo.list_orders()
+    assert order.payment_method == "transferencia"
+    [msg] = svc.confirm_payment(order.order_id, ADMIN).notify
+    assert "Gracias por tu compra" in msg.text and "pronto estaremos llegando con tu envío" in msg.text
+    assert msg.template == ("gracias_transferencia", [order.order_id])

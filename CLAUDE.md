@@ -103,11 +103,12 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   Panel movido a `/admin` (login `/admin/ingresar`); links viejos (/ingresar, /pedidos…) redirigen.
 - La beta anterior (React + API en C#, otro equipo) se descartó: prometía Tango/facturación.
 
-### Pendientes anotados por el usuario (hacer más adelante)
-- Aviso al confirmar el pago (`confirm_payment` en admin.py, y su plantilla `pago_recibido` de
-  WhatsApp): mensaje de AGRADECIMIENTO por la compra, corto y sencillo. Si fue TRANSFERENCIA (se
-  cobra antes de repartir): gracias + «pronto estaremos llegando con tu envío». Si fue EFECTIVO al
-  recibir (se cobra en la entrega): solo el agradecimiento.
+### Agradecimiento al cobrar — HECHO
+- `confirm_payment` → `_thanks(order)`: transferencia = «¡Gracias por tu compra! Recibimos tu transferencia:
+  pronto estaremos llegando con tu envío»; efectivo = «¡Gracias por tu compra! Te esperamos en el próximo
+  pedido». Plantillas nuevas `trazr_gracias_transferencia` / `trazr_gracias_efectivo` (1 variable: pedido)
+  reemplazan a `trazr_pago_recibido`: el usuario tiene que crearlas con `--crear` (las viejas dan
+  «ya existe», es normal).
 
 ### Plan de mejora del bot (con el consultor) — propuesto, falta el OK del usuario
 Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Etapas 0 a 3 HECHAS.

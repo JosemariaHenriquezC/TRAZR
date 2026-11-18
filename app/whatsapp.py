@@ -69,9 +69,12 @@ PLANTILLAS = {
                              "Hola, tu pedido {{1}} en {shop} no pudo confirmarse. Motivo: {{2}}. "
                              "Respondé este mensaje si querés hacer un pedido nuevo.",
                              ["P261112-AB12", "no tenemos stock suficiente"]),
-    "pago_recibido": ("trazr_pago_recibido",
-                      "Hola, recibimos el pago de tu pedido {{1}} en {shop} por {{2}}. ¡Gracias por tu compra!",
-                      ["P261112-AB12", "$ 25.400,00"]),
+    # Al registrar el pago: transferencia → gracias + «pronto llegamos»; efectivo → solo gracias.
+    "gracias_transferencia": ("trazr_gracias_transferencia",
+                              "Hola, recibimos el pago de tu pedido {{1}} en {shop}. ¡Gracias por tu compra! "
+                              "Pronto estaremos llegando con tu envío.", ["P261112-AB12"]),
+    "gracias_efectivo": ("trazr_gracias_efectivo",
+                         "Hola, tu pedido {{1}} en {shop} quedó pagado. ¡Gracias por tu compra!", ["P261112-AB12"]),
     "pedido_cancelado": ("trazr_pedido_cancelado",
                          "Hola, cancelamos tu pedido {{1}} en {shop}. Motivo: {{2}}. Si todavía lo querés, "
                          "respondé este mensaje y lo armamos de nuevo.",
