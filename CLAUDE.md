@@ -80,8 +80,9 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
 5. **WhatsApp Cloud API** (webhook en la misma app FastAPI) — EN CURSO (ver abajo)
 6. ~~Mercado Pago~~ — DESCARTADO por el usuario (los pagos siguen: efectivo o transferencia,
    confirmados por el admin en la web)
-7. Faltantes del TFI: crédito, recompra, planes. CRÉDITO (decidido, opción E): límite de deuda
-   impaga por empresa; si un pedido lo supera, va a revisión o se pide pago anticipado.
+7. Faltantes del TFI: recompra. CRÉDITO — POSTERGADO por el usuario (no programar nada de deuda
+   hasta que lo pida; idea anotada: límite de deuda impaga por empresa → revisión o pago
+   anticipado). Planes/precios: fuera del plan (la landing no los muestra).
 8. (A evaluar al final) web para clientes. Por ahora el canal del cliente es el chat.
 
 ## Próxima sesión — empezar por acá
