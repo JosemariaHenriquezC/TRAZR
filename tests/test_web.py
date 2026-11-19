@@ -278,3 +278,8 @@ def test_los_links_viejos_del_panel_llevan_a_admin(svc, settings):
     for old in ("/ingresar", "/pedidos", "/productos", "/clientes"):
         r = c.get(old, follow_redirects=False)
         assert r.status_code == 303 and r.headers["location"] == "/admin" + old
+
+
+def test_estilos_y_scripts_con_version_para_que_el_navegador_baje_los_nuevos(client):
+    page = client.get("/admin/ingresar").text
+    assert "/static/admin.css?v=" in page and "/static/tema.js?v=" in page and "data-theme-toggle" in page

@@ -18,14 +18,15 @@
     });
   }
 
-  document.addEventListener("click", function (e) {
-    var b = e.target.closest && e.target.closest("[data-theme-toggle]");
-    if (!b) return;
+  function cycle() {
     var t = ORDER[(ORDER.indexOf(current()) + 1) % ORDER.length];
     if (t === "auto") { delete root.dataset.theme; } else { root.dataset.theme = t; }
     try { if (t === "auto") localStorage.removeItem(KEY); else localStorage.setItem(KEY, t); } catch (err) {}
     paint();
-  });
+  }
 
+  document.querySelectorAll("[data-theme-toggle]").forEach(function (b) {
+    b.addEventListener("click", function (e) { e.preventDefault(); cycle(); });
+  });
   paint();
 })();

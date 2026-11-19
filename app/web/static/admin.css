@@ -63,7 +63,7 @@ a { color:var(--monte); } a:hover { color:var(--monte-hover); }
   border:0; border-radius:var(--radius-sm); background:none; color:var(--ink-muted); opacity:.75;
   cursor:pointer; transition:background-color .15s var(--ease), color .15s var(--ease), opacity .15s var(--ease); }
 .theme-btn:hover, .theme-btn:focus-visible { background:var(--surface-sunken); color:var(--ink); opacity:1; }
-.theme-btn__icon { display:none; }
+.theme-btn__icon { display:none; pointer-events:none; }
 .theme-btn[data-state="auto"] .theme-btn__icon--auto,
 .theme-btn[data-state="light"] .theme-btn__icon--light,
 .theme-btn[data-state="dark"] .theme-btn__icon--dark { display:block; }

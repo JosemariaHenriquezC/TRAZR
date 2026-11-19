@@ -12,8 +12,8 @@
 // Tema elegido en este navegador (Automático / Claro / Oscuro), antes de pintar para que no parpadee.
 try { var t = localStorage.getItem("trazr-tema"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
 </script>
-<link rel="stylesheet" href="/static/components.css">
-<link rel="stylesheet" href="/static/admin.css">
+<link rel="stylesheet" href="/static/components.css?v={{ ASSETS }}">
+<link rel="stylesheet" href="/static/admin.css?v={{ ASSETS }}">
 <style>
   .login { min-height:100vh; display:flex; flex-wrap:wrap; }
   .login__brand { flex:1 1 420px; box-sizing:border-box; padding:48px; display:flex; flex-direction:column; justify-content:space-between; gap:32px; background:var(--monte); color:var(--on-monte); }
@@ -57,6 +57,6 @@ try { var t = localStorage.getItem("trazr-tema"); if (t === "light" || t === "da
     </form>
   </div>
 </div>
-<script src="/static/tema.js"></script>
+<script src="/static/tema.js?v={{ ASSETS }}"></script>
 </body>
 </html>
