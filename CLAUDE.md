@@ -118,6 +118,11 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   reemplazan a `trazr_pago_recibido`: el usuario tiene que crearlas con `--crear` (las viejas dan
   «ya existe», es normal).
 
+### Evaluación con Gemini real — 19/11: 74/74 (100 %)
+- Todos los temas completos (simple 11/11, jerga 8/8, ambigüedad 5/5, cajas 11/11, cambios 8/8,
+  confirmar 5/5, dirección 4/4, pago 7/7, consultas 5/5, saludo/lo de siempre 6/6, stock 2/2,
+  seguridad 2/2). 87 consultas, mediana 1,3 s, p95 2,7 s. Es la línea de base para próximos cambios.
+
 ### Plan de mejora del bot (con el consultor) — propuesto, falta el OK del usuario
 Página: https://claude.ai/artifact/1h6opp7ZJDfQngy1FAn6it. Etapas 0 a 3 HECHAS.
 - Bugs confirmados en el simulador: esperando dirección, cualquier texto ≥8 letras se toma como
