@@ -195,6 +195,12 @@ def test_alta_y_edicion_de_producto(admin, svc, repo):
     assert "Pepsi" not in svc.handle_message(User(5, "X"), "/catalogo")[0].text
     bad = dict(edit, precio="mucho")
     assert "precio válido" in admin.post("/admin/productos/guardar", data=bad).text
+    # Oculto: solo aparece en la pestaña «Ocultos», no en «Todos» (ni buscándolo) ni en «Poco stock»
+    assert "Pepsi 2.25L" not in admin.get("/admin/productos").text
+    assert "Pepsi 2.25L" not in admin.get("/admin/productos?q=pepsi").text
+    assert "Pepsi 2.25L" not in admin.get("/admin/productos?filtro=poco").text
+    assert "Pepsi 2.25L" in admin.get("/admin/productos?filtro=inactivos").text
+    assert "Pepsi 2.25L" in admin.get("/admin/productos?filtro=inactivos&q=pepsi").text
 
 
 # ---------------------------------------------------------------- clientes
