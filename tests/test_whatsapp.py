@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 import json
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -206,6 +207,9 @@ def test_argentina_reintenta_sin_el_9_y_lo_recuerda():
 
 
 # ------------------------------------------------------------------ plantillas (ventana de 24 h)
+CFG_T = replace(CFG, templates=True)   # con plantillas activadas (opcional, las cobra Meta)
+
+
 class FakeGraphWindow(FakeGraph):
     """Rechaza los mensajes libres como si el cliente no hubiera escrito en 24 h."""
 
@@ -230,7 +234,7 @@ def _aviso(**kw):
 def test_aviso_sin_mensaje_reciente_va_con_plantilla():
     import asyncio
     graph = FakeGraphWindow()
-    client = WhatsAppClient(CFG, post=graph.post)
+    client = WhatsAppClient(CFG_T, post=graph.post)
     asyncio.run(client.send(_aviso()))
     [p] = graph.sent
     assert p["type"] == "template" and p["template"]["name"] == "trazr_pedido_aprobado"
@@ -241,7 +245,7 @@ def test_aviso_sin_mensaje_reciente_va_con_plantilla():
 def test_aviso_con_mensaje_reciente_va_normal_y_si_meta_lo_rechaza_va_la_plantilla():
     import asyncio
     graph = FakeGraphWindow()
-    client = WhatsAppClient(CFG, post=graph.post)
+    client = WhatsAppClient(CFG_T, post=graph.post)
     client.saw_customer(WA)
     asyncio.run(client.send(_aviso()))
     assert [p["type"] for p in graph.sent] == ["text", "template"]
@@ -251,7 +255,7 @@ def test_rechazo_tardio_de_meta_reintenta_con_plantilla(wa):
     """Meta puede aceptar el mensaje y avisar después (estado «failed») que estaba fuera de la ventana."""
     import asyncio
     graph = FakeGraphWindow(sync_error=False)
-    client = WhatsAppClient(CFG, post=graph.post)
+    client = WhatsAppClient(CFG_T, post=graph.post)
     client.saw_customer(WA)
     asyncio.run(client.send(_aviso()))
     assert [p["type"] for p in graph.sent] == ["text"]
@@ -263,9 +267,9 @@ def test_rechazo_tardio_de_meta_reintenta_con_plantilla(wa):
 
 def test_webhook_de_estado_fallido_dispara_la_plantilla(svc, settings):
     graph = FakeGraphWindow(sync_error=False)
-    client = WhatsAppClient(CFG, post=graph.post)
+    client = WhatsAppClient(CFG_T, post=graph.post)
     app = create_app(svc, Notifier(), settings)
-    app.include_router(build_router(svc, CFG, client))
+    app.include_router(build_router(svc, CFG_T, client))
     import asyncio
     client.saw_customer(WA)
     asyncio.run(client.send(_aviso()))
@@ -331,3 +335,36 @@ def test_al_cobrar_una_transferencia_agradece_y_avisa_que_sale_el_envio(svc, rep
     [msg] = svc.confirm_payment(order.order_id, ADMIN).notify
     assert "Gracias por tu compra" in msg.text and "pronto estaremos llegando con tu envío" in msg.text
     assert msg.template == ("gracias_transferencia", [order.order_id])
+
+
+# ------------------------------------------------------------------ sin plantillas (por defecto)
+def test_sin_plantillas_el_aviso_fuera_de_las_24h_espera_a_que_el_cliente_escriba(svc, repo, settings):
+    """Las plantillas las cobra Meta: vienen apagadas. El aviso se intenta normal; si Meta lo rechaza
+    (no se cobra), queda guardado, se avisa en el panel y sale cuando el cliente vuelve a escribir."""
+    import asyncio
+    assert CFG.templates is False
+    graph = FakeGraphWindow()
+    client = WhatsAppClient(CFG, post=graph.post)
+    held = []
+    client.on_held = held.append
+    asyncio.run(client.send(_aviso()))
+    assert [p["type"] for p in graph.sent] == ["text"]          # ninguna plantilla
+    assert len(held) == 1 and len(client.held(WA)) == 1
+    # el cliente escribe: primero le llega el aviso pendiente, después la respuesta del bot
+    graph.sync_error = False
+    app = create_app(svc, Notifier(), settings)
+    app.include_router(build_router(svc, CFG, client))
+    text(TestClient(app), "hola")
+    texts = [p["text"]["body"] for p in graph.sent[1:] if p.get("type") == "text"] + \
+            [p["interactive"]["body"]["text"] for p in graph.sent[1:] if p.get("type") == "interactive"]
+    assert any("aprobado" in t for t in texts) and client.held(WA) == []
+    assert all(p["type"] != "template" for p in graph.sent)
+
+
+def test_sin_plantillas_un_rechazo_tardio_tambien_queda_pendiente():
+    import asyncio
+    graph = FakeGraphWindow(sync_error=False)
+    client = WhatsAppClient(CFG, post=graph.post)
+    asyncio.run(client.send(_aviso()))
+    asyncio.run(client.message_failed("wamid.1", 131047))
+    assert [p["type"] for p in graph.sent] == ["text"] and len(client.held(WA)) == 1

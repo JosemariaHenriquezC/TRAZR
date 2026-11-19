@@ -166,6 +166,9 @@ class WhatsAppConfig:
     api_version: str = "v25.0"
     waba_id: str = ""           # «Identificador de la cuenta de mensajes»: solo para crear plantillas
     template_lang: str = "es_AR"  # idioma de las plantillas aprobadas por Meta
+    # Plantillas (avisos pasadas las 24 h): Meta las cobra, así que vienen APAGADAS. Sin ellas,
+    # un aviso que no se puede mandar queda guardado y sale cuando el cliente vuelve a escribir.
+    templates: bool = False
 
     @property
     def enabled(self) -> bool:
@@ -251,6 +254,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             api_version=os.getenv("WHATSAPP_API_VERSION", "v25.0").strip() or "v25.0",
             waba_id=os.getenv("WHATSAPP_WABA_ID", "").strip(),
             template_lang=os.getenv("WHATSAPP_PLANTILLAS_IDIOMA", "es_AR").strip() or "es_AR",
+            templates=os.getenv("WHATSAPP_PLANTILLAS", "no").strip().lower() in ("si", "sí", "true", "1", "yes"),
         ),
         business=Business(
             name=os.getenv("NEGOCIO_NOMBRE", TRAZR["NEGOCIO_NOMBRE"]).strip(),

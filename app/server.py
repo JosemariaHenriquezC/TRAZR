@@ -43,6 +43,18 @@ def build(settings: Settings):
     if wa is not None:
         notifier.register("whatsapp", wa.send)
 
+        def held_notice(m) -> None:
+            # Sin plantillas (las cobra Meta), un aviso fuera de las 24 h espera a que el cliente escriba.
+            order_id = (m.template or ("", [""]))[1][0] if m.template else ""
+            try:
+                svc.repo.add_notice("whatsapp", f"Aviso pendiente{' del pedido ' + order_id if order_id else ''}",
+                                    "El cliente no escribió en las últimas 24 h y WhatsApp no deja mandarle "
+                                    "mensajes sin plantilla. Le llega apenas vuelva a escribir; si es urgente, "
+                                    "avisale por otro medio.", order_id, svc.stamp())
+            except Exception:
+                log.exception("No pude guardar el aviso pendiente de WhatsApp")
+        wa.on_held = held_notice
+
     @asynccontextmanager
     async def lifespan(app):
         tg = None

@@ -113,6 +113,15 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   a distribuidoras de bebidas (incluye instalación, catálogo, configuración, canales, capacitación,
   acompañamiento; adaptaciones a medida aparte; sin precios). ERS al día (RF01–RF21, landing = RF21), figuras: chat, panel, landing.
 
+### WhatsApp sin costo extra — 19/11 (decisión del usuario)
+- Chip propio comprado: va DIRECTO a la Cloud API (camino A: sin app WhatsApp en ese número; la
+  coexistencia exige ser Tech Provider/BSP → descartada). Que escriba todo el mundo + QR de WhatsApp.
+- PLANTILLAS APAGADAS (las cobra Meta): `WhatsAppConfig.templates` (WHATSAPP_PLANTILLAS=no por defecto).
+  Aviso de la web fuera de 24 h → se intenta normal; si Meta lo rechaza (131047, sync o «failed»), queda
+  en `WhatsAppClient._held` (RAM) + aviso «Aviso pendiente» en el panel, y `flush()` lo manda cuando el
+  cliente vuelve a escribir. Las respuestas del bot no se pueden evitar (posible cobro desde 10/2026).
+- Handoff: el admin atiende desde el PANEL (no desde la app), pendiente de programar.
+
 ### Para el final (decidido por el usuario)
 - Pasar `development` a `main` (PR) recién al terminar; hasta entonces el anexo del TFI apunta a
   `.../TRAZR/tree/development`. Junto con eso: la presentación (link en el anexo; ofrecí armarla con la

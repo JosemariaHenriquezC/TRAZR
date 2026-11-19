@@ -255,7 +255,11 @@ class WhatsAppClient:
         self._route: dict[str, str] = {}
         # Último mensaje de cada cliente (en memoria) y avisos con plantilla de respaldo por id.
         self._last_in: dict[str, datetime] = {}
-        self._pending: OrderedDict[str, tuple[str, tuple[str, list[str]]]] = OrderedDict()
+        self._pending: OrderedDict[str, tuple[str, Outgoing]] = OrderedDict()
+        # Avisos que WhatsApp no dejó mandar (pasaron 24 h y no usamos plantillas): salen cuando el
+        # cliente vuelve a escribir. Quedan en memoria; `on_held` deja constancia en el panel.
+        self._held: dict[str, list[Outgoing]] = {}
+        self.on_held: Callable[[Outgoing], None] | None = None
 
     async def _http_post(self, payload: dict) -> dict:
         if self._http is None:
@@ -296,35 +300,57 @@ class WhatsAppClient:
         return last is not None and datetime.now(timezone.utc) - last < WINDOW
 
     async def send(self, m: Outgoing) -> None:
-        """Función de envío para el Notifier (respuestas del bot y avisos de la web)."""
+        """Función de envío para el Notifier (respuestas del bot y avisos de la web).
+        Un aviso de la web (trae `template`) fuera de la ventana de 24 h: con plantillas
+        activadas va la plantilla; si no, queda guardado hasta que el cliente escriba (un mensaje
+        rechazado por Meta no se cobra)."""
         wa_id = str(m.chat_id)
-        if m.template and not self.in_window(wa_id):
-            # No sabemos de un mensaje reciente del cliente (o pasó el plazo): va la plantilla.
-            # Si la ventana estaba abierta igual, Meta no cobra las plantillas de utilidad.
+        if m.template and self.cfg.templates and not self.in_window(wa_id):
             await self._send_template(wa_id, m.template)
             return
         for payload in build_payloads(m):
             data = await self._send_one(wa_id, payload)
             error = data.get("error") or {}
             if error.get("code") == ERR_OUT_OF_WINDOW and m.template:
-                await self._send_template(wa_id, m.template)
+                await self._out_of_window(wa_id, m)
                 return
             if error:
                 return
-            if m.template:   # Meta puede rechazarlo después (estado «failed»): se recuerda para reintentar
+            if m.template:   # Meta puede rechazarlo después (estado «failed»): se recuerda
                 for msg in data.get("messages") or []:
-                    self._pending[msg.get("id", "")] = (wa_id, m.template)
+                    self._pending[msg.get("id", "")] = (wa_id, m)
                     while len(self._pending) > 500:
                         self._pending.popitem(last=False)
 
     async def message_failed(self, message_id: str, code: int | None) -> None:
         """Meta avisó que un mensaje no se entregó. Si fue por la ventana de 24 h y era un aviso
-        con plantilla de respaldo, se manda la plantilla."""
+        de la web: plantilla (si están activadas) o queda guardado para cuando el cliente escriba."""
         pending = self._pending.pop(message_id, None)
         if pending and code == ERR_OUT_OF_WINDOW:
-            wa_id, template = pending
+            wa_id, m = pending
             self._last_in.pop(wa_id, None)
-            await self._send_template(wa_id, template)
+            await self._out_of_window(wa_id, m)
+
+    async def _out_of_window(self, wa_id: str, m: Outgoing) -> None:
+        if self.cfg.templates and m.template:
+            await self._send_template(wa_id, m.template)
+            return
+        self._held.setdefault(wa_id, []).append(m)
+        log.info("WhatsApp: %s no escribió en 24 h; el aviso sale cuando vuelva a escribir.", wa_id)
+        if self.on_held is not None:
+            try:
+                self.on_held(m)
+            except Exception:
+                log.exception("WhatsApp: no pude dejar constancia del aviso pendiente")
+
+    def held(self, wa_id: str) -> list[Outgoing]:
+        return list(self._held.get(str(wa_id), []))
+
+    async def flush(self, wa_id: str) -> None:
+        """El cliente escribió: se le mandan los avisos que habían quedado pendientes."""
+        for m in self._held.pop(str(wa_id), []):
+            for payload in build_payloads(m):
+                await self._send_one(str(wa_id), payload)
 
     def template_payload(self, template: tuple[str, list[str]]) -> dict | None:
         key, params = template
@@ -410,6 +436,7 @@ def build_router(svc: BotService, cfg: WhatsAppConfig, client: WhatsAppClient) -
     async def handle(item: Incoming) -> None:
         user = User(id=int(item.wa_id), name=item.name, channel=CHANNEL)
         await client.typing(item.message_id)
+        await client.flush(item.wa_id)   # avisos que quedaron pendientes (más de 24 h sin escribir)
         try:
             if item.kind == "button":
                 out = await asyncio.to_thread(svc.handle_callback, user, item.value)
