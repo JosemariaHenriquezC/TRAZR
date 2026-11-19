@@ -56,12 +56,16 @@ a { color:var(--monte); } a:hover { color:var(--monte-hover); }
 .count { min-width:20px; padding:0 6px; border-radius:999px; background:var(--limon); color:var(--on-limon); font:600 12px/20px var(--font-sans); text-align:center; }
 .side__foot { margin-top:auto; display:flex; flex-direction:column; gap:var(--space-1); padding:0 var(--space-2); font-size:12px; line-height:16px; color:var(--ink-muted); }
 .side__foot strong { color:var(--ink); font-weight:600; font-size:13px; }
-.theme-switch { display:flex; gap:2px; margin:var(--space-2) 0; padding:2px; border:1px solid var(--line); border-radius:var(--radius-md);
-  background:var(--surface-sunken); width:max-content; }
-.theme-switch button { border:0; background:none; color:var(--ink-muted); font:500 12px/16px var(--font-sans); padding:4px 8px;
-  border-radius:6px; cursor:pointer; transition:background-color .15s var(--ease), color .15s var(--ease); }
-.theme-switch button:hover { color:var(--ink); }
-.theme-switch button[aria-pressed="true"] { background:var(--surface-raised); color:var(--ink); box-shadow:var(--shadow-panel); }
+.side__actions { display:flex; align-items:center; gap:var(--space-2); }
+.theme-btn { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; padding:0;
+  border:1px solid var(--line); border-radius:var(--radius-md); background:var(--surface-raised); color:var(--ink);
+  cursor:pointer; transition:background-color .15s var(--ease), border-color .15s var(--ease); }
+.theme-btn:hover { border-color:var(--line-strong); }
+.theme-btn:active { transform:scale(.96); }
+.theme-btn__icon { display:none; }
+.theme-btn[data-state="auto"] .theme-btn__icon--auto,
+.theme-btn[data-state="light"] .theme-btn__icon--light,
+.theme-btn[data-state="dark"] .theme-btn__icon--dark { display:block; }
 .nav-link-btn { background:none; border:0; padding:0; color:var(--monte); font:inherit; cursor:pointer; text-decoration:underline; }
 
 /* Botón hamburguesa (solo en pantallas angostas) */
