@@ -226,6 +226,20 @@ def parse_failures(payload: dict) -> list[tuple[str, int | None]]:
     return out
 
 
+def _merge_texts(batch: list[Incoming]) -> list[Incoming]:
+    """Junta los textos seguidos de un mismo cliente en uno (un renglón cada uno); los botones y
+    lo que no es texto van aparte, en el orden en que llegaron."""
+    out: list[Incoming] = []
+    for item in batch:
+        if item.kind == "text" and out and out[-1].kind == "text":
+            prev = out[-1]
+            out[-1] = Incoming(message_id=item.message_id, wa_id=item.wa_id, name=item.name,
+                               kind="text", value=f"{prev.value}\n{item.value}", sent_at=item.sent_at)
+        else:
+            out.append(item)
+    return out
+
+
 class _Seen:
     """Ids de mensajes ya procesados (los últimos N), para no contestar dos veces."""
 
@@ -447,14 +461,46 @@ def build_router(svc: BotService, cfg: WhatsAppConfig, client: WhatsAppClient) -
                 continue
             client.saw_customer(item.wa_id)
             if seen.add(item.message_id):
-                background.add_task(handle, item)
+                background.add_task(enqueue, item)
         for message_id, code in parse_failures(payload):
             background.add_task(client.message_failed, message_id, code)
         return Response(status_code=200)
 
+    # Una cola por cliente: en WhatsApp la gente escribe en varios mensajes seguidos («hola»,
+    # «quiero 2 birras», «la más barata»). Se espera a que haga una pausa, se juntan los textos
+    # seguidos en uno solo y se contesta una vez, en orden. Sin esto, cada mensaje se procesaba a
+    # la vez con la charla vieja y salían respuestas repetidas y cruzadas.
+    queues: dict[str, list[Incoming]] = {}
+    last_seen: dict[str, float] = {}
+    busy: set[str] = set()
+
+    async def enqueue(item: Incoming) -> None:
+        loop = asyncio.get_running_loop()
+        await client.typing(item.message_id)   # leído + «escribiendo…» enseguida, aunque se espere
+        queues.setdefault(item.wa_id, []).append(item)
+        last_seen[item.wa_id] = loop.time()
+        if item.wa_id in busy:      # ya hay quien atiende a este cliente: lo va a tomar
+            return
+        busy.add(item.wa_id)
+        try:
+            while queues.get(item.wa_id):
+                started = loop.time()
+                while True:         # esperar la pausa (con un tope, para no demorar de más)
+                    now = loop.time()
+                    wait = min(last_seen[item.wa_id] + cfg.group_seconds, started + cfg.group_max_seconds) - now
+                    if wait <= 0:
+                        break
+                    await asyncio.sleep(wait)
+                batch, queues[item.wa_id] = queues[item.wa_id], []
+                for one in _merge_texts(batch):
+                    await handle(one)
+        finally:
+            busy.discard(item.wa_id)
+            queues.pop(item.wa_id, None)
+            last_seen.pop(item.wa_id, None)
+
     async def handle(item: Incoming) -> None:
         user = User(id=int(item.wa_id), name=item.name, channel=CHANNEL)
-        await client.typing(item.message_id)
         await client.flush(item.wa_id)   # avisos que quedaron pendientes (más de 24 h sin escribir)
         try:
             if item.kind == "button":

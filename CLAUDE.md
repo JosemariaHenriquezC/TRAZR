@@ -161,6 +161,12 @@ Equipo: Josemaria Henriquez Colaccioppo, Nicolás Quinteros, Isa Pizzuto Dip (so
   de atraso no se contestan (`messages.too_late`; WhatsApp usa el `timestamp` de Meta, Telegram `message.date`;
   los botones no tienen hora y se atienden siempre). 0 = contestar todo. Landing: «Pedir por Telegram» con ícono
   (hotfix en main, PR #3).
+- MENSAJES SEGUIDOS (19/11): un compañero mandó 5 mensajes juntos y el bot los procesó EN PARALELO con la
+  charla vieja (5 respuestas repetidas y cruzadas). Ahora WhatsApp tiene una cola por cliente
+  (`build_router.enqueue`): espera WHATSAPP_PAUSA_SEGUNDOS (2,5) sin mensajes nuevos (tope 8 s), junta los
+  textos seguidos en uno (`_merge_texts`, un renglón cada uno; botones aparte) y contesta una vez, en orden.
+  Telegram ya procesa en orden (python-telegram-bot sin concurrent_updates). Pendiente: por qué falló Gemini
+  (ambos modelos) con 2 clientes nuevos el 19/11 — ver el registro («Falló Gemini», «tardó más de»).
 - Sitio anterior (ngrok, solo con la PC prendida): https://residence-pod-pug.ngrok-free.dev — reemplazado.
 - Meta: la app usaba «Test Messaging Account» (solo admite el número de prueba). Para el chip se
   crea una cuenta de WhatsApp nueva «Trazr» en el portfolio; antes Meta exigió completar la

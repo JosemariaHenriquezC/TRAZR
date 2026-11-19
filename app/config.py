@@ -171,6 +171,10 @@ class WhatsAppConfig:
     templates: bool = False
     # Respuestas del bot gratis por mes y por número (Meta, nov. 2026). Solo para el contador del tablero.
     free_month: int = 1000
+    # Mensajes seguidos: se espera esta pausa (s) sin mensajes nuevos antes de contestar, y se
+    # contestan juntos; nunca se espera más que el tope. 0 = contestar cada uno al instante.
+    group_seconds: float = 2.5
+    group_max_seconds: float = 8.0
 
     @property
     def enabled(self) -> bool:
@@ -263,6 +267,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             template_lang=os.getenv("WHATSAPP_PLANTILLAS_IDIOMA", "es_AR").strip() or "es_AR",
             templates=os.getenv("WHATSAPP_PLANTILLAS", "no").strip().lower() in ("si", "sí", "true", "1", "yes"),
             free_month=_int("WHATSAPP_GRATIS_MES", 1000),
+            group_seconds=_float("WHATSAPP_PAUSA_SEGUNDOS", 2.5),
         ),
         business=Business(
             name=os.getenv("NEGOCIO_NOMBRE", TRAZR["NEGOCIO_NOMBRE"]).strip(),
