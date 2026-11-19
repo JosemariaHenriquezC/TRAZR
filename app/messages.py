@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import re
+import time
 from dataclasses import dataclass, field
 
 
@@ -18,6 +19,14 @@ class Outgoing:
     template: tuple[str, list[str]] | None = None
     # Con más de 3 opciones, WhatsApp las muestra como lista detrás de un botón: su texto.
     menu_label: str = ""
+
+
+def too_late(sent_at: float, minutes: int, now: float | None = None) -> bool:
+    """¿El mensaje (hora de envío en segundos epoch) llegó con más de `minutes` de atraso?
+    Sin hora conocida (0) o con el filtro apagado (0 minutos), nunca es tarde."""
+    if not sent_at or minutes <= 0:
+        return False
+    return (time.time() if now is None else now) - sent_at > minutes * 60
 
 
 def esc(value) -> str:

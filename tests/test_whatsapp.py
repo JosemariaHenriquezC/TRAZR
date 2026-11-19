@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 import json
+import time
 from dataclasses import replace
 
 import pytest
@@ -66,7 +67,7 @@ def wa(svc, settings):
 
 def _event(msg: dict, wa_id=WA, name="Distribuidora Norte") -> dict:
     msg = {"from": wa_id, "id": msg.pop("id", f"wamid.{hash(json.dumps(msg, sort_keys=True))}"),
-           "timestamp": "1700000000", **msg}
+           "timestamp": str(int(time.time())), **msg}
     return {"object": "whatsapp_business_account", "entry": [{"id": "1", "changes": [{"field": "messages", "value": {
         "messaging_product": "whatsapp", "metadata": {"phone_number_id": "123"},
         "contacts": [{"wa_id": wa_id, "profile": {"name": name}}], "messages": [msg]}}]}]}
@@ -187,6 +188,29 @@ def test_mensaje_repetido_por_meta_se_contesta_una_vez(wa):
     n = len(graph.sent)
     post(client, payload)
     assert n >= 1 and len(graph.sent) == n
+
+
+def test_mensaje_atrasado_no_se_contesta(wa):
+    # Meta reintenta durante días si el servidor estuvo caído: contestar tarde confunde.
+    client, graph, _ = wa
+    viejo = str(int(time.time()) - 40 * 60)
+    r = post(client, _event({"type": "text", "text": {"body": "hola"}, "timestamp": viejo}))
+    assert r.status_code == 200 and graph.sent == [] and graph.reads == []
+
+
+def test_mensaje_con_poco_atraso_se_contesta(wa):
+    client, graph, _ = wa
+    reciente = str(int(time.time()) - 5 * 60)
+    post(client, _event({"type": "text", "text": {"body": "hola"}, "timestamp": reciente}))
+    assert graph.sent
+
+
+def test_filtro_de_atraso_apagado(svc, settings):
+    from app.messages import too_late
+    assert too_late(1000.0, 15, now=1000.0 + 16 * 60)
+    assert not too_late(1000.0, 15, now=1000.0 + 14 * 60)
+    assert not too_late(1000.0, 0, now=1000.0 + 999 * 60)   # 0 = contestar todo
+    assert not too_late(0, 15)                               # sin hora: se contesta
 
 
 def test_audio_o_foto_pide_texto(wa):

@@ -29,6 +29,7 @@ import html
 import json
 import logging
 import re
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -39,7 +40,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import PlainTextResponse, Response
 
 from .config import WhatsAppConfig
-from .messages import Outgoing
+from .messages import Outgoing, too_late
 from .service import BotService, User
 
 log = logging.getLogger(__name__)
@@ -177,6 +178,7 @@ class Incoming:
     name: str
     kind: str          # "text" | "button" | "other"
     value: str = ""    # el texto, o el dato del botón
+    sent_at: float = 0.0  # cuándo lo mandó el cliente (segundos epoch; 0 = no se sabe)
 
 
 def parse_webhook(payload: dict) -> list[Incoming]:
@@ -191,8 +193,12 @@ def parse_webhook(payload: dict) -> list[Incoming]:
                 wa_id = str(msg.get("from") or "")
                 if not wa_id.isdigit():
                     continue
+                try:
+                    sent_at = float(msg.get("timestamp") or 0)
+                except (TypeError, ValueError):
+                    sent_at = 0.0
                 item = Incoming(message_id=str(msg.get("id") or ""), wa_id=wa_id,
-                                name=names.get(wa_id) or wa_id, kind="other")
+                                name=names.get(wa_id) or wa_id, kind="other", sent_at=sent_at)
                 kind = msg.get("type")
                 if kind == "text":
                     item.kind, item.value = "text", (msg.get("text") or {}).get("body", "")
@@ -433,6 +439,12 @@ def build_router(svc: BotService, cfg: WhatsAppConfig, client: WhatsAppClient) -
         except ValueError:
             return Response(status_code=400)
         for item in parse_webhook(payload):
+            if too_late(item.sent_at, svc.s.late_minutes):
+                # Meta lo reintentó (el servidor estuvo caído): contestarlo ahora confunde.
+                if seen.add(item.message_id):
+                    log.info("WhatsApp: mensaje de %s con %d min de atraso, sin respuesta.",
+                             item.wa_id, int((time.time() - item.sent_at) // 60))
+                continue
             client.saw_customer(item.wa_id)
             if seen.add(item.message_id):
                 background.add_task(handle, item)
