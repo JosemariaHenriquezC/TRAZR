@@ -21,6 +21,7 @@ Eso lo siguen haciendo la base de datos y rules.py.
 from __future__ import annotations
 
 import asyncio
+import time
 import json
 import logging
 import os
@@ -215,6 +216,36 @@ async def _preguntar(client, modelo: str, contents: str, timeout: float) -> dict
     return json.loads(resp.text)
 
 
+
+# --- Modelos saturados -------------------------------------------------------
+# Si un modelo tarda más del límite o Google contesta «alta demanda» (503/429), se lo deja
+# «enfriando» unos minutos: mientras tanto se prueba primero el otro. Así un pico de demanda
+# no le cuesta al cliente 8 s de espera en cada mensaje (visto en producción el 19/11).
+ENFRIAR_SEGUNDOS = 300
+_enfriando: dict[str, float] = {}
+_SATURADO = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "500", "INTERNAL", "DEADLINE")
+
+
+def _orden_modelos(cfg: "AIConfig") -> list[str]:
+    modelos = [cfg.model]
+    if cfg.fallback_model and cfg.fallback_model != cfg.model:
+        modelos.append(cfg.fallback_model)
+    ahora = time.monotonic()
+    sanos = [m for m in modelos if _enfriando.get(m, 0) <= ahora]
+    return sanos + [m for m in modelos if m not in sanos]   # los saturados, como último recurso
+
+
+def _saturado(modelo: str, motivo: str) -> None:
+    if modelo not in _enfriando or _enfriando[modelo] <= time.monotonic():
+        log.warning("Gemini (%s) saturado (%s): se prueba primero el otro modelo por %d min",
+                    modelo, motivo, ENFRIAR_SEGUNDOS // 60)
+    _enfriando[modelo] = time.monotonic() + ENFRIAR_SEGUNDOS
+
+
+def _respondio(modelo: str) -> None:
+    _enfriando.pop(modelo, None)
+
+
 async def interpretar(
     text: str,
     products: list[Product],
@@ -246,19 +277,19 @@ async def interpretar(
     )
     skus_validos = {p.sku for p in products if p.active}
 
-    modelos = [cfg.model]
-    if cfg.fallback_model and cfg.fallback_model != cfg.model:
-        modelos.append(cfg.fallback_model)
-
-    for modelo in modelos:
+    for modelo in _orden_modelos(cfg):
         try:
             data = await _preguntar(client, modelo, contents, cfg.timeout)
         except asyncio.TimeoutError:
             log.warning("Gemini (%s) tardó más de %ss", modelo, cfg.timeout)
+            _saturado(modelo, "lento")
             continue
         except Exception as exc:  # 503, 404, red caída, JSON roto...
             log.warning("Falló Gemini (%s): %s", modelo, str(exc)[:200])
+            if any(k in str(exc) for k in _SATURADO):
+                _saturado(modelo, "alta demanda")
             continue
+        _respondio(modelo)
         return AIResult(items=_validar(data, skus_validos, max_qty), modelo=modelo)
 
     log.warning("Ningún modelo de Gemini respondió; se interpreta con reglas")
@@ -518,11 +549,8 @@ def _armar_contenido(text, products, historial, pedidos, negocio, borrador="") -
 
 
 async def _conversar_async(contents, products, cfg: AIConfig, max_qty: int, client, quien: str):
-    modelos = [cfg.model]
-    if cfg.fallback_model and cfg.fallback_model != cfg.model:
-        modelos.append(cfg.fallback_model)
     prompt = CHAT_PROMPT.format(quien=quien)
-    for modelo in modelos:
+    for modelo in _orden_modelos(cfg):
         try:
             resp = await asyncio.wait_for(
                 client.aio.models.generate_content(
@@ -537,10 +565,14 @@ async def _conversar_async(contents, products, cfg: AIConfig, max_qty: int, clie
             reply = _validar_chat(json.loads(resp.text), products, max_qty)
         except asyncio.TimeoutError:
             log.warning("Gemini (%s) tardó más de %ss", modelo, cfg.timeout)
+            _saturado(modelo, "lento")
             continue
         except Exception as exc:  # 503, 404, red caída, JSON roto...
             log.warning("Falló Gemini (%s): %s", modelo, str(exc)[:200])
+            if any(k in str(exc) for k in _SATURADO):
+                _saturado(modelo, "alta demanda")
             continue
+        _respondio(modelo)
         if reply is None:
             log.warning("Gemini (%s) devolvió una respuesta inválida", modelo)
             continue
