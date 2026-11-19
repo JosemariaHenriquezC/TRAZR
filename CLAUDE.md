@@ -60,7 +60,9 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
 - La dirección guardada solo cambia si el cliente lo elige: tras un pedido a otra dirección,
   el bot pregunta cuál dejar (🏠 la de siempre / 📍 la nueva). La primera se guarda sola.
 - Tienda ficticia de ejemplo: «Trazr» (valores por defecto en `config.TRAZR`).
-- Nunca commitear `.env`, `credentials.json` ni la base (`data/`).
+- Nunca commitear `.env`, `credentials.json` ni la base (`data/`). EL REPO ES PÚBLICO: en el primer commit
+  (29/10) el token de Telegram estaba en `.env.example` y alguien lo usó (19/11, bot respondiendo spam);
+  el usuario lo revoca con BotFather. `tests/test_sin_secretos.py` falla si aparece una clave en el repo.
 - Los tests no deben llamar a APIs reales (`Settings.ai` viene apagado por defecto;
   para probar con IA se pasa un cliente simulado a `BotService(ai_client=...)`). Correr con `python -m pytest -q`.
 
