@@ -1198,9 +1198,10 @@ class CheckoutMixin:
         else:  # charla, o confirmar/cancelar sin borrador
             msg = esc(reply.respuesta) if reply.respuesta else NO_ORDER_MSG
         if _promises_follow_up(msg):
-            # El bot prometió consultarlo: que alguien del equipo se entere.
+            # El bot prometió consultarlo: que alguien del equipo se entere (lo puede tomar desde el panel).
             self.notify_admins("consulta", f"Consulta sin responder de {user.name}",
-                               f"{user.channel}: «{text[:200]}». El bot le dijo que lo consultaba con el equipo.")
+                               f"{user.channel}: «{text[:200]}». El bot le dijo que lo consultaba con el equipo. "
+                               "Podés responderle desde Clientes → «Atender yo».")
         if draft is not None and draft.waiting == WAIT_ADDRESS:
             msg += "\n\n📍 Para seguir con tu pedido me falta la dirección: calle, número y localidad."
         elif draft is not None and draft.waiting == WAIT_CONFIRM:

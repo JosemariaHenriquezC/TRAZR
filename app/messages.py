@@ -26,3 +26,8 @@ def esc(value) -> str:
 
 def to_plain(text: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", text))
+
+
+# Atención por una persona del equipo (el bot se calla con ese cliente hasta que lo devuelven).
+HANDOFF_MSG = "👤 Te paso con una persona del equipo. En un rato te escriben por acá 🙌"
+RELEASE_MSG = "🤖 Listo, sigo yo. Si necesitás algo más, escribime cuando quieras."

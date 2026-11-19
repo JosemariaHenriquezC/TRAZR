@@ -43,6 +43,7 @@ export const FUNCIONES = [
   { titulo: 'Catálogo por categorías', texto: 'Tus categorías, agrupadas para el chat; «ver todo» manda la lista entera.' },
   { titulo: 'Dirección obligatoria', texto: 'Ningún pedido se registra sin dirección de envío ni sin confirmación del cliente.' },
   { titulo: 'Avisos al cliente', texto: 'Aprobado, rechazado o pago recibido: el bot avisa por el mismo canal.' },
+  { titulo: 'Una persona cuando hace falta', texto: 'Si el cliente pide hablar con alguien, el bot se aparta y lo atendés desde el panel.' },
 ]
 
 export const PANEL = [
@@ -59,11 +60,11 @@ export const HOY = [
   'Revisión del primer pedido de cada cliente',
   'Pagos en efectivo o transferencia, confirmados en la web',
   'Turnos de reparto con tus horarios y días',
+  'Si el cliente pide una persona, lo atendés desde el panel',
 ]
 
 export const PROXIMAMENTE = [
   'Límite de crédito por cliente',
-  'Hablar con el cliente desde el panel cuando el bot no puede',
   'Aviso de recompra: cuándo suele pedir cada cliente',
   'Conexión con Tango Gestión',
 ]

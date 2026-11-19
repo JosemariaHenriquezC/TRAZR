@@ -120,7 +120,16 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   Aviso de la web fuera de 24 h → se intenta normal; si Meta lo rechaza (131047, sync o «failed»), queda
   en `WhatsAppClient._held` (RAM) + aviso «Aviso pendiente» en el panel, y `flush()` lo manda cuando el
   cliente vuelve a escribir. Las respuestas del bot no se pueden evitar (posible cobro desde 10/2026).
-- Handoff: el admin atiende desde el PANEL (no desde la app), pendiente de programar.
+- ATENCIÓN POR UNA PERSONA (handoff) — HECHA 19/11: tabla `atenciones` (solo quién/por qué/desde; NO
+  mensajes). Disparador automático SOLO cuando el cliente pide una persona (`_wants_human`, HUMAN_PHRASES)
+  → HANDOFF_MSG + aviso «atencion»; mientras está abierta el bot no contesta (`_handle_message` devuelve [] y
+  guarda la línea en la charla en RAM). «Lo consulto con el equipo» y Gemini caído siguen como antes (aviso /
+  AI_DOWN_MSG): el usuario decidió esas reglas; el admin puede «Atender yo» desde Clientes. Panel
+  `/admin/atencion` (contador en el menú; charla de las últimas 12 h en memoria, HISTORY_KEEP=40; responder;
+  «Devolver al bot» → RELEASE_MSG). `admin.attention_*`; tests en tests/test_atencion.py.
+- QR de WhatsApp: `app/web/static/marca/trazr-qr-whatsapp(-afiche).png` → wa.me/5493815568463?text=Hola
+  (verificado con lector). Chip: +54 9 381 556-8463, era de otro negocio (SALEM): el usuario lo libera con
+  WhatsApp Business (su número personal usa WhatsApp común) y después lo agrega a la cuenta «Trazr».
 - Sitio público (dominio fijo de ngrok del usuario): https://residence-pod-pug.ngrok-free.dev
   (landing en `/`, panel en `/admin`, privacidad en `/privacidad`, webhook en `/whatsapp/webhook`).
   Cargado como sitio web del portfolio de Meta (19/11). Solo anda con la PC del usuario prendida.

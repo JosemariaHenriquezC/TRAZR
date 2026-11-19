@@ -38,7 +38,7 @@ from .checkout import CheckoutMixin, _norm
 from .config import Settings
 from typing import Callable
 
-from .messages import Outgoing, esc, to_plain
+from .messages import HANDOFF_MSG, Outgoing, esc, to_plain
 from .models import Order, ParsedItem
 from .storage.base import Repository, StorageError
 
@@ -47,7 +47,18 @@ log = logging.getLogger(__name__)
 # Cuánta conversación previa ve Gemini. Vive en memoria (RAM): NO se guarda en la base,
 # y se pierde al reiniciar el bot.
 HISTORY_WINDOW = timedelta(hours=12)
-HISTORY_MESSAGES = 10
+HISTORY_MESSAGES = 10      # los que se le pasan a Gemini
+HISTORY_KEEP = 40          # los que se guardan (en memoria) para que el equipo vea la charla
+# Pedir hablar con una persona («quiero hablar con alguien», «un asesor»…).
+HUMAN_PHRASES = ("hablar con una persona", "hablar con alguien", "hablar con un humano", "con una persona",
+                 "con un humano", "persona real", "un asesor", "una asesora", "un vendedor", "una vendedora",
+                 "un operador", "una operadora", "atencion al cliente", "me atienda alguien", "que me atienda",
+                 "hablar con el encargado", "hablar con el dueno", "hablar con un representante")
+
+
+def _wants_human(t: str) -> bool:
+    """¿Pide hablar con una persona? (`t` ya normalizado: minúsculas, sin tildes)."""
+    return any(p in f" {t} " for p in HUMAN_PHRASES)
 WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 CATALOG_WORDS = {"catalogo", "catalogos", "lista", "listado", "menu", "precios", "carta"}
 CATALOG_PHRASES = ("que tienen", "que tenes", "que hay", "que venden", "que vendes", "que ofrecen",
@@ -231,6 +242,19 @@ class BotService(CheckoutMixin, AdminMixin):
         if not text:
             return self._to_channel(user, [Outgoing(user.id, "Mandame tu pedido como texto, por ejemplo: "
                                                              "<i>2 coca, 3 agua sin gas</i>.")])
+        try:
+            handoff = self.repo.get_open_handoff(user.channel, str(user.id))
+        except StorageError:
+            handoff = None
+        if handoff is not None:
+            # Lo está atendiendo una persona: el bot no contesta (el mensaje se ve en el panel).
+            self._remember(user, text, [])
+            self._event(user, "atencion_mensaje")
+            return []
+        if _wants_human(_norm(text)):
+            out = self.start_handoff(user, "Pidió hablar con una persona")
+            self._remember(user, text, out)
+            return self._to_channel(user, out)
         if text.startswith("/"):
             return self._to_channel(user, self._handle_command(user, text))
         try:
@@ -314,16 +338,40 @@ class BotService(CheckoutMixin, AdminMixin):
         now = self.now()
         reply = "\n\n".join(to_plain(m.text) for m in out if m.chat_id == user.id)
         with self._chats_lock:
-            chat = self._chats.setdefault((user.channel, str(user.id)), deque(maxlen=HISTORY_MESSAGES))
+            chat = self._chats.setdefault((user.channel, str(user.id)), deque(maxlen=HISTORY_KEEP))
             chat.append(("cliente", text[:2000], now))
             if reply:
                 chat.append(("bot", reply[:2000], now))
 
-    def _history(self, user: User) -> list[tuple[str, str]]:
+    def remember_line(self, channel: str, external_id: str, role: str, text: str) -> None:
+        """Agrega una línea a la charla en memoria (por ejemplo, lo que escribe el equipo)."""
+        with self._chats_lock:
+            chat = self._chats.setdefault((channel, str(external_id)), deque(maxlen=HISTORY_KEEP))
+            chat.append((role, text[:2000], self.now()))
+
+    def conversation(self, channel: str, external_id: str) -> list[tuple[str, str, datetime]]:
+        """La charla reciente (últimas 12 h, en memoria) para mostrarla en el panel."""
         since = self.now() - HISTORY_WINDOW
         with self._chats_lock:
-            chat = list(self._chats.get((user.channel, str(user.id)), ()))
-        return [(rol, t) for rol, t, when in chat if when >= since]
+            chat = list(self._chats.get((channel, str(external_id)), ()))
+        return [(rol, t, when) for rol, t, when in chat if when >= since]
+
+    def _history(self, user: User) -> list[tuple[str, str]]:
+        return [(rol, t) for rol, t, _ in self.conversation(user.channel, str(user.id))][-HISTORY_MESSAGES:]
+
+    def start_handoff(self, user: User, reason: str, message: str = HANDOFF_MSG) -> list[Outgoing]:
+        """Pasa al cliente a una persona del equipo: el bot deja de contestarle hasta que lo
+        devuelvan desde el panel. Deja un aviso en la web."""
+        try:
+            opened = self.repo.open_handoff(user.channel, str(user.id), user.name or "", reason, self.stamp())
+        except StorageError as exc:
+            log.error("No pude pasar a %s a una persona: %s", user.name, exc)
+            return [Outgoing(user.id, "Ahora no puedo pasarte con el equipo 😕. Probá de nuevo en un rato.")]
+        if opened:
+            self._event(user, "atencion", detail=reason[:40])
+            self.notify_admins("atencion", f"{user.name or 'Un cliente'} necesita atención",
+                               f"{reason}. Respondele desde «Atención» en el panel.")
+        return [Outgoing(user.id, message)]
 
     def _orders_summary(self, user: User) -> str:
         """Últimos pedidos del cliente para Gemini (sin precios ni totales)."""

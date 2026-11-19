@@ -90,6 +90,20 @@ class Notice:
 
 
 @dataclass
+class Handoff:
+    """Cliente atendido por una persona del equipo: el bot no le contesta hasta que lo devuelven.
+    Solo se guarda quién y por qué; los mensajes del chat NO se guardan en la base."""
+    id: int
+    channel: str
+    external_id: str
+    name: str
+    reason: str
+    since: str
+    until: str = ""          # vacío = abierta
+    closed_by: str = ""
+
+
+@dataclass
 class Admin:
     """Usuario de la web de administración."""
     username: str

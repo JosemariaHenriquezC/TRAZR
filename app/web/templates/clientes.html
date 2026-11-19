@@ -40,6 +40,8 @@
       <dt>Canal</dt><dd>{{ 'Telegram' if selected.customer.channel == 'telegram' else selected.customer.channel|capitalize }}</dd>
       <dt>Dirección</dt><dd>{{ selected.customer.address or '—' }}</dd>
       <dt>Comprado</dt><dd>{{ selected.spent|money }} en pedidos confirmados</dd>
+      <dt>Chat</dt><dd>{% if (selected.customer.channel ~ ':' ~ selected.customer.external_id) in attention_keys %}<a href="/admin/atencion?c={{ (selected.customer.channel ~ ':' ~ selected.customer.external_id)|urlq }}">Lo atiende una persona: ver la charla</a>{% else %}
+        <form class="inline-form" method="post" action="/admin/atencion/tomar"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="c" value="{{ selected.customer.channel }}:{{ selected.customer.external_id }}"><button class="tz-btn tz-btn--secondary btn-sm" type="submit">Atender yo</button></form> <span class="muted">el bot deja de contestarle hasta que lo devuelvas</span>{% endif %}</dd>
       {% if selected.top %}<dt>Compra típica</dt><dd>{{ selected.top|join(', ') }}</dd>{% endif %}
     </dl>
     {% if selected.orders %}

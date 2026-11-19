@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from .auth import MIN_PASSWORD_LEN, hash_password, verify_password
-from .messages import Outgoing, esc
+from .messages import RELEASE_MSG, Outgoing, esc
 from datetime import datetime
 
 from .models import (ESTADO_CANCELADO, ESTADO_CONFIRMADO, ESTADO_RECHAZADO, ESTADO_REVISION,
@@ -347,9 +347,75 @@ class AdminMixin:
             "past_cutoff": self.now().hour >= b.cutoff_hour,
         }
 
+    # ------------------------------------------------------------- atención por una persona
+    def attention(self) -> list[dict]:
+        """Clientes que atiende una persona: con su charla reciente (en memoria) y sus datos."""
+        rows = []
+        for h in self.repo.list_open_handoffs():
+            customer = self.repo.get_customer(h.channel, h.external_id)
+            chat = self.conversation(h.channel, h.external_id)
+            rows.append({"handoff": h, "key": f"{h.channel}:{h.external_id}", "customer": customer,
+                         "name": h.name or (customer.name if customer else "") or "Cliente",
+                         "chat": chat, "last": chat[-1][2] if chat else None})
+        return rows
+
+    @staticmethod
+    def _split_key(key: str) -> tuple[str, str]:
+        channel, _, external_id = (key or "").partition(":")
+        if channel not in ("telegram", "whatsapp") or not external_id.isdigit():
+            raise ValueError("cliente inválido")
+        return channel, external_id
+
+    def attention_take(self, key: str, admin_name: str) -> AdminResult:
+        """El admin toma la charla de un cliente: el bot deja de contestarle."""
+        try:
+            channel, external_id = self._split_key(key)
+            customer = self.repo.get_customer(channel, external_id)
+            self.repo.open_handoff(channel, external_id, customer.name if customer else "",
+                                   f"La tomó {admin_name}", self.stamp())
+        except (ValueError, StorageError) as exc:
+            return AdminResult(False, f"No pude tomar la charla: {exc}")
+        return AdminResult(True, "Listo: el bot no le contesta a este cliente hasta que lo devuelvas.")
+
+    def attention_reply(self, key: str, text: str, admin_name: str) -> AdminResult:
+        """Mensaje del equipo al cliente, por su mismo canal. Si el bot lo estaba atendiendo,
+        la charla pasa a la persona (el bot se calla)."""
+        text = (text or "").strip()
+        if not text:
+            return AdminResult(False, "Escribí el mensaje antes de enviarlo.")
+        if len(text) > 3000:
+            return AdminResult(False, "El mensaje es muy largo (máximo 3000 caracteres).")
+        try:
+            channel, external_id = self._split_key(key)
+            if self.repo.get_open_handoff(channel, external_id) is None:
+                customer = self.repo.get_customer(channel, external_id)
+                self.repo.open_handoff(channel, external_id, customer.name if customer else "",
+                                       f"La tomó {admin_name}", self.stamp())
+        except (ValueError, StorageError) as exc:
+            return AdminResult(False, f"No pude enviar el mensaje: {exc}")
+        self.remember_line(channel, external_id, "equipo", text)
+        msg = Outgoing(int(external_id), esc(text), channel=channel)
+        return AdminResult(True, "Mensaje enviado.", notify=[msg])
+
+    def attention_release(self, key: str, admin_name: str) -> AdminResult:
+        """«Devolver al bot»: el bot vuelve a atender al cliente y se lo avisa."""
+        try:
+            channel, external_id = self._split_key(key)
+            closed = self.repo.close_handoff(channel, external_id, self.stamp(), admin_name)
+        except (ValueError, StorageError) as exc:
+            return AdminResult(False, f"No pude devolverlo al bot: {exc}")
+        if not closed:
+            return AdminResult(False, "Ese cliente ya lo estaba atendiendo el bot.")
+        self.remember_line(channel, external_id, "bot", RELEASE_MSG)
+        return AdminResult(True, "Listo: el bot vuelve a atender a este cliente.",
+                           notify=[Outgoing(int(external_id), RELEASE_MSG, channel=channel)])
+
     def version(self) -> str:
         """Firma corta del estado (pedidos, stock, avisos): la web la consulta para refrescarse sola."""
         parts = [f"{o.order_id}:{o.status}:{o.updated_at}" for o in self.repo.list_orders()]
         parts += [f"{p.sku}:{p.stock}:{p.price}:{p.active}" for p in self.repo.list_products()]
         parts.append(str(len(self.repo.list_notices(limit=500, unread_only=True))))
+        for h in self.repo.list_open_handoffs():   # un mensaje nuevo en una charla atendida refresca la web
+            chat = self.conversation(h.channel, h.external_id)
+            parts.append(f"{h.channel}:{h.external_id}:{len(chat)}:{chat[-1][2] if chat else ''}")
         return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]

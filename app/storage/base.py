@@ -10,7 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
 
-from ..models import Admin, Customer, Notice, Order, OrderLine, Product
+from ..models import Admin, Customer, Handoff, Notice, Order, OrderLine, Product
 
 
 class StorageError(Exception):
@@ -69,6 +69,20 @@ class Repository(ABC):
     @abstractmethod
     def list_events(self, since: str = "") -> list[dict]:
         """Eventos desde la fecha `since` (texto «AAAA-MM-DD …»), del más viejo al más nuevo."""
+
+    # ---- atención por una persona (el bot se calla con ese cliente) ----
+    @abstractmethod
+    def open_handoff(self, channel: str, external_id: str, name: str, reason: str, stamp: str) -> bool:
+        """Abre la atención si no había una abierta. Devuelve True si la abrió ahora."""
+
+    @abstractmethod
+    def get_open_handoff(self, channel: str, external_id: str) -> Handoff | None: ...
+
+    @abstractmethod
+    def list_open_handoffs(self) -> list[Handoff]: ...
+
+    @abstractmethod
+    def close_handoff(self, channel: str, external_id: str, stamp: str, closed_by: str) -> bool: ...
 
     # ---- avisos para el admin (web) ----
     @abstractmethod

@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from ..models import ESTADOS, Admin, Customer, Notice, Order, OrderLine, Product
+from ..models import ESTADOS, Admin, Customer, Handoff, Notice, Order, OrderLine, Product
 from .base import Repository, StorageError
 
 log = logging.getLogger(__name__)
@@ -109,6 +109,20 @@ CREATE TABLE IF NOT EXISTS avisos (
     leido      INTEGER NOT NULL DEFAULT 0 CHECK (leido IN (0, 1))
 );
 CREATE INDEX IF NOT EXISTS ix_avisos_leido ON avisos (leido, id);
+
+-- Clientes atendidos por una persona del equipo (el bot no les contesta mientras esté abierta).
+-- Solo quién, por qué y desde cuándo: los mensajes NO se guardan.
+CREATE TABLE IF NOT EXISTS atenciones (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    canal        TEXT NOT NULL,
+    externo_id   TEXT NOT NULL,
+    nombre       TEXT NOT NULL DEFAULT '',
+    motivo       TEXT NOT NULL DEFAULT '',
+    desde        TEXT NOT NULL,
+    hasta        TEXT NOT NULL DEFAULT '',
+    cerrada_por  TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ix_atenciones_abiertas ON atenciones (canal, externo_id, hasta);
 
 -- Usuarios de la web de administración (contraseña con hash scrypt, nunca en texto plano).
 CREATE TABLE IF NOT EXISTS admins (
@@ -364,6 +378,36 @@ class SQLiteRepository(Repository):
     def list_events(self, since: str = "") -> list[dict]:
         rows = self._query("SELECT * FROM eventos WHERE fecha >= ? ORDER BY id", (since,))
         return [dict(r) for r in rows]
+
+    # --------------------------------------------------------------- atención por una persona
+    @staticmethod
+    def _handoff(r) -> Handoff:
+        return Handoff(r["id"], r["canal"], r["externo_id"], r["nombre"], r["motivo"], r["desde"],
+                       r["hasta"], r["cerrada_por"])
+
+    def open_handoff(self, channel: str, external_id: str, name: str, reason: str, stamp: str) -> bool:
+        with self._tx() as c:
+            if c.execute("SELECT 1 FROM atenciones WHERE canal = ? AND externo_id = ? AND hasta = ''",
+                         (channel, str(external_id))).fetchone():
+                return False
+            c.execute("INSERT INTO atenciones (canal, externo_id, nombre, motivo, desde) VALUES (?, ?, ?, ?, ?)",
+                      (channel, str(external_id), name[:120], reason[:200], stamp))
+            return True
+
+    def get_open_handoff(self, channel: str, external_id: str) -> Handoff | None:
+        rows = self._query("SELECT * FROM atenciones WHERE canal = ? AND externo_id = ? AND hasta = '' "
+                           "ORDER BY id DESC LIMIT 1", (channel, str(external_id)))
+        return self._handoff(rows[0]) if rows else None
+
+    def list_open_handoffs(self) -> list[Handoff]:
+        return [self._handoff(r) for r in self._query("SELECT * FROM atenciones WHERE hasta = '' ORDER BY id")]
+
+    def close_handoff(self, channel: str, external_id: str, stamp: str, closed_by: str) -> bool:
+        with self._tx() as c:
+            cur = c.execute("UPDATE atenciones SET hasta = ?, cerrada_por = ? "
+                            "WHERE canal = ? AND externo_id = ? AND hasta = ''",
+                            (stamp, closed_by[:120], channel, str(external_id)))
+            return cur.rowcount > 0
 
     # --------------------------------------------------------------- avisos
     def add_notice(self, kind: str, title: str, detail: str, order_id: str, stamp: str) -> None:

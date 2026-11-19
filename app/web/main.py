@@ -110,13 +110,15 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
     def render(request: Request, name: str, admin=None, **ctx) -> HTMLResponse:
         unread = 0
         pending = 0
+        attention_keys: set[str] = set()
         if admin is not None:
             unread = len(svc.repo.list_notices(limit=500, unread_only=True))
             pending = sum(1 for o in svc.repo.list_orders() if o.status == ESTADO_REVISION)
+            attention_keys = {f"{h.channel}:{h.external_id}" for h in svc.repo.list_open_handoffs()}
         return templates.TemplateResponse(request, name, {
             "admin": admin, "csrf": csrf_token(request), "flash": request.session.pop("flash", None),
             "version": svc.version() if admin is not None else "",
-            "unread": unread, "pending_count": pending, "shop": settings.business.name or "Trazr", **ctx})
+            "unread": unread, "pending_count": pending, "attention_keys": attention_keys, "shop": settings.business.name or "Trazr", **ctx})
 
     def back(url: str) -> RedirectResponse:
         return RedirectResponse(url, status_code=303)
@@ -359,6 +361,47 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
         cuando cambia (entra un pedido, cambia el stock, llega un aviso)."""
         current_admin(request)
         return Response(svc.version(), media_type="text/plain", headers={"Cache-Control": "no-store"})
+
+    # ------------------------------------------------------------ atención por una persona
+    @app.get("/admin/atencion", response_class=HTMLResponse)
+    def attention(request: Request, c: str = ""):
+        admin = current_admin(request)
+        rows = svc.attention()
+        selected = next((r for r in rows if r["key"] == c), rows[0] if rows and not c else None)
+        if selected is None and c:   # un cliente que ya volvió al bot: se muestra su charla igual
+            channel, _, ext = c.partition(":")
+            customer = svc.repo.get_customer(channel, ext) if ext else None
+            if customer is not None:
+                selected = {"key": c, "customer": customer, "name": customer.name or "Cliente",
+                            "chat": svc.conversation(channel, ext), "handoff": None}
+        return render(request, "atencion.html", admin, rows=rows, selected=selected, page="atencion")
+
+    async def _attention_action(request: Request, key: str, fn, *args):
+        result = await run_in_threadpool(fn, key, *args)
+        if result.ok and result.notify:
+            if not await notifier.send(result.notify):
+                flash(request, result.message + " (No se pudo entregar por el chat.)", ok=False)
+                return back(f"/admin/atencion?c={quote(key, safe='')}")
+        flash(request, result.message, ok=result.ok)
+        return back(f"/admin/atencion?c={quote(key, safe='')}")
+
+    @app.post("/admin/atencion/responder")
+    async def attention_reply(request: Request, c: str = Form(""), texto: str = Form(""), csrf_token: str = Form("")):
+        admin = current_admin(request)
+        check_csrf(request, csrf_token)
+        return await _attention_action(request, c, svc.attention_reply, texto, admin.name)
+
+    @app.post("/admin/atencion/tomar")
+    async def attention_take(request: Request, c: str = Form(""), csrf_token: str = Form("")):
+        admin = current_admin(request)
+        check_csrf(request, csrf_token)
+        return await _attention_action(request, c, svc.attention_take, admin.name)
+
+    @app.post("/admin/atencion/devolver")
+    async def attention_release(request: Request, c: str = Form(""), csrf_token: str = Form("")):
+        admin = current_admin(request)
+        check_csrf(request, csrf_token)
+        return await _attention_action(request, c, svc.attention_release, admin.name)
 
     # ------------------------------------------------------------ landing (/)
     # La landing es React (carpeta landing/ del repo) compilada en app/web/landing. El servidor

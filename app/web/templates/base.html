@@ -19,7 +19,7 @@
       <a class="brand" href="/admin"><img class="brand__mark" src="/static/marca/trazr-simbolo.svg" alt="" width="30" height="30">{{ shop }}</a>
       <button class="menu-toggle" type="button" aria-controls="menu" aria-expanded="false" aria-label="Abrir menú">
         <span class="menu-toggle__bars" aria-hidden="true"></span>
-        {% if pending_count %}<span class="menu-toggle__dot" aria-hidden="true"></span>{% endif %}
+        {% if pending_count or attention_keys %}<span class="menu-toggle__dot" aria-hidden="true"></span>{% endif %}
       </button>
     </div>
     <div class="side__menu" id="menu">
@@ -28,6 +28,7 @@
         <a href="/admin/pedidos" {% if page == 'pedidos' %}aria-current="page"{% endif %}>Pedidos {% if pending_count %}<span class="count" aria-label="{{ pending_count }} en revisión">{{ pending_count }}</span>{% endif %}</a>
         <a href="/admin/productos" {% if page == 'productos' %}aria-current="page"{% endif %}>Productos y stock</a>
         <a href="/admin/clientes" {% if page == 'clientes' %}aria-current="page"{% endif %}>Clientes</a>
+        <a href="/admin/atencion" {% if page == 'atencion' %}aria-current="page"{% endif %}>Atención {% if attention_keys %}<span class="count" aria-label="{{ attention_keys|length }} esperando a una persona">{{ attention_keys|length }}</span>{% endif %}</a>
       </nav>
       <div class="side__foot">
         <strong>{{ admin.name }}</strong><span>Administración</span>
