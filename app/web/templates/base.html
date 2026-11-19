@@ -22,7 +22,6 @@ try { var t = localStorage.getItem("trazr-tema"); if (t === "light" || t === "da
     <div class="side__top">
       <a class="brand" href="/admin"><img class="brand__mark" src="/static/marca/trazr-simbolo.svg" alt="" width="30" height="30">{{ shop }}</a>
       <div class="side__actions">
-      {% include "_tema.html" %}
       <button class="menu-toggle" type="button" aria-controls="menu" aria-expanded="false" aria-label="Abrir menú">
         <span class="menu-toggle__bars" aria-hidden="true"></span>
         {% if pending_count or attention_keys %}<span class="menu-toggle__dot" aria-hidden="true"></span>{% endif %}
@@ -39,7 +38,10 @@ try { var t = localStorage.getItem("trazr-tema"); if (t === "light" || t === "da
       </nav>
       <div class="side__foot">
         <strong>{{ admin.name }}</strong><span>Administración</span>
-        <form method="post" action="/admin/salir"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Salir</button></form>
+        <div class="side__foot-row">
+          <form method="post" action="/admin/salir"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Salir</button></form>
+          {% include "_tema.html" %}
+        </div>
       </div>
     </div>
   </aside>

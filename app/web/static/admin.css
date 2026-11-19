@@ -57,11 +57,12 @@ a { color:var(--monte); } a:hover { color:var(--monte-hover); }
 .side__foot { margin-top:auto; display:flex; flex-direction:column; gap:var(--space-1); padding:0 var(--space-2); font-size:12px; line-height:16px; color:var(--ink-muted); }
 .side__foot strong { color:var(--ink); font-weight:600; font-size:13px; }
 .side__actions { display:flex; align-items:center; gap:var(--space-2); }
-.theme-btn { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; padding:0;
-  border:1px solid var(--line); border-radius:var(--radius-md); background:var(--surface-raised); color:var(--ink);
-  cursor:pointer; transition:background-color .15s var(--ease), border-color .15s var(--ease); }
-.theme-btn:hover { border-color:var(--line-strong); }
-.theme-btn:active { transform:scale(.96); }
+.side__foot-row { display:flex; align-items:center; gap:var(--space-2); }
+/* Botón de tema: discreto (sin borde ni fondo hasta pasar el mouse), al lado de «Salir». */
+.theme-btn { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0;
+  border:0; border-radius:var(--radius-sm); background:none; color:var(--ink-muted); opacity:.75;
+  cursor:pointer; transition:background-color .15s var(--ease), color .15s var(--ease), opacity .15s var(--ease); }
+.theme-btn:hover, .theme-btn:focus-visible { background:var(--surface-sunken); color:var(--ink); opacity:1; }
 .theme-btn__icon { display:none; }
 .theme-btn[data-state="auto"] .theme-btn__icon--auto,
 .theme-btn[data-state="light"] .theme-btn__icon--light,
