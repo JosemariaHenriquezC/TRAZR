@@ -8,6 +8,10 @@
 <link rel="icon" href="/static/marca/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/static/marca/apple-touch-icon.png">
 <meta name="theme-color" content="#1d5c44">
+<script>
+// Tema elegido en este navegador (Automático / Claro / Oscuro), antes de pintar para que no parpadee.
+try { var t = localStorage.getItem("trazr-tema"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 <link rel="stylesheet" href="/static/components.css">
 <link rel="stylesheet" href="/static/admin.css">
 <style>

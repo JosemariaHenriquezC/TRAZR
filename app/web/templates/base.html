@@ -9,6 +9,10 @@
 <link rel="icon" href="/static/marca/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/static/marca/apple-touch-icon.png">
 <meta name="theme-color" content="#1d5c44">
+<script>
+// Tema elegido en este navegador (Automático / Claro / Oscuro), antes de pintar para que no parpadee.
+try { var t = localStorage.getItem("trazr-tema"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 <link rel="stylesheet" href="/static/components.css">
 <link rel="stylesheet" href="/static/admin.css">
 </head>
@@ -32,6 +36,11 @@
       </nav>
       <div class="side__foot">
         <strong>{{ admin.name }}</strong><span>Administración</span>
+        <div class="theme-switch" role="group" aria-label="Tema del panel">
+          <button type="button" data-theme-choice="auto">Automático</button>
+          <button type="button" data-theme-choice="light">Claro</button>
+          <button type="button" data-theme-choice="dark">Oscuro</button>
+        </div>
         <form method="post" action="/admin/salir"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="nav-link-btn" type="submit">Salir</button></form>
       </div>
     </div>
@@ -59,6 +68,23 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && side.classList.contains("is-open")) { toggle.click(); toggle.focus(); }
   });
+
+  // Tema: Automático (como el dispositivo), Claro u Oscuro; se recuerda en este navegador.
+  var root = document.documentElement;
+  var choices = document.querySelectorAll("[data-theme-choice]");
+  function paint() {
+    var current = root.dataset.theme || "auto";
+    choices.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.themeChoice === current ? "true" : "false"); });
+  }
+  choices.forEach(function (b) {
+    b.addEventListener("click", function () {
+      var t = b.dataset.themeChoice;
+      if (t === "auto") { delete root.dataset.theme; } else { root.dataset.theme = t; }
+      try { if (t === "auto") localStorage.removeItem("trazr-tema"); else localStorage.setItem("trazr-tema", t); } catch (e) {}
+      paint();
+    });
+  });
+  paint();
 
   // Se refresca sola: cada 10 s pregunta si cambió algo (pedidos, stock, avisos).
   // Si estás escribiendo en un formulario no recarga: muestra «Hay novedades».
