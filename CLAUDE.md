@@ -111,7 +111,9 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   de Sistemas de Información». Sin Mercado Pago, SIN planes ni precios (se sacó «Cómo facturamos»: el
   usuario decidió que ya no se hace); en su lugar «Modelo de negocio»: Trazr gana dinero VENDIENDO el sistema
   a distribuidoras de bebidas (incluye instalación, catálogo, configuración, canales, capacitación,
-  acompañamiento; adaptaciones a medida aparte; sin precios). ERS al día (RF01–RF21, landing = RF21), figuras: chat, panel, landing.
+  acompañamiento; adaptaciones a medida aparte; sin precios). ERS al día (RF01–RF23: landing = RF21, atención por una persona = RF22, uso de WhatsApp/avisos
+  pendientes = RF23), figuras: chat, panel, landing, atención. Actualizado otra vez el 19/11 (número propio,
+  sin plantillas pagas, 364 pruebas, anexo con enlaces; falta el t.me del bot y la presentación).
 
 ### WhatsApp sin costo extra — 19/11 (decisión del usuario)
 - Chip propio comprado: va DIRECTO a la Cloud API (camino A: sin app WhatsApp en ese número; la
