@@ -17,6 +17,7 @@ from telegram.ext import (Application, CallbackQueryHandler, ContextTypes, Messa
                           filters)
 
 from .config import ConfigError, load_settings
+from .messages import too_late
 from .service import BotService, Outgoing, User
 from .storage import StorageError, build_repository
 
@@ -54,8 +55,19 @@ async def _send(context: ContextTypes.DEFAULT_TYPE, messages: list[Outgoing]) ->
             await send(m)
 
 
+def _late(update: Update, service: BotService) -> bool:
+    """Mensaje que Telegram guardó mientras el servidor estaba apagado: no se contesta."""
+    date = getattr(update.effective_message, "date", None)
+    if date is None or not too_late(date.timestamp(), service.s.late_minutes):
+        return False
+    log.info("Telegram: mensaje de %s con atraso, sin respuesta.", update.effective_chat.id)
+    return True
+
+
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     service: BotService = context.application.bot_data["service"]
+    if _late(update, service):
+        return
     user = _user(update)
     text = update.effective_message.text or ""
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
@@ -71,6 +83,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if _late(update, context.application.bot_data["service"]):
+        return
     await update.effective_message.reply_text(
         "Por ahora solo entiendo mensajes de texto. Escribí tu pedido, por ejemplo: 2 coca, 3 agua sin gas.")
 

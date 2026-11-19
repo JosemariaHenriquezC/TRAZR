@@ -156,6 +156,11 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   `cd /opt/trazr && sudo -u trazr .venv/bin/python -m scripts.crear_admin ...`. La PC del usuario ya NO corre
   el servidor (dos instancias = Conflict de Telegram). Meta: webhook, privacidad y sitio web → trazr.tech.
   Los QR no cambian (apuntan a wa.me / t.me). TFI actualizado con trazr.tech (servidor en la nube, anexo).
+- MENSAJES ATRASADOS (19/11): tras la migración, Meta reintentó un mensaje que no se había podido entregar y el
+  bot lo contestó 50 min después, fuera de contexto. Ahora los mensajes con más de MENSAJE_ATRASO_MAX_MIN (15)
+  de atraso no se contestan (`messages.too_late`; WhatsApp usa el `timestamp` de Meta, Telegram `message.date`;
+  los botones no tienen hora y se atienden siempre). 0 = contestar todo. Landing: «Pedir por Telegram» con ícono
+  (hotfix en main, PR #3).
 - Sitio anterior (ngrok, solo con la PC prendida): https://residence-pod-pug.ngrok-free.dev — reemplazado.
 - Meta: la app usaba «Test Messaging Account» (solo admite el número de prueba). Para el chip se
   crea una cuenta de WhatsApp nueva «Trazr» en el portfolio; antes Meta exigió completar la

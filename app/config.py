@@ -207,6 +207,10 @@ class Settings:
     ngrok_domain: str = ""
     landing_whatsapp: str = ""    # número del bot para «Probar el bot» en la landing (ej. 5493815551234)
     landing_telegram: str = ""    # usuario del bot de Telegram (sin @); vacío = el del bot en marcha
+    # Mensajes que llegan con más de estos minutos de atraso (Meta reintenta durante días si el
+    # servidor estuvo caído; Telegram los guarda) no se contestan: la respuesta saldría fuera de
+    # contexto. 0 = contestar todo.
+    late_minutes: int = 15
 
 
 def load_settings(require_telegram: bool = True, env_file: str | None = None) -> Settings:
@@ -248,6 +252,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
         landing_telegram=os.getenv("LANDING_TELEGRAM", "").strip().lstrip("@"),
         web_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",
         web_port=_int("WEB_PORT", 8000),
+        late_minutes=max(0, _int("MENSAJE_ATRASO_MAX_MIN", 15)),
         whatsapp=WhatsAppConfig(
             token=os.getenv("WHATSAPP_TOKEN", "").strip(),
             phone_number_id=os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip(),

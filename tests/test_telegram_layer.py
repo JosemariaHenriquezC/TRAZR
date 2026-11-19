@@ -1,5 +1,6 @@
 """La capa de Telegram traduce bien entre Update/botones y BotService (sin red)."""
 import asyncio
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -15,13 +16,14 @@ def make_context(svc):
     return SimpleNamespace(application=SimpleNamespace(bot_data={"service": svc}), bot=fake_bot)
 
 
-def make_update(user, text=None, data=None):
+def make_update(user, text=None, data=None, date=None):
     u = SimpleNamespace(full_name=user.name, username=None, id=user.id)
     cq = None
     if data is not None:
         cq = SimpleNamespace(data=data, answer=AsyncMock(), edit_message_reply_markup=AsyncMock())
     return SimpleNamespace(effective_user=u, effective_chat=SimpleNamespace(id=user.id),
-                           effective_message=SimpleNamespace(text=text), callback_query=cq)
+                           effective_message=SimpleNamespace(text=text, date=date or datetime.now(timezone.utc)),
+                           callback_query=cq)
 
 
 def test_mensaje_y_botones(svc: BotService, repo):
@@ -63,3 +65,11 @@ def test_mensaje_y_botones(svc: BotService, repo):
 def test_notifier_sin_canal_no_rompe():
     from app.messages import Outgoing
     assert asyncio.run(Notifier().send([Outgoing(1, "hola", channel="whatsapp")])) == 0
+
+
+def test_mensaje_atrasado_no_se_contesta(svc):
+    # Telegram guarda los mensajes mientras el servidor está apagado: al volver, no se contestan.
+    ctx = make_context(svc)
+    viejo = datetime.now(timezone.utc) - timedelta(minutes=40)
+    asyncio.run(tg.on_text(make_update(CLIENT, "1 fernet", date=viejo), ctx))
+    ctx.bot.send_message.assert_not_called()
