@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Instala Trazr en un servidor Ubuntu 24.04 (x64 o Arm64) y lo deja corriendo solo.
 #
-#   curl -fsSL https://raw.githubusercontent.com/JosemariaHenriquezC/TRAZR/development/scripts/instalar_servidor.sh | sudo bash -s -- trazr.bot.nu
+#   curl -fsSL https://raw.githubusercontent.com/JosemariaHenriquezC/TRAZR/main/scripts/instalar_servidor.sh | sudo bash -s -- trazr.bot.nu
 #
 # Qué hace:
 #   1. Instala lo necesario (git, Caddy para HTTPS y uv para Python 3.13).
-#   2. Baja el proyecto en /opt/trazr (rama development) y sus dependencias.
+#   2. Baja el proyecto en /opt/trazr (rama main: lo probado; development es para desarrollar)
+#      y sus dependencias. Para otra rama: sudo RAMA=development bash … (solo para probar).
 #   3. Crea el servicio «trazr» (arranca solo con la máquina y se reinicia si se cae).
 #   4. Configura Caddy: https://<dominio> → la web y el webhook (certificado HTTPS gratis y automático).
 # Lo que NO hace: copiar tu .env ni tu base (data/). Eso lo subís vos (son secretos).
@@ -23,7 +24,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REPO="https://github.com/JosemariaHenriquezC/TRAZR.git"
-RAMA="development"
+RAMA="${RAMA:-main}"
 DIR="/opt/trazr"
 USUARIO="trazr"
 
