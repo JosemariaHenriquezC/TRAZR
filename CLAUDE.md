@@ -144,8 +144,10 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   WHATSAPP_GRATIS_MES=1000).
 - TELEGRAM: bot @asistenteTRAZRbot (https://t.me/asistenteTRAZRbot). QR distinto al de WhatsApp (fondo limón,
   franja verde): `app/web/static/marca/trazr-qr-telegram(-afiche).png`, verificado con lector.
-- SERVIDOR PERMANENTE — EN CURSO (19/11): máquina gratis de Google Cloud (e2-micro, decisión del usuario) +
-  subdominio de FreeDNS **trazr.bot.nu** (reservado apuntando a 127.0.0.1; después → IP externa de la VM)
+- SERVIDOR PERMANENTE — EN CURSO (19/11): Google Cloud DESCARTADO (rechazó la tarjeta / pedía depósito de
+  US$ 30; el usuario no tiene plata). Se usa **Azure for Students** (sin tarjeta, US$ 100 por 12 meses, VM B1s
+  gratis), activado con GitHub Student Pack / cuenta de la UTN. Subdominio de FreeDNS **trazr.bot.nu**
+  (reservado apuntando a 127.0.0.1; después → IP pública de la VM)
   + Caddy para HTTPS (reemplaza a ngrok). Al migrar: cambiar en Meta webhook, privacidad y sitio web, y el
   anexo del TFI. Los QR no cambian (apuntan a wa.me / t.me).
 - Sitio público (dominio fijo de ngrok del usuario): https://residence-pod-pug.ngrok-free.dev
