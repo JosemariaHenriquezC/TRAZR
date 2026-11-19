@@ -126,6 +126,17 @@
   </div>
 
   <div class="stack-lg">
+    {% if d.whatsapp %}
+    <section class="tz-panel" aria-labelledby="wa-t">
+      <div class="panel-head"><h2 class="section" id="wa-t">WhatsApp este mes</h2>
+        {% if d.whatsapp.warn %}<span class="tz-badge tz-badge--warn">Cerca del límite</span>{% endif %}</div>
+      <div class="panel-body">
+        <p class="wa-count"><strong>{{ '{:,}'.format(d.whatsapp.sent).replace(',', '.') }}</strong> de {{ '{:,}'.format(d.whatsapp.free).replace(',', '.') }} mensajes gratis · quedan {{ '{:,}'.format(d.whatsapp.left).replace(',', '.') }}</p>
+        <span class="meter meter--block" role="img" aria-label="{{ d.whatsapp.pct }} % usado"><span class="meter__fill {{ 'is-ok' if not d.whatsapp.warn }}" style="width: {{ d.whatsapp.pct }}%"></span></span>
+        <p class="muted wa-note">Sin tarjeta cargada en Meta no se cobra nada: si se llega al límite, el bot deja de contestar por WhatsApp hasta el mes que viene.</p>
+      </div>
+    </section>
+    {% endif %}
     <section class="tz-panel" aria-labelledby="low-t">
       <div class="panel-head"><h2 class="section" id="low-t">Se está por acabar</h2><a href="/admin/productos?filtro=poco">Sumar stock</a></div>
       {% if d.low_stock %}

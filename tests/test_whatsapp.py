@@ -368,3 +368,30 @@ def test_sin_plantillas_un_rechazo_tardio_tambien_queda_pendiente():
     asyncio.run(client.send(_aviso()))
     asyncio.run(client.message_failed("wamid.1", 131047))
     assert [p["type"] for p in graph.sent] == ["text"] and len(client.held(WA)) == 1
+
+
+# ------------------------------------------------------------------ contador del mes
+def test_cada_mensaje_enviado_se_cuenta_pero_no_las_plantillas_ni_el_leido():
+    import asyncio
+    graph = FakeGraph()
+    client = WhatsAppClient(CFG, post=graph.post)
+    sent = []
+    client.on_sent = sent.append
+    asyncio.run(client.send(Outgoing(int(WA), "hola", channel="whatsapp")))
+    asyncio.run(client.typing("wamid.x"))
+    asyncio.run(client._send_template(WA, ("pedido_aprobado", ["P1", "$ 1"])))
+    assert sent == [WA]
+
+
+def test_el_tablero_muestra_los_mensajes_de_whatsapp_del_mes(svc, repo, settings):
+    from app.web.main import create_app as _app
+    settings.whatsapp = CFG
+    settings.secret_key = "x"
+    for _ in range(3):
+        repo.add_event("wa_enviado", "whatsapp", WA, svc.stamp())
+    d = svc.dashboard()
+    assert d["whatsapp"]["sent"] == 3 and d["whatsapp"]["free"] == 1000 and d["whatsapp"]["left"] == 997
+    assert not d["whatsapp"]["warn"]
+    for _ in range(800):
+        repo.add_event("wa_enviado", "whatsapp", WA, svc.stamp())
+    assert svc.dashboard()["whatsapp"]["warn"]

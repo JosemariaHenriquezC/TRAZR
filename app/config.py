@@ -169,6 +169,8 @@ class WhatsAppConfig:
     # Plantillas (avisos pasadas las 24 h): Meta las cobra, así que vienen APAGADAS. Sin ellas,
     # un aviso que no se puede mandar queda guardado y sale cuando el cliente vuelve a escribir.
     templates: bool = False
+    # Respuestas del bot gratis por mes y por número (Meta, nov. 2026). Solo para el contador del tablero.
+    free_month: int = 1000
 
     @property
     def enabled(self) -> bool:
@@ -255,6 +257,7 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             waba_id=os.getenv("WHATSAPP_WABA_ID", "").strip(),
             template_lang=os.getenv("WHATSAPP_PLANTILLAS_IDIOMA", "es_AR").strip() or "es_AR",
             templates=os.getenv("WHATSAPP_PLANTILLAS", "no").strip().lower() in ("si", "sí", "true", "1", "yes"),
+            free_month=_int("WHATSAPP_GRATIS_MES", 1000),
         ),
         business=Business(
             name=os.getenv("NEGOCIO_NOMBRE", TRAZR["NEGOCIO_NOMBRE"]).strip(),

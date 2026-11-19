@@ -55,6 +55,11 @@ def build(settings: Settings):
                 log.exception("No pude guardar el aviso pendiente de WhatsApp")
         wa.on_held = held_notice
 
+        def count_sent(wa_id: str) -> None:
+            # Para el contador «WhatsApp este mes» del tablero (sin el texto del mensaje).
+            svc.repo.add_event("wa_enviado", "whatsapp", wa_id, svc.stamp())
+        wa.on_sent = count_sent
+
     @asynccontextmanager
     async def lifespan(app):
         tg = None

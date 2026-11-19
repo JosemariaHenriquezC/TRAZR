@@ -133,6 +133,13 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   WhatsApp ofrece liberarlo con comprobante; quedó de repuesto. Falta: verificar en Meta (SMS/llamada),
   PHONE_NUMBER_ID y WABA_ID nuevos en .env, registrar con PIN, subscribed_apps, token permanente,
   LANDING_WHATSAPP=5493865656821.
+- NÚMERO NUEVO EN MARCHA (19/11): cuenta de WhatsApp «Trazr» (WABA 1621445749095062), número
+  +54 9 3865 65-6821 (phone number ID 1458479824016739) registrado, webhooks suscriptos, token permanente
+  de usuario del sistema `trazr-bot`; el bot contesta. Falta: publicar la app (Live) para que escriba
+  cualquiera. SIN tarjeta en Meta (decisión del usuario): 1.000 respuestas gratis por mes y por número;
+  pasado eso no salen (no se cobra). Contador en el tablero: «WhatsApp este mes» (`whatsapp_month`,
+  eventos `wa_enviado` vía `WhatsAppClient.on_sent`; no cuenta plantillas ni el «leído»;
+  WHATSAPP_GRATIS_MES=1000).
 - Sitio público (dominio fijo de ngrok del usuario): https://residence-pod-pug.ngrok-free.dev
   (landing en `/`, panel en `/admin`, privacidad en `/privacidad`, webhook en `/whatsapp/webhook`).
   Cargado como sitio web del portfolio de Meta (19/11). Solo anda con la PC del usuario prendida.

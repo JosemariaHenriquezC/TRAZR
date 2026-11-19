@@ -236,3 +236,10 @@ tr.is-selected { background:var(--surface-sunken); }
 .grid-attention { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: var(--space-6, 24px); align-items: start; }
 @media (max-width: 900px) { .grid-attention { grid-template-columns: minmax(0, 1fr); } }
 .attention-list li.is-selected { margin-inline: -8px; padding-inline: 8px; }
+
+/* ---- contador de WhatsApp del mes */
+.wa-count { margin: 0 0 8px; }
+.wa-count strong { font-family: var(--font-display, inherit); font-size: 22px; }
+.meter__fill.is-ok { background: var(--monte); }
+.wa-note { margin: 10px 0 0; font-size: 13px; }
+.meter--block, .meter--block .meter__fill { display: block; }

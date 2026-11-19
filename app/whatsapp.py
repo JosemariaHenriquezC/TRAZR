@@ -260,6 +260,8 @@ class WhatsAppClient:
         # cliente vuelve a escribir. Quedan en memoria; `on_held` deja constancia en el panel.
         self._held: dict[str, list[Outgoing]] = {}
         self.on_held: Callable[[Outgoing], None] | None = None
+        # Cada mensaje que sale (no las plantillas ni el «leído»): para el contador del mes.
+        self.on_sent: Callable[[str], None] | None = None
 
     async def _http_post(self, payload: dict) -> dict:
         if self._http is None:
@@ -384,6 +386,11 @@ class WhatsAppClient:
             if not error:
                 self._route[wa_id] = alt
         if not error:
+            if self.on_sent is not None and payload.get("type") != "template":
+                try:
+                    self.on_sent(wa_id)
+                except Exception:
+                    log.debug("WhatsApp: no pude contar el mensaje enviado", exc_info=True)
             return data
         code = error.get("code")
         if code == ERR_OUT_OF_WINDOW:

@@ -345,7 +345,17 @@ class AdminMixin:
             "ship_today": {"count": len(ship_today), "total": round(sum(o.total for o in ship_today), 2)},
             "ship_next": {"count": len(ship_next), "total": round(sum(o.total for o in ship_next), 2)},
             "past_cutoff": self.now().hour >= b.cutoff_hour,
+            "whatsapp": self.whatsapp_month() if self.s.whatsapp.enabled else None,
         }
+
+    def whatsapp_month(self) -> dict:
+        """Mensajes del bot por WhatsApp en el mes, contra los gratis de Meta (sin tarjeta cargada,
+        pasado el límite los mensajes no salen hasta el mes siguiente: no se cobra)."""
+        since = self.today().replace(day=1).isoformat()
+        sent = sum(1 for e in self.repo.list_events(since=since) if e["tipo"] == "wa_enviado")
+        free = max(1, self.s.whatsapp.free_month)
+        return {"sent": sent, "free": free, "left": max(0, free - sent),
+                "pct": min(100, round(100 * sent / free)), "warn": sent >= 0.8 * free}
 
     # ------------------------------------------------------------- atención por una persona
     def attention(self) -> list[dict]:
