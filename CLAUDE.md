@@ -151,7 +151,7 @@ Equipo: Josemaria Henriquez Colaccioppo, Nicolás Quinteros, Isa Pizzuto Dip (so
   **trazr.tech** gratis 1 año (GitHub Student Pack, get.tech; registro A → la IP; hay que renovarlo o se pierde).
   FreeDNS trazr.bot.nu quedó sin usar. Instalado con `scripts/instalar_servidor.sh trazr.tech` (Caddy con
   HTTPS automático, uv/Python 3.13, servicio systemd `trazr` en /opt/trazr; correrlo de nuevo = actualizar
-  desde `development`). El .env (NGROK_DOMAIN vacío) y data/trazr.db se subieron con scp. Entrar:
+  desde `main`). El .env (NGROK_DOMAIN vacío) y data/trazr.db se subieron con scp. Entrar:
   `ssh trazr@52.138.17.238`; registro: `sudo journalctl -u trazr -f`; admins:
   `cd /opt/trazr && sudo -u trazr .venv/bin/python -m scripts.crear_admin ...`. La PC del usuario ya NO corre
   el servidor (dos instancias = Conflict de Telegram). Meta: webhook, privacidad y sitio web → trazr.tech.
@@ -169,7 +169,8 @@ Equipo: Josemaria Henriquez Colaccioppo, Nicolás Quinteros, Isa Pizzuto Dip (so
 
 ### Rama main — 19/11
 - `development` se pasó a `main` (PR #2, merge) a pedido del usuario. Se sigue trabajando en `development`;
-  el servidor se actualiza desde `development` (script de instalación). El anexo del TFI apunta al repo
+  el servidor corre `main` (decisión del usuario, 19/11): lo probado pasa a main por PR y recién ahí se
+  actualiza el servidor (script de instalación desde la URL de main). El anexo del TFI apunta al repo
   (sin rama). Falta: la presentación (ofrecí armarla con la identidad de Trazr). Catálogo revisado por el
   usuario (19/11): vinos caja 6, Quilmes Negra ok, Reserva San Juan = coñac (Licores).
 
