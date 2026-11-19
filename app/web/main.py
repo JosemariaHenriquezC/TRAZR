@@ -267,22 +267,26 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
     @app.get("/admin/productos", response_class=HTMLResponse)
     def products(request: Request, filtro: str = "todos", q: str = "", editar: str = "", nuevo: int = 0):
         admin = current_admin(request)
-        items = svc.repo.list_products()
-        counts = {"poco": sum(1 for p in items if p.active and p.stock < LOW_STOCK),
-                  "inactivos": sum(1 for p in items if not p.active)}
+        everything = svc.repo.list_products()
+        active = [p for p in everything if p.active]
+        counts = {"poco": sum(1 for p in active if p.stock < LOW_STOCK),
+                  "inactivos": len(everything) - len(active)}
+        # Los ocultos se ven solo en su pestaña: «Todos» y «Poco stock» muestran lo que se vende.
         if filtro == "poco":
-            items = [p for p in items if p.active and p.stock < LOW_STOCK]
+            items = [p for p in active if p.stock < LOW_STOCK]
         elif filtro == "inactivos":
-            items = [p for p in items if not p.active]
+            items = [p for p in everything if not p.active]
+        else:
+            items = active
         q_norm = q.strip().lower()
         if q_norm:
             items = [p for p in items if q_norm in p.name.lower() or q_norm in p.sku.lower()
                      or any(q_norm in a.lower() for a in p.aliases)]
         editing = svc.repo.get_product(editar) if editar else None
-        categories = CATEGORIAS + sorted({p.category for p in svc.repo.list_products()
+        categories = CATEGORIAS + sorted({p.category for p in everything
                                           if p.category and p.category not in CATEGORIAS})
         return render(request, "productos.html", admin, products=items, filtro=filtro, q=q, counts=counts,
-                      total=len(svc.repo.list_products()), editing=editing, new=bool(nuevo),
+                      total=len(active), editing=editing, new=bool(nuevo),
                       categories=categories, page="productos")
 
     @app.post("/admin/productos/{sku}/sumar")
