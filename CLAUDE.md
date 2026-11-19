@@ -136,7 +136,7 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
 - NÚMERO NUEVO EN MARCHA (19/11): cuenta de WhatsApp «Trazr» (WABA 1621445749095062), número
   +54 9 3865 65-6821 (phone number ID 1458479824016739) registrado, webhooks suscriptos, token permanente
   de usuario del sistema `trazr-bot`; el bot contesta. App de Meta PUBLICADA (Live) el 19/11: le puede
-  escribir cualquiera. SIN tarjeta en Meta (decisión del usuario): 1.000 respuestas gratis por mes y por número;
+  escribir cualquiera. PROBADO con un tercero (19/11): contestó y el pedido llegó al panel. SIN tarjeta en Meta (decisión del usuario): 1.000 respuestas gratis por mes y por número;
   pasado eso no salen (no se cobra). Contador en el tablero: «WhatsApp este mes» (`whatsapp_month`,
   eventos `wa_enviado` vía `WhatsAppClient.on_sent`; no cuenta plantillas ni el «leído»;
   WHATSAPP_GRATIS_MES=1000).
