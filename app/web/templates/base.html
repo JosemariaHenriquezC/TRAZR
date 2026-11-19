@@ -13,8 +13,8 @@
 // Tema elegido en este navegador (Automático / Claro / Oscuro), antes de pintar para que no parpadee.
 try { var t = localStorage.getItem("trazr-tema"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
 </script>
-<link rel="stylesheet" href="/static/components.css">
-<link rel="stylesheet" href="/static/admin.css">
+<link rel="stylesheet" href="/static/components.css?v={{ ASSETS }}">
+<link rel="stylesheet" href="/static/admin.css?v={{ ASSETS }}">
 </head>
 <body data-version="{{ version }}">
 <div class="app">
@@ -93,6 +93,6 @@ try { var t = localStorage.getItem("trazr-tema"); if (t === "light" || t === "da
   document.addEventListener("visibilitychange", function () { if (!document.hidden) check(); });
 })();
 </script>
-<script src="/static/tema.js"></script>
+<script src="/static/tema.js?v={{ ASSETS }}"></script>
 </body>
 </html>

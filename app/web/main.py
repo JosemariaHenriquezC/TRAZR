@@ -12,6 +12,7 @@ y /salud pide sesión de un admin activo (el webhook de WhatsApp exige la firma 
 from __future__ import annotations
 
 import logging
+import hashlib
 import json
 import secrets
 from datetime import datetime, timedelta
@@ -55,6 +56,14 @@ class LoginRequired(Exception):
 LANDING = HERE / "landing"   # la landing compilada (ver landing/README.md)
 
 
+def _assets_version(folder: Path) -> str:
+    digest = hashlib.sha256()
+    for f in sorted(folder.glob("*.*")):
+        if f.suffix in (".css", ".js"):
+            digest.update(f.read_bytes())
+    return digest.hexdigest()[:10]
+
+
 def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan=None) -> FastAPI:
     app = FastAPI(title="Trazr Admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     secret = settings.secret_key or secrets.token_hex(32)
@@ -84,6 +93,9 @@ def create_app(svc: BotService, notifier: Notifier, settings: Settings, lifespan
     templates.env.filters["fecha"] = fecha
     templates.env.filters["urlq"] = lambda v: quote(str(v), safe="")
     templates.env.globals["LOW_STOCK"] = LOW_STOCK
+    # Versión de los estilos y scripts: cambia cuando cambian los archivos, así el navegador
+    # (sobre todo Safari, que guarda copias viejas) baja los nuevos después de cada actualización.
+    templates.env.globals["ASSETS"] = _assets_version(HERE / "static")
 
     # ------------------------------------------------------------ sesión
     def csrf_token(request: Request) -> str:
