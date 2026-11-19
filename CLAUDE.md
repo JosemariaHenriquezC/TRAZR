@@ -113,6 +113,12 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   a distribuidoras de bebidas (incluye instalación, catálogo, configuración, canales, capacitación,
   acompañamiento; adaptaciones a medida aparte; sin precios). ERS al día (RF01–RF21, landing = RF21), figuras: chat, panel, landing.
 
+### Para el final (decidido por el usuario)
+- Pasar `development` a `main` (PR) recién al terminar; hasta entonces el anexo del TFI apunta a
+  `.../TRAZR/tree/development`. Junto con eso: la presentación (link en el anexo; ofrecí armarla con la
+  identidad de Trazr). Catálogo revisado por el usuario (19/11): vinos caja 6, Quilmes Negra ok,
+  Reserva San Juan = coñac (Licores).
+
 ### Agradecimiento al cobrar — HECHO
 - `confirm_payment` → `_thanks(order)`: transferencia = «¡Gracias por tu compra! Recibimos tu transferencia:
   pronto estaremos llegando con tu envío»; efectivo = «¡Gracias por tu compra! Te esperamos en el próximo
