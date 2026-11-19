@@ -142,6 +142,8 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   pasado eso no salen (no se cobra). Contador en el tablero: «WhatsApp este mes» (`whatsapp_month`,
   eventos `wa_enviado` vía `WhatsAppClient.on_sent`; no cuenta plantillas ni el «leído»;
   WHATSAPP_GRATIS_MES=1000).
+- TELEGRAM: bot @asistenteTRAZRbot (https://t.me/asistenteTRAZRbot). QR distinto al de WhatsApp (fondo limón,
+  franja verde): `app/web/static/marca/trazr-qr-telegram(-afiche).png`, verificado con lector.
 - Sitio público (dominio fijo de ngrok del usuario): https://residence-pod-pug.ngrok-free.dev
   (landing en `/`, panel en `/admin`, privacidad en `/privacidad`, webhook en `/whatsapp/webhook`).
   Cargado como sitio web del portfolio de Meta (19/11). Solo anda con la PC del usuario prendida.
