@@ -20,7 +20,9 @@ from .conftest import ADMIN
 
 WA = "5493815551234"
 SECRET = "secreto-de-la-app"
-CFG = WhatsAppConfig(token="t", phone_number_id="123", app_secret=SECRET, verify_token="trazr-verifica")
+# group_seconds=0: en los tests cada mensaje se contesta al instante (la espera se prueba aparte)
+CFG = WhatsAppConfig(token="t", phone_number_id="123", app_secret=SECRET, verify_token="trazr-verifica",
+                     group_seconds=0)
 
 
 class FakeGraph:
@@ -419,3 +421,47 @@ def test_el_tablero_muestra_los_mensajes_de_whatsapp_del_mes(svc, repo, settings
     for _ in range(800):
         repo.add_event("wa_enviado", "whatsapp", WA, svc.stamp())
     assert svc.dashboard()["whatsapp"]["warn"]
+
+
+# ------------------------------------------------------------------ mensajes seguidos
+def test_textos_seguidos_se_juntan_y_los_botones_van_aparte():
+    from app.whatsapp import Incoming, _merge_texts
+    items = [Incoming("1", WA, "N", "text", "hola"), Incoming("2", WA, "N", "text", "quiero 2 birras"),
+             Incoming("3", WA, "N", "button", "ct:"), Incoming("4", WA, "N", "text", "la más barata")]
+    out = _merge_texts(items)
+    assert [(i.kind, i.value) for i in out] == [("text", "hola\nquiero 2 birras"), ("button", "ct:"),
+                                                ("text", "la más barata")]
+    assert out[0].message_id == "2"
+
+
+def test_varios_mensajes_seguidos_reciben_una_sola_respuesta(svc, settings):
+    # Un cliente manda 4 mensajes casi juntos: se procesan como uno, una sola vez y en orden.
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    graph = FakeGraph()
+    cfg = replace(CFG, group_seconds=0.3)
+    client = WhatsAppClient(cfg, post=graph.post)
+    app = FastAPI()
+    app.include_router(build_router(svc, cfg, client))
+    seen = []
+    original = svc.handle_message
+    svc.handle_message = lambda user, text, on_wait=None: (seen.append(text), original(user, text, on_wait))[1]
+
+    def signed(body_text, n):
+        body = json.dumps(_event({"type": "text", "text": {"body": body_text}, "id": f"wamid.seguido{n}"})).encode()
+        sig = "sha256=" + hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
+        return body, {"X-Hub-Signature-256": sig, "Content-Type": "application/json"}
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+            async def send(i, t):
+                await asyncio.sleep(i * 0.05)
+                body, headers = signed(t, i)
+                return await http.post("/whatsapp/webhook", content=body, headers=headers)
+            await asyncio.gather(*(send(i, t) for i, t in
+                                   enumerate(["wachin", "quiero 2 cervezas", "de cualquier marca", "ya"])))
+    asyncio.run(run())
+    assert seen == ["wachin\nquiero 2 cervezas\nde cualquier marca\nya"]
+    assert len(graph.reads) == 4          # cada mensaje quedó leído
