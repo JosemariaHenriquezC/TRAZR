@@ -19,7 +19,7 @@ export function Probar() {
           )}
           {telegram && (
             <a className="btn btn--outline-light" href={telegram} target="_blank" rel="noopener noreferrer">
-              Abrir en Telegram
+              <Icono name="avion" size={18} />Pedir por Telegram
             </a>
           )}
           {!whatsapp && !telegram && (

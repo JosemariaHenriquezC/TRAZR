@@ -162,11 +162,11 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   información del negocio (dirección, teléfono, sitio, mail). Después: nuevo WHATSAPP_WABA_ID y
   WHATSAPP_PHONE_NUMBER_ID en el .env, registrar el número (PIN) y suscribir la app (subscribed_apps).
 
-### Para el final (decidido por el usuario)
-- Pasar `development` a `main` (PR) recién al terminar; hasta entonces el anexo del TFI apunta a
-  `.../TRAZR/tree/development`. Junto con eso: la presentación (link en el anexo; ofrecí armarla con la
-  identidad de Trazr). Catálogo revisado por el usuario (19/11): vinos caja 6, Quilmes Negra ok,
-  Reserva San Juan = coñac (Licores).
+### Rama main — 19/11
+- `development` se pasó a `main` (PR #2, merge) a pedido del usuario. Se sigue trabajando en `development`;
+  el servidor se actualiza desde `development` (script de instalación). El anexo del TFI apunta al repo
+  (sin rama). Falta: la presentación (ofrecí armarla con la identidad de Trazr). Catálogo revisado por el
+  usuario (19/11): vinos caja 6, Quilmes Negra ok, Reserva San Juan = coñac (Licores).
 
 ### Agradecimiento al cobrar — HECHO
 - `confirm_payment` → `_thanks(order)`: transferencia = «¡Gracias por tu compra! Recibimos tu transferencia:
