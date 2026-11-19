@@ -72,3 +72,12 @@ def pedir(svc, user, text, pago="efectivo"):
 def pagar(svc, user, medio="efectivo"):
     """Responde «¿cómo lo vas a pagar?» escribiendo, como haría el cliente."""
     return svc.handle_message(user, medio)
+
+
+@pytest.fixture(autouse=True)
+def _modelos_sin_enfriar():
+    """Cada test arranca sin modelos de Gemini «saturados» de un test anterior."""
+    from app import ai_parser
+    ai_parser._enfriando.clear()
+    yield
+    ai_parser._enfriando.clear()

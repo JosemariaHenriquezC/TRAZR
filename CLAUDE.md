@@ -165,8 +165,10 @@ Equipo: Josemaria Henriquez Colaccioppo, Nicolás Quinteros, Isa Pizzuto Dip (so
   charla vieja (5 respuestas repetidas y cruzadas). Ahora WhatsApp tiene una cola por cliente
   (`build_router.enqueue`): espera WHATSAPP_PAUSA_SEGUNDOS (2,5) sin mensajes nuevos (tope 8 s), junta los
   textos seguidos en uno (`_merge_texts`, un renglón cada uno; botones aparte) y contesta una vez, en orden.
-  Telegram ya procesa en orden (python-telegram-bot sin concurrent_updates). Pendiente: por qué falló Gemini
-  (ambos modelos) con 2 clientes nuevos el 19/11 — ver el registro («Falló Gemini», «tardó más de»).
+  Telegram ya procesa en orden (python-telegram-bot sin concurrent_updates). Gemini el 19/11: el registro
+  mostró gemini-3.5-flash-lite con picos de «alta demanda» (503) y respuestas de más de 8 s; el 3.1 contestaba
+  bien. Ahora un modelo lento o saturado (503/429/5xx) queda «enfriando» 5 min (`ai_parser._enfriando`,
+  ENFRIAR_SEGUNDOS) y se prueba primero el otro: el cliente no paga 8 s de espera en cada mensaje.
 - Sitio anterior (ngrok, solo con la PC prendida): https://residence-pod-pug.ngrok-free.dev — reemplazado.
 - Meta: la app usaba «Test Messaging Account» (solo admite el número de prueba). Para el chip se
   crea una cuenta de WhatsApp nueva «Trazr» en el portfolio; antes Meta exigió completar la

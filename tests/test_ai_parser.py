@@ -147,6 +147,32 @@ def test_timeout_usa_el_modelo_de_respaldo():
     assert models.llamados == ["a", "b"]
 
 
+def test_modelo_lento_queda_enfriando_y_el_siguiente_mensaje_va_directo_al_respaldo():
+    cfg = ai_parser.AIConfig(enabled=True, api_key="x", model="a",
+                             fallback_model="b", timeout=0.05)
+    client, models = _cliente({"a": ("lento", 1), "b": ("ok", OK)})
+    ai_parser.parse_order("2 yerba", PRODUCTOS, config=cfg, client=client)
+    ai_parser.parse_order("2 yerba", PRODUCTOS, config=cfg, client=client)
+    assert models.llamados == ["a", "b", "b"]          # el segundo no espera al lento
+
+
+def test_alta_demanda_503_enfria_el_modelo_pero_un_json_roto_no():
+    client, models = _cliente({"a": ("error", RuntimeError("503 UNAVAILABLE high demand")), "b": ("ok", OK)})
+    ai_parser.parse_order("2 yerba", PRODUCTOS, config=CFG_FALLBACK, client=client)
+    assert "a" in ai_parser._enfriando
+    ai_parser._enfriando.clear()
+    client, models = _cliente({"a": ("ok", "esto no es json"), "b": ("ok", OK)})
+    ai_parser.parse_order("2 yerba", PRODUCTOS, config=CFG_FALLBACK, client=client)
+    assert "a" not in ai_parser._enfriando
+
+
+def test_pasado_el_enfriamiento_vuelve_el_modelo_principal(monkeypatch):
+    client, models = _cliente({"a": ("ok", OK), "b": ("ok", OK)})
+    ai_parser._enfriando["a"] = 0.0                    # ya venció
+    ai_parser.parse_order("2 yerba", PRODUCTOS, config=CFG_FALLBACK, client=client)
+    assert models.llamados == ["a"]
+
+
 def test_si_fallan_todos_los_modelos_interpreta_el_parser_por_reglas():
     client, _ = _cliente({"a": ("error", RuntimeError("503")),
                           "b": ("error", RuntimeError("404"))})
