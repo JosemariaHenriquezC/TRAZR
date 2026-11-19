@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trazr — pedidos de bebidas por WhatsApp, confirmados en minutos</title>
+    <meta name="description" content="Trazr es un bot para distribuidoras de bebidas: entiende cómo piden tus clientes por WhatsApp, controla el stock y confirma en minutos." />
+    <meta name="theme-color" content="#1d5c44" />
+    <meta property="og:title" content="Trazr — pedidos de bebidas por WhatsApp" />
+    <meta property="og:description" content="Tus clientes piden por WhatsApp. Trazr arma el pedido." />
+    <link rel="icon" href="/static/marca/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/static/marca/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/static/marca/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" />
+    <!-- El servidor reemplaza __TRAZR_CONFIG__ por los links de «Probar el bot» (del .env). -->
+    <script id="trazr-config" type="application/json">__TRAZR_CONFIG__</script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

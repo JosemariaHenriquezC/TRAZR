@@ -1,0 +1,141 @@
+"""
+Arranca todo junto: la web de administración, el bot de Telegram, el canal de
+WhatsApp y (si NGROK_DOMAIN está en el .env) el túnel de ngrok, en un proceso.
+Ctrl+C apaga todo.
+
+    python -m app.server
+
+La web queda en http://127.0.0.1:8000 (WEB_HOST / WEB_PORT en el .env). El bot
+corre dentro del mismo proceso (mismo BotService, mismo candado, misma base), y
+cuando el admin aprueba o rechaza en la web, el aviso al cliente sale por el bot.
+Sin TELEGRAM_BOT_TOKEN no arranca el bot de Telegram. WhatsApp se activa cuando
+están los cuatro WHATSAPP_* del .env: Meta avisa cada mensaje en /whatsapp/webhook
+(para eso la web tiene que ser accesible desde internet: túnel o servidor).
+
+Correr siempre con UN solo proceso (no usar --workers ni --reload): dos bots
+leyendo el mismo token chocan en Telegram.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
+import uvicorn
+
+from .bot import build_telegram_app, restore_profile, telegram_sender
+from .config import ConfigError, Settings, load_settings
+from .notifier import Notifier
+from .service import BotService
+from .storage import StorageError, build_repository
+from .web.main import create_app
+from .tunnel import NgrokTunnel
+from .whatsapp import WhatsAppClient, build_router
+
+log = logging.getLogger(__name__)
+
+
+def build(settings: Settings):
+    repo = build_repository(settings)
+    svc = BotService(repo, settings)
+    notifier = Notifier()
+    wa = WhatsAppClient(settings.whatsapp) if settings.whatsapp.enabled else None
+    if wa is not None:
+        notifier.register("whatsapp", wa.send)
+
+        def held_notice(m) -> None:
+            # Sin plantillas (las cobra Meta), un aviso fuera de las 24 h espera a que el cliente escriba.
+            order_id = (m.template or ("", [""]))[1][0] if m.template else ""
+            try:
+                svc.repo.add_notice("whatsapp", f"Aviso pendiente{' del pedido ' + order_id if order_id else ''}",
+                                    "El cliente no escribió en las últimas 24 h y WhatsApp no deja mandarle "
+                                    "mensajes sin plantilla. Le llega apenas vuelva a escribir; si es urgente, "
+                                    "avisale por otro medio.", order_id, svc.stamp())
+            except Exception:
+                log.exception("No pude guardar el aviso pendiente de WhatsApp")
+        wa.on_held = held_notice
+
+        def count_sent(wa_id: str) -> None:
+            # Para el contador «WhatsApp este mes» del tablero (sin el texto del mensaje).
+            svc.repo.add_event("wa_enviado", "whatsapp", wa_id, svc.stamp())
+        wa.on_sent = count_sent
+
+    @asynccontextmanager
+    async def lifespan(app):
+        tg = None
+        if settings.telegram_token:
+            tg = build_telegram_app(settings.telegram_token, svc)
+            await tg.initialize()
+            await restore_profile(tg.bot, settings.business.name)   # nombre, textos, comandos y menú
+            await tg.start()
+            await tg.updater.start_polling(allowed_updates=["message", "callback_query"])
+            notifier.register("telegram", telegram_sender(tg.bot))
+            me = await tg.bot.get_me()
+            app.state.telegram_username = me.username   # para el botón de la landing
+            log.info("Bot @%s en marcha junto con la web.", me.username)
+        else:
+            log.warning("Sin TELEGRAM_BOT_TOKEN: el bot de Telegram no arranca.")
+        if wa is not None:
+            log.info("WhatsApp activo: Meta tiene que avisar a <dirección pública>/whatsapp/webhook.")
+        elif any((settings.whatsapp.token, settings.whatsapp.phone_number_id)):
+            log.warning("WhatsApp apagado: faltan %s en el .env.", ", ".join(settings.whatsapp.missing()))
+
+        async def expire_loop():
+            # Cada 5 minutos: cancela transferencias sin pagar pasadas PAGO_HORAS y avisa al cliente.
+            while True:
+                try:
+                    await notifier.send(await asyncio.to_thread(svc.expire_unpaid))
+                except Exception:
+                    log.exception("Falló la revisión de pagos vencidos")
+                await asyncio.sleep(300)
+
+        tunnel = None
+        if settings.ngrok_domain:
+            tunnel = NgrokTunnel(settings.ngrok_domain, settings.web_port)
+            if not tunnel.start():
+                tunnel = None
+        elif wa is not None:
+            log.warning("Sin NGROK_DOMAIN en el .env: no abro túnel (Meta no puede llegar a esta PC).")
+
+        expirer = asyncio.create_task(expire_loop())
+        try:
+            yield
+        finally:
+            expirer.cancel()
+            if tunnel is not None:
+                tunnel.stop()
+            if wa is not None:
+                await wa.close()
+            if tg is not None:
+                await tg.updater.stop()
+                await tg.stop()
+                await tg.shutdown()
+
+    app = create_app(svc, notifier, settings, lifespan=lifespan)
+    if wa is not None:
+        app.include_router(build_router(svc, settings.whatsapp, wa))
+    return app, svc
+
+
+def main() -> None:
+    logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    try:
+        settings = load_settings(require_telegram=False)
+    except ConfigError as exc:
+        raise SystemExit(f"Error de configuración: {exc}")
+    try:
+        app, svc = build(settings)
+        n = len(svc.repo.list_products())
+    except StorageError as exc:
+        raise SystemExit(f"No pude acceder a la base de datos: {exc}")
+    if n == 0:
+        log.warning("El catálogo está vacío. Cargalo con: python -m scripts.init_db --ejemplo")
+    if not svc.repo.list_admins():
+        log.warning("No hay admins para la web. Creá uno con: python -m scripts.crear_admin usuario \"Nombre\"")
+    log.info("Web de administración: http://%s:%s", settings.web_host, settings.web_port)
+    uvicorn.run(app, host=settings.web_host, port=settings.web_port, workers=1, log_level="info")
+
+
+if __name__ == "__main__":
+    main()

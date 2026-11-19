@@ -1,7 +1,10 @@
 python-telegram-bot==21.11.1
-gspread==6.2.1
-google-auth>=2.30
-openpyxl==3.1.5
 python-dotenv==1.2.3
 tzdata>=2024.1        # zonas horarias en Windows
 pytest>=8             # solo para correr los tests
+google-genai
+fastapi==0.115.6       # web de administración
+uvicorn==0.34.0
+jinja2==3.1.5
+python-multipart==0.0.20
+itsdangerous==2.2.0

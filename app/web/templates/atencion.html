@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Atención · {{ shop }}{% endblock %}
+{% block content %}
+<div class="head">
+  <div>
+    <h1>Atención</h1>
+    <p>Clientes que pidieron hablar con una persona. Mientras los atendés, el bot no les contesta; cuando termines, devolvelos al bot.</p>
+  </div>
+</div>
+
+<div class="grid-attention">
+  <section class="tz-panel" aria-labelledby="cola-at">
+    <div class="panel-head"><h2 class="section" id="cola-at">Esperan a una persona</h2></div>
+    <div class="panel-body">
+    {% if rows %}
+    <ul class="attention-list">
+      {% for r in rows %}
+      <li {% if selected and r.key == selected.key %}class="is-selected"{% endif %}>
+        <a href="/admin/atencion?c={{ r.key|urlq }}"><strong>{{ r.name }}</strong></a>
+        <span class="muted">{{ 'Telegram' if r.handoff.channel == 'telegram' else 'WhatsApp' }} · desde {{ r.handoff.since|fecha }}</span>
+        <span class="tz-badge tz-badge--warn">{{ r.handoff.reason }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">Nadie necesita atención ahora. Cuando un cliente pida hablar con una persona, aparece acá (y en el menú, con un contador).</p>
+    {% endif %}
+    </div>
+  </section>
+
+  {% if selected %}
+  <section class="tz-panel" aria-labelledby="chat-t">
+    <div class="panel-head">
+      <h2 class="section" id="chat-t">{{ selected.name }}</h2>
+      {% if selected.handoff %}<span class="tz-badge tz-badge--warn">Lo atiende una persona</span>{% else %}<span class="tz-badge tz-badge--ok">Lo atiende el bot</span>{% endif %}
+    </div>
+    <div class="panel-body">
+    <div class="chat-log" id="chat-log" role="log" aria-live="polite">
+      {% for rol, texto, cuando in selected.chat %}
+      <div class="msg msg--{{ 'in' if rol == 'cliente' else 'out' }}{{ ' msg--team' if rol == 'equipo' else '' }}">
+        <span class="msg__who">{{ 'Cliente' if rol == 'cliente' else ('Equipo' if rol == 'equipo' else 'Bot') }} · {{ cuando.strftime('%H:%M') }}</span>
+        <p>{{ texto }}</p>
+      </div>
+      {% else %}
+      <p class="empty">No hay mensajes recientes en memoria (se ven las últimas 12 h y se borran al reiniciar el servidor).</p>
+      {% endfor %}
+    </div>
+    <form method="post" action="/admin/atencion/responder" class="stack" style="gap: 12px; margin-top: 16px">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="c" value="{{ selected.key }}">
+      <div class="tz-field"><label for="texto">Tu mensaje</label>
+        <textarea id="texto" name="texto" rows="3" maxlength="3000" required placeholder="Escribile al cliente: le llega por {{ 'Telegram' if selected.key.startswith('telegram') else 'WhatsApp' }}"></textarea></div>
+      <div class="row-actions">
+        <button class="tz-btn tz-btn--primary" type="submit">Enviar</button>
+      </div>
+    </form>
+    {% if selected.handoff %}
+    <form method="post" action="/admin/atencion/devolver" style="margin-top: 12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="c" value="{{ selected.key }}">
+      <button class="tz-btn tz-btn--secondary" type="submit">Devolver al bot</button>
+      <span class="muted">El bot le avisa que vuelve a atenderlo.</span>
+    </form>
+    {% endif %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+<script>
+  // La charla arranca mostrando lo último.
+  (function () { var log = document.getElementById("chat-log"); if (log) log.scrollTop = log.scrollHeight; })();
+</script>
+{% endblock %}

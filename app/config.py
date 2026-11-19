@@ -1,7 +1,7 @@
 """
 Configuración del bot.
 
-Todo lo sensible (token de Telegram, IDs de hojas, credenciales) se lee de
+Todo lo sensible (token de Telegram, claves de APIs) se lee de
 variables de entorno o de un archivo .env (ver .env.example). Nada de eso
 está escrito en el código.
 
@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from .ai_parser import AIConfig, load_ai_config
 
 
 class ConfigError(Exception):
@@ -47,20 +49,52 @@ def _float(name: str, default: float) -> float:
         raise ConfigError(f"{name} debe ser un número (valor actual: {raw!r})") from exc
 
 
+DAY_NAMES = {"lun": 0, "mar": 1, "mie": 2, "mié": 2, "jue": 3, "vie": 4, "sab": 5, "sáb": 5, "dom": 6}
+
+
+def _days(name: str, default: tuple[int, ...]) -> tuple[int, ...]:
+    """«lun-sab» o «lun,mar,mie,jue,vie,sab» → (0, 1, 2, 3, 4, 5)."""
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    try:
+        days: set[int] = set()
+        for part in raw.replace(" ", "").split(","):
+            if "-" in part:
+                a, b = (DAY_NAMES[x[:3]] for x in part.split("-", 1))
+                days.update(range(a, b + 1))
+            else:
+                days.add(DAY_NAMES[part[:3]])
+        return tuple(sorted(days))
+    except KeyError as exc:
+        raise ConfigError(f"{name} debe ser días como «lun-sab» o «lun,mie,vie» (valor actual: {raw!r})") from exc
+
+
+def _delays(name: str, default: tuple[float, ...]) -> tuple[float, ...]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return tuple(float(x) for x in raw.replace(";", ",").split(",") if x.strip())
+    except ValueError as exc:
+        raise ConfigError(f"{name} debe ser una lista de segundos, por ejemplo 4,8 (valor actual: {raw!r})") from exc
+
+
 @dataclass
 class Rules:
     """
     Regla mínima de "pedido dentro de los parámetros".
 
-    Un pedido se CONFIRMA AUTOMÁTICAMENTE solo si TODOS sus renglones cumplen:
-      1. El producto existe en la hoja de stock y está activo.
-      2. Tiene precio vigente: Precio > 0 y (Vigente_hasta vacío o >= hoy).
-      3. Hay stock suficiente: Stock >= cantidad pedida.
-    Y además, opcionalmente:
-      4. El total no supera MAX_ORDER_TOTAL (0 = sin límite).
-
-    Si falla 2, 3 o 4 → el pedido se registra "EN REVISIÓN" y se deriva al admin.
-    Si falla 1 → depende de ON_UNKNOWN_PRODUCT:
+    Un pedido se CONFIRMA AUTOMÁTICAMENTE si:
+      1. Todos sus productos existen en el catálogo, están activos y tienen precio cargado.
+      2. Hay stock suficiente (si no, el cliente NO puede confirmar: el bot le dice cuánto
+         queda y ofrece ajustar; ver checkout.py).
+      3. El cliente ya está verificado: tiene al menos un pedido pagado
+         (REVISAR_CLIENTES_NUEVOS). El primer pedido de cada empresa va a revisión.
+      4. (Opcional) el total no supera MAX_ORDER_TOTAL (0 = sin límite, el valor por defecto).
+    Si falla 3 o 4 (o un producto no tiene precio) → "EN REVISION" y aviso en la web.
+    Los precios no vencen: se cambian desde la web cuando hace falta.
+    Si un producto no existe → depende de ON_UNKNOWN_PRODUCT:
         "ask"    (default) se le pide al cliente que corrija; no se registra.
         "review" se registra en revisión igual.
 
@@ -68,32 +102,111 @@ class Rules:
     MAX_QTY_PER_ITEM) nunca se registran: el bot pide aclaración.
     """
 
-    require_price_valid: bool = True
     require_stock: bool = True
-    max_order_total: float = 0.0          # 0 = sin límite
+    max_order_total: float = 0.0          # 0 = sin límite (opcional: los pedidos B2B son grandes)
+    review_new_customers: bool = True     # el primer pedido de cada cliente va a revisión
     max_qty_per_item: int = 1000          # cantidades mayores se consideran inválidas
     on_unknown_product: str = "ask"       # "ask" | "review"
     match_threshold: float = 0.72         # similitud mínima para reconocer un producto (0-1)
+    modify_minutes: int = 60              # minutos que tiene el cliente para modificar su pedido
+    payment_hours: int = 24               # una transferencia sin pagar se cancela pasado este tiempo
+
+
+# Tienda ficticia de ejemplo: se usa si el .env no define los NEGOCIO_*.
+TRAZR = {
+    "NEGOCIO_NOMBRE": "Trazr",
+    "NEGOCIO_HORARIOS": ("lunes a sábado de 9 a 13 y de 17 a 21 (a la siesta no se reparte); domingos y "
+                         "feriados cerrado. Lo confirmado antes de las 11 sale a la mañana (9 a 13); antes "
+                         "de las 19, a la tarde (17 a 21); después, el próximo día hábil a la mañana."),
+    "NEGOCIO_ZONA": "San Miguel de Tucumán, Yerba Buena, Tafí Viejo y Banda del Río Salí",
+    "NEGOCIO_PEDIDO_MINIMO": "no hay pedido mínimo",
+    "NEGOCIO_PAGOS": "efectivo o transferencia bancaria al recibir el pedido",
+    "NEGOCIO_INFO": ("Trazr es una distribuidora de bebidas de Tucumán: gaseosas, aguas, cervezas, vinos, "
+                     "aperitivos, jugos y energizantes. Venta a mayoristas, almacenes y particulares. "
+                     "Las bebidas alcohólicas solo se venden a mayores de 18 años."),
+}
+
+
+@dataclass
+class Business:
+    """Datos del negocio que Gemini puede usar para responder consultas.
+    Lo que quede vacío, Gemini responde que lo consulta con el equipo."""
+    name: str = ""
+    delivery_hours: str = ""     # días y horarios de entrega
+    delivery_zone: str = ""      # zona de reparto
+    min_order: str = ""          # pedido mínimo (texto libre)
+    payment: str = ""            # formas de pago
+    extra: str = ""              # cualquier otra info útil
+    transfer_alias: str = "TRAZR.BEBIDAS.TUC"          # alias para transferencias (de ejemplo)
+    transfer_holder: str = "Trazr Distribuidora (cuenta de ejemplo)"
+    open_hour: int = 9           # horario de atención (para el tablero «el día en reparto»)
+    close_hour: int = 21
+    delivery_days: tuple[int, ...] = (0, 1, 2, 3, 4, 5)   # días que se reparte (0 = lunes … 6 = domingo)
+    cutoff_hour: int = 19        # lo confirmado antes de esta hora sale en el día (en el turno de la tarde)
+    morning_cutoff: int = 11     # lo confirmado antes de esta hora sale en el turno de la mañana (0 = no hay)
+    morning_shift: str = "9 a 13"
+    evening_shift: str = "17 a 21"
+    contact: str = ""            # mail o teléfono de contacto (página de privacidad)
+
+    def as_text(self) -> str:
+        rows = [("Nombre", self.name), ("Días y horarios de entrega", self.delivery_hours),
+                ("Zona de reparto", self.delivery_zone), ("Pedido mínimo", self.min_order),
+                ("Formas de pago", self.payment), ("Otros datos", self.extra)]
+        out = [f"- {k}: {v}" for k, v in rows if v]
+        out.append("- Envío: siempre incluido, sin costo.")
+        return "\n".join(out)
+
+
+@dataclass
+class WhatsAppConfig:
+    token: str = ""             # token de acceso (temporal de 24 h para probar; después, uno permanente)
+    phone_number_id: str = ""   # «Phone Number ID» del número que usa el bot
+    app_secret: str = ""        # clave secreta de la app: firma los avisos de Meta
+    verify_token: str = ""      # palabra que inventás vos y repetís en el panel de Meta
+    api_version: str = "v25.0"
+    waba_id: str = ""           # «Identificador de la cuenta de mensajes»: solo para crear plantillas
+    template_lang: str = "es_AR"  # idioma de las plantillas aprobadas por Meta
+    # Plantillas (avisos pasadas las 24 h): Meta las cobra, así que vienen APAGADAS. Sin ellas,
+    # un aviso que no se puede mandar queda guardado y sale cuando el cliente vuelve a escribir.
+    templates: bool = False
+    # Respuestas del bot gratis por mes y por número (Meta, nov. 2026). Solo para el contador del tablero.
+    free_month: int = 1000
+
+    @property
+    def enabled(self) -> bool:
+        return all((self.token, self.phone_number_id, self.app_secret, self.verify_token))
+
+    def missing(self) -> list[str]:
+        names = {"WHATSAPP_TOKEN": self.token, "WHATSAPP_PHONE_NUMBER_ID": self.phone_number_id,
+                 "WHATSAPP_APP_SECRET": self.app_secret, "WHATSAPP_VERIFY_TOKEN": self.verify_token}
+        return [k for k, v in names.items() if not v]
 
 
 @dataclass
 class Settings:
     telegram_token: str
-    admin_chat_ids: set[int]
-    storage_backend: str                  # "gsheets" | "excel"
-    # Google Sheets
-    google_credentials_file: str = ""
-    stock_spreadsheet_id: str = ""
-    orders_spreadsheet_id: str = ""
-    stock_worksheet: str = "Stock"
-    orders_worksheet: str = "Pedidos"
-    # Excel local (modo prueba sin credenciales)
-    excel_stock_path: str = "data/stock.xlsx"
-    excel_orders_path: str = "data/pedidos.xlsx"
+    # Base de datos SQLite (un archivo; se crea solo si no existe)
+    database_path: str = "data/trazr.db"
     # Presentación
     currency_symbol: str = "$"
     timezone: str = "UTC"
     rules: Rules = field(default_factory=Rules)
+    # Intérprete con Gemini. Apagado por defecto: load_settings() lo lee del .env.
+    # (Así los tests, que arman Settings a mano, nunca llaman a la API real.)
+    ai: AIConfig = field(default_factory=lambda: AIConfig(enabled=False))
+    business: Business = field(default_factory=Business)
+    # Si Gemini no contesta: se le pide al cliente que espere y se reintenta tras estas pausas (s)
+    ai_retry_delays: tuple[float, ...] = (3.0,)
+    # Web de administración
+    secret_key: str = ""                  # firma la cookie de sesión (vacío = se genera al arrancar)
+    web_host: str = "127.0.0.1"
+    web_port: int = 8000
+    # Canal WhatsApp (fase 5): apagado si falta algún dato
+    whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
+    # Túnel de ngrok que abre `python -m app.server` (vacío = sin túnel)
+    ngrok_domain: str = ""
+    landing_whatsapp: str = ""    # número del bot para «Probar el bot» en la landing (ej. 5493815551234)
+    landing_telegram: str = ""    # usuario del bot de Telegram (sin @); vacío = el del bot en marcha
 
 
 def load_settings(require_telegram: bool = True, env_file: str | None = None) -> Settings:
@@ -106,67 +219,64 @@ def load_settings(require_telegram: bool = True, env_file: str | None = None) ->
             "Falta TELEGRAM_BOT_TOKEN. Crealo con @BotFather y pegalo en el archivo .env."
         )
 
-    admin_raw = os.getenv("ADMIN_CHAT_IDS", "").strip()
-    admin_ids: set[int] = set()
-    for part in admin_raw.replace(";", ",").split(","):
-        part = part.strip()
-        if not part:
-            continue
-        try:
-            admin_ids.add(int(part))
-        except ValueError as exc:
-            raise ConfigError(f"ADMIN_CHAT_IDS contiene un valor no numérico: {part!r}") from exc
-
-    backend = os.getenv("STORAGE_BACKEND", "gsheets").strip().lower()
-    if backend not in {"gsheets", "excel"}:
-        raise ConfigError("STORAGE_BACKEND debe ser 'gsheets' o 'excel'.")
-
     on_unknown = os.getenv("ON_UNKNOWN_PRODUCT", "ask").strip().lower()
     if on_unknown not in {"ask", "review"}:
         raise ConfigError("ON_UNKNOWN_PRODUCT debe ser 'ask' o 'review'.")
 
     rules = Rules(
-        require_price_valid=_bool(os.getenv("RULE_REQUIRE_PRICE_VALID"), True),
         require_stock=_bool(os.getenv("RULE_REQUIRE_STOCK"), True),
         max_order_total=_float("MAX_ORDER_TOTAL", 0.0),
+        review_new_customers=_bool(os.getenv("REVISAR_CLIENTES_NUEVOS"), True),
         max_qty_per_item=_int("MAX_QTY_PER_ITEM", 1000),
         on_unknown_product=on_unknown,
         match_threshold=_float("MATCH_THRESHOLD", 0.72),
+        modify_minutes=_int("MODIFICACION_MINUTOS", 60),
+        payment_hours=_int("PAGO_HORAS", 24),
     )
 
     settings = Settings(
         telegram_token=token,
-        admin_chat_ids=admin_ids,
-        storage_backend=backend,
-        google_credentials_file=os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json").strip(),
-        stock_spreadsheet_id=os.getenv("STOCK_SPREADSHEET_ID", "").strip(),
-        orders_spreadsheet_id=os.getenv("ORDERS_SPREADSHEET_ID", "").strip(),
-        stock_worksheet=os.getenv("STOCK_WORKSHEET", "Stock").strip() or "Stock",
-        orders_worksheet=os.getenv("ORDERS_WORKSHEET", "Pedidos").strip() or "Pedidos",
-        excel_stock_path=os.getenv("EXCEL_STOCK_PATH", "data/stock.xlsx").strip(),
-        excel_orders_path=os.getenv("EXCEL_ORDERS_PATH", "data/pedidos.xlsx").strip(),
+        database_path=os.getenv("DATABASE_PATH", "data/trazr.db").strip() or "data/trazr.db",
         currency_symbol=os.getenv("CURRENCY_SYMBOL", "$").strip() or "$",
         timezone=os.getenv("TIMEZONE", "UTC").strip() or "UTC",
         rules=rules,
+        ai=load_ai_config(),
+        ai_retry_delays=_delays("AI_RETRY_DELAYS", (3.0,)),
+        secret_key=os.getenv("SECRET_KEY", "").strip(),
+        ngrok_domain=os.getenv("NGROK_DOMAIN", "").strip(),
+        landing_whatsapp="".join(ch for ch in os.getenv("LANDING_WHATSAPP", "") if ch.isdigit()),
+        landing_telegram=os.getenv("LANDING_TELEGRAM", "").strip().lstrip("@"),
+        web_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",
+        web_port=_int("WEB_PORT", 8000),
+        whatsapp=WhatsAppConfig(
+            token=os.getenv("WHATSAPP_TOKEN", "").strip(),
+            phone_number_id=os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip(),
+            app_secret=os.getenv("WHATSAPP_APP_SECRET", "").strip(),
+            verify_token=os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip(),
+            api_version=os.getenv("WHATSAPP_API_VERSION", "v25.0").strip() or "v25.0",
+            waba_id=os.getenv("WHATSAPP_WABA_ID", "").strip(),
+            template_lang=os.getenv("WHATSAPP_PLANTILLAS_IDIOMA", "es_AR").strip() or "es_AR",
+            templates=os.getenv("WHATSAPP_PLANTILLAS", "no").strip().lower() in ("si", "sí", "true", "1", "yes"),
+            free_month=_int("WHATSAPP_GRATIS_MES", 1000),
+        ),
+        business=Business(
+            name=os.getenv("NEGOCIO_NOMBRE", TRAZR["NEGOCIO_NOMBRE"]).strip(),
+            delivery_hours=os.getenv("NEGOCIO_HORARIOS", TRAZR["NEGOCIO_HORARIOS"]).strip(),
+            delivery_zone=os.getenv("NEGOCIO_ZONA", TRAZR["NEGOCIO_ZONA"]).strip(),
+            min_order=os.getenv("NEGOCIO_PEDIDO_MINIMO", TRAZR["NEGOCIO_PEDIDO_MINIMO"]).strip(),
+            payment=os.getenv("NEGOCIO_PAGOS", TRAZR["NEGOCIO_PAGOS"]).strip(),
+            extra=os.getenv("NEGOCIO_INFO", TRAZR["NEGOCIO_INFO"]).strip(),
+            transfer_alias=os.getenv("NEGOCIO_ALIAS", "TRAZR.BEBIDAS.TUC").strip(),
+            transfer_holder=os.getenv("NEGOCIO_TITULAR", "Trazr Distribuidora (cuenta de ejemplo)").strip(),
+            open_hour=_int("NEGOCIO_HORA_APERTURA", 9),
+            close_hour=_int("NEGOCIO_HORA_CIERRE", 21),
+            delivery_days=_days("NEGOCIO_DIAS_REPARTO", (0, 1, 2, 3, 4, 5)),
+            cutoff_hour=_int("NEGOCIO_HORA_CORTE", 19),
+            morning_cutoff=_int("NEGOCIO_HORA_CORTE_MANANA", 11),
+            morning_shift=os.getenv("NEGOCIO_TURNO_MANANA", "9 a 13").strip() or "9 a 13",
+            evening_shift=os.getenv("NEGOCIO_TURNO_TARDE", "17 a 21").strip() or "17 a 21",
+            contact=os.getenv("NEGOCIO_CONTACTO", "").strip(),
+        ),
     )
 
-    if backend == "gsheets":
-        missing = [
-            name
-            for name, val in [
-                ("STOCK_SPREADSHEET_ID", settings.stock_spreadsheet_id),
-                ("ORDERS_SPREADSHEET_ID", settings.orders_spreadsheet_id),
-            ]
-            if not val
-        ]
-        if missing:
-            raise ConfigError(
-                "Faltan variables para Google Sheets: " + ", ".join(missing)
-                + ". Copiá el ID de cada hoja desde su URL (ver README)."
-            )
-        if not Path(settings.google_credentials_file).exists():
-            raise ConfigError(
-                f"No encuentro el archivo de credenciales {settings.google_credentials_file!r}. "
-                "Descargá la clave JSON de la cuenta de servicio (ver README, paso 3)."
-            )
     return settings

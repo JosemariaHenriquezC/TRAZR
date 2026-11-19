@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de privacidad · {{ shop }}</title>
+<link rel="icon" href="/static/marca/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/marca/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/marca/apple-touch-icon.png">
+<meta name="theme-color" content="#1d5c44">
+<link rel="stylesheet" href="/static/components.css">
+<link rel="stylesheet" href="/static/admin.css">
+<style>
+  body { background: var(--surface); }
+  .legal__band { background: var(--monte); padding: 28px 24px; }
+  .legal__band > div { max-width: 720px; margin: 0 auto; }
+  .legal__band img { display: block; height: 40px; width: auto; }
+  .legal { max-width: 720px; margin: 0 auto; padding: 40px 24px 64px; color: var(--ink); line-height: 1.6; }
+  .legal h1 { margin: 0 0 6px; font: 800 34px/1.15 var(--font-display); letter-spacing: -.02em; }
+  .legal h2 { margin: 32px 0 8px; font: 700 20px/1.3 var(--font-display); letter-spacing: -.01em; color: var(--monte); }
+  .legal p, .legal li { font-size: 16px; }
+  .legal ul { padding-left: 20px; }
+  .legal li { margin: 6px 0; }
+  .legal .muted { color: var(--ink-muted); }
+</style>
+</head>
+<body>
+<header class="legal__band"><div><img src="/static/marca/trazr-logo-negativo.svg" alt="{{ shop }}" width="143" height="40"></div></header>
+<main class="legal">
+  <h1>Política de privacidad</h1>
+  <p class="muted">Última actualización: {{ updated }}</p>
+
+  <p>{{ shop }} es una distribuidora de bebidas que recibe pedidos por WhatsApp y por Telegram mediante un asistente automático. Esta política explica qué datos usamos cuando nos escribís, para qué y cómo podés pedir que los corrijamos o los borremos.</p>
+
+  <h2>Qué datos usamos</h2>
+  <ul>
+    <li><strong>Tu identificación en el chat:</strong> el número de WhatsApp o el identificador de Telegram, y el nombre de tu perfil.</li>
+    <li><strong>Tu dirección de envío</strong>, para entregar los pedidos.</li>
+    <li><strong>Tus pedidos:</strong> productos, cantidades, precios, totales, fechas, medio de pago y estado del pago.</li>
+  </ul>
+  <p><strong>No guardamos tus conversaciones.</strong> Para entender lo que escribís, el asistente recuerda los últimos mensajes durante unas horas en la memoria del sistema; ese contexto se borra solo y nunca se guarda en nuestra base de datos.</p>
+
+  <h2>Para qué los usamos</h2>
+  <ul>
+    <li>Armar, confirmar, entregar y cobrar tus pedidos.</li>
+    <li>Avisarte por el mismo chat cuando tu pedido se aprueba, se rechaza, se cancela o cuando recibimos tu pago.</li>
+    <li>Responder tus consultas sobre el negocio.</li>
+  </ul>
+  <p>No vendemos ni compartimos tus datos con terceros para publicidad, y no te mandamos mensajes promocionales.</p>
+
+  <h2>Con quién se comparten</h2>
+  <ul>
+    <li><strong>Meta (WhatsApp) y Telegram</strong>, que transportan los mensajes entre vos y nosotros.</li>
+    <li><strong>Google (Gemini)</strong>, el servicio de inteligencia artificial que interpreta el texto de tus mensajes para entender qué pedís. Recibe el texto de tus mensajes y los datos del catálogo; no recibe los datos de tus pagos.</li>
+  </ul>
+  <p>Solo el personal autorizado de {{ shop }} accede a tus datos, desde un panel protegido con usuario y contraseña.</p>
+
+  <h2>Cuánto tiempo los guardamos</h2>
+  <p>Guardamos tus datos mientras seas cliente y el tiempo que exijan las normas contables e impositivas para los registros de venta. Podés pedir que los borremos antes, salvo lo que la ley nos obligue a conservar.</p>
+
+  <h2 id="borrar">Tus derechos: acceso, corrección y borrado</h2>
+  <p>Podés pedirnos ver los datos que tenemos sobre vos, corregirlos o borrarlos.
+  {% if contact %}Escribinos a <strong>{{ contact }}</strong>{% else %}Escribinos por el mismo chat por el que hacés tus pedidos{% endif %}
+  indicando tu nombre y el número o usuario con el que nos escribiste. Respondemos dentro de los plazos de la Ley 25.326 de Protección de los Datos Personales. Tu dirección de envío también la podés cambiar en cualquier momento escribiendo <em>/direccion</em> en el chat.</p>
+  <p class="muted">La Agencia de Acceso a la Información Pública, en su carácter de órgano de control de la Ley 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales.</p>
+
+  <h2>Seguridad</h2>
+  <p>Los datos se guardan en un sistema propio, con acceso restringido. Las contraseñas del personal se guardan cifradas y los mensajes que llegan por WhatsApp se aceptan solo si traen la firma de Meta.</p>
+
+  <h2>Contacto</h2>
+  <p>{{ shop }}{% if zone %} · {{ zone }}{% endif %}{% if contact %} · {{ contact }}{% endif %}</p>
+</main>
+</body>
+</html>

@@ -1,17 +1,11 @@
-"""Fábrica del repositorio según STORAGE_BACKEND."""
+"""Fábrica del repositorio: una base SQLite en DATABASE_PATH."""
 from ..config import Settings
 from .base import Repository, StorageError
+from .sqlite import SQLiteRepository
 
 
 def build_repository(settings: Settings) -> Repository:
-    if settings.storage_backend == "excel":
-        from .excel import ExcelRepository
-        return ExcelRepository(settings.excel_stock_path, settings.excel_orders_path,
-                               settings.stock_worksheet, settings.orders_worksheet)
-    from .gsheets import GoogleSheetsRepository
-    return GoogleSheetsRepository(settings.google_credentials_file,
-                                  settings.stock_spreadsheet_id, settings.orders_spreadsheet_id,
-                                  settings.stock_worksheet, settings.orders_worksheet)
+    return SQLiteRepository(settings.database_path)
 
 
-__all__ = ["build_repository", "Repository", "StorageError"]
+__all__ = ["build_repository", "Repository", "StorageError", "SQLiteRepository"]

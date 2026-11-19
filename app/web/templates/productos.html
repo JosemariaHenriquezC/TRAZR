@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Productos y stock · {{ shop }}{% endblock %}
+{% block content %}
+<div class="head">
+  <div>
+    <h1>Productos y stock</h1>
+    <p>Lo que ve el cliente en el catálogo. Sumá stock cuando entra mercadería; el bot descuenta solo con cada pedido.</p>
+  </div>
+  <a class="tz-btn tz-btn--primary" href="/admin/productos?nuevo=1#editar">Nuevo producto</a>
+</div>
+
+{% if editing or new %}
+{% set p = editing %}
+<section class="tz-panel" id="editar" aria-labelledby="edit-title">
+  <div class="panel-head"><h2 class="section" id="edit-title">{% if new %}Nuevo producto{% else %}Editar {{ p.name }} <span class="id muted">{{ p.sku }}</span>{% endif %}</h2></div>
+  <form method="post" action="/admin/productos/guardar" class="panel-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="es_nuevo" value="{{ '1' if new else '0' }}">
+    <div class="form-grid">
+      {% if new %}
+      <div class="tz-field"><label for="e-sku">SKU (código)</label><input id="e-sku" name="sku" required maxlength="20" placeholder="Ej.: PEP1"></div>
+      {% else %}
+      <input type="hidden" name="sku" value="{{ p.sku }}">
+      {% endif %}
+      <div class="tz-field"><label for="e-nombre">Nombre</label><input id="e-nombre" name="nombre" required value="{{ p.name if p }}" placeholder="Ej.: Pepsi 2.25L"></div>
+      <div class="tz-field"><label for="e-alias">Alias (separados por coma)</label><input id="e-alias" name="alias" value="{{ p.aliases|join(', ') if p }}" placeholder="pepsi, pecsi"></div>
+      <div class="tz-field"><label for="e-cat">Categoría</label><input id="e-cat" name="categoria" list="categorias" value="{{ p.category if p }}"><datalist id="categorias">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist></div>
+      <div class="tz-field"><label for="e-precio">Precio ($)</label><input id="e-precio" name="precio" inputmode="decimal" required value="{{ ('%.2f'|format(p.price)).replace('.', ',') if p }}"></div>
+      <div class="tz-field"><label for="e-caja">Unidades por caja</label><input id="e-caja" name="unidades_caja" inputmode="numeric" value="{{ p.pack_size if p and p.pack_size else '' }}" placeholder="Ej.: 6 (vacío = no se vende por caja)"></div>
+      <div class="tz-field"><label for="e-caja-nombre">Cómo se llama la caja</label><input id="e-caja-nombre" name="nombre_caja" list="nombres-caja" value="{{ p.pack_name if p else 'caja' }}"><datalist id="nombres-caja"><option value="caja"><option value="pack"><option value="fardo"><option value="cajón"><option value="bulto"></datalist></div>
+      <div class="tz-field"><label for="e-stock">Stock (unidades)</label><input id="e-stock" name="stock" inputmode="numeric" required value="{{ p.stock|qty if p else '0' }}"></div>
+      <div class="tz-field"><label for="e-act">Visible en el catálogo</label><select id="e-act" name="activo"><option value="1" {% if not p or p.active %}selected{% endif %}>Sí</option><option value="0" {% if p and not p.active %}selected{% endif %}>No</option></select></div>
+    </div>
+    <div class="actions" style="margin-top: 16px">
+      <button class="tz-btn tz-btn--primary" type="submit">{{ 'Crear producto' if new else 'Guardar cambios' }}</button>
+      <a class="tz-btn tz-btn--secondary" href="/admin/productos">Cancelar</a>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+<div class="toolbar">
+  <nav class="tabs" aria-label="Filtrar">
+    <a href="/admin/productos" {% if filtro == 'todos' %}aria-current="page"{% endif %}>Todos · {{ total }}</a>
+    <a href="/admin/productos?filtro=poco" {% if filtro == 'poco' %}aria-current="page"{% endif %}>Poco stock · {{ counts.poco }}</a>
+    <a href="/admin/productos?filtro=inactivos" {% if filtro == 'inactivos' %}aria-current="page"{% endif %}>Ocultos · {{ counts.inactivos }}</a>
+  </nav>
+  <form class="search" method="get" action="/admin/productos" role="search">
+    <input type="hidden" name="filtro" value="{{ filtro }}">
+    <label class="eyebrow" for="buscar-p">Buscar</label>
+    <input id="buscar-p" name="q" type="search" value="{{ q }}" placeholder="Nombre, alias o SKU">
+  </form>
+</div>
+
+<section class="tz-panel scroll">
+  {% if products %}
+  <table class="tz-table cards">
+    <thead>
+      <tr><th>Producto</th><th>Categoría</th><th class="num">Precio</th><th class="num">Stock</th><th>Sumar stock</th><th>Estado</th><th><span class="sr-only">Editar</span></th></tr>
+    </thead>
+    <tbody>
+    {% for p in products %}
+      <tr {% if editing and editing.sku == p.sku %}class="is-selected"{% endif %}>
+        <td class="lead" data-label="Producto">{{ p.name }} <span class="id muted">{{ p.sku }}</span></td>
+        <td data-label="Categoría">{{ p.category or '—' }}</td>
+        <td class="num" data-label="Precio">{{ p.price|money }}</td>
+        <td class="num" data-label="Stock">{{ p.stock|qty }}{% if p.pack_size %}<span class="muted" style="display:block;font-size:12px">{{ p.pack_name }} × {{ p.pack_size }}</span>{% endif %}</td>
+        <td data-label="Sumar stock">
+          <form class="inline-form" method="post" action="/admin/productos/{{ p.sku }}/sumar">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <input type="hidden" name="volver" value="/admin/productos?filtro={{ filtro }}">
+            <label class="sr-only" for="s-{{ p.sku }}">Sumar a {{ p.name }}</label>
+            <input id="s-{{ p.sku }}" name="cantidad" inputmode="numeric" placeholder="+0" required>
+            <button class="tz-btn tz-btn--secondary btn-sm" type="submit">Sumar</button>
+          </form>
+        </td>
+        <td data-label="Estado">
+          {% if not p.active %}<span class="tz-badge tz-badge--danger">Oculto</span>
+          {% elif p.stock <= 0 %}<span class="tz-badge tz-badge--danger">Sin stock</span>
+          {% elif not p.has_price() %}<span class="tz-badge tz-badge--warn">Sin precio</span>
+          {% elif p.stock < LOW_STOCK %}<span class="tz-badge tz-badge--warn">Poco stock</span>
+          {% else %}<span class="tz-badge tz-badge--ok">Con stock</span>{% endif %}
+        </td>
+        <td class="right" data-label=""><a href="/admin/productos?editar={{ p.sku }}#editar">Editar</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">{% if q %}No hay productos que coincidan con «{{ q }}».{% else %}No hay productos en este filtro.{% endif %}</p>
+  {% endif %}
+</section>
+{% endblock %}

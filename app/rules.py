@@ -4,7 +4,7 @@ Regla de "pedido dentro de los parámetros" (ver también config.Rules y README)
 evaluate() recibe los renglones ya interpretados y devuelve:
   - el estado (CONFIRMADO o EN REVISION),
   - los motivos por los que no se pudo confirmar solo,
-  - los renglones con su precio vigente.
+  - los renglones con su precio actual.
 """
 from __future__ import annotations
 
@@ -39,8 +39,13 @@ def merge_quantities(pairs: list[tuple[Product, int]]) -> list[tuple[Product, in
     return [(p, q) for p, q in merged.values()]
 
 
+NEW_CUSTOMER_REASON = "Primer pedido: lo revisa el equipo antes de confirmarlo"
+
+
 def evaluate(pairs: list[tuple[Product, int]], rules: Rules, today: date,
-             unknown_names: list[str] | None = None) -> Evaluation:
+             unknown_names: list[str] | None = None, new_customer: bool = False) -> Evaluation:
+    """`new_customer`: el cliente todavía no tiene ningún pedido pagado. Con
+    REVISAR_CLIENTES_NUEVOS, su pedido va a revisión para verificar la empresa una vez."""
     reasons: list[str] = []
     shortages: dict[str, float] = {}
     lines: list[OrderLine] = []
@@ -48,8 +53,8 @@ def evaluate(pairs: list[tuple[Product, int]], rules: Rules, today: date,
     for product, qty in merge_quantities(pairs):
         lines.append(OrderLine(sku=product.sku, name=product.name, qty=qty,
                                unit_price=float(product.price or 0)))
-        if rules.require_price_valid and not product.price_is_valid(today):
-            reasons.append(f"Precio no vigente: {product.name} ({product.sku})")
+        if not product.has_price():
+            reasons.append(f"Precio no cargado: {product.name} ({product.sku})")
         if rules.require_stock and product.stock < qty:
             missing = qty - max(product.stock, 0)
             shortages[product.sku] = missing
@@ -62,13 +67,20 @@ def evaluate(pairs: list[tuple[Product, int]], rules: Rules, today: date,
 
     total = round(sum(l.subtotal for l in lines), 2)
     if rules.max_order_total and total > rules.max_order_total:
-        reasons.append(f"El total ({total:.2f}) supera el máximo automático ({rules.max_order_total:.2f})")
+        reasons.append(f"El total ({_ars(total)}) supera el máximo automático ({_ars(rules.max_order_total)})")
 
     if not lines:
         reasons.append("El pedido no tiene productos reconocidos")
+    if new_customer and rules.review_new_customers and lines:
+        reasons.insert(0, NEW_CUSTOMER_REASON)
 
     status = ESTADO_REVISION if reasons else ESTADO_CONFIRMADO
     return Evaluation(status=status, lines=lines, reasons=reasons, shortages=shortages)
+
+
+def _ars(value: float) -> str:
+    """$ 56.400,00 (formato argentino)."""
+    return "$\u00a0" + f"{value:,.2f}".replace(",", "§").replace(".", ",").replace("§", ".")
 
 
 def _fmt_qty(value: float) -> str:

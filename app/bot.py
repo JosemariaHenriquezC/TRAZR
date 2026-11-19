@@ -2,7 +2,7 @@
 Capa de Telegram (python-telegram-bot v21, long polling).
 
 Solo traduce entre Telegram y BotService: no tiene lógica de negocio.
-Las llamadas a la hoja son bloqueantes, por eso se ejecutan en un hilo
+Las llamadas a la base de datos son bloqueantes, por eso se ejecutan en un hilo
 aparte (asyncio.to_thread) para no congelar el bot.
 """
 from __future__ import annotations
@@ -26,21 +26,32 @@ log = logging.getLogger(__name__)
 def _user(update: Update) -> User:
     u = update.effective_user
     name = (u.full_name or u.username or str(u.id)) if u else "desconocido"
-    return User(id=update.effective_chat.id, name=name)
+    return User(id=update.effective_chat.id, name=name, channel="telegram")
 
 
-async def _send(context: ContextTypes.DEFAULT_TYPE, messages: list[Outgoing]) -> None:
-    for m in messages:
+def telegram_sender(bot):
+    """Función de envío por Telegram para el Notifier (la usan el bot y la web)."""
+    async def send(m: Outgoing) -> None:
         markup = None
         if m.buttons:
-            markup = InlineKeyboardMarkup([[InlineKeyboardButton(t, callback_data=d) for t, d in m.buttons]])
+            buttons = [InlineKeyboardButton(t, callback_data=d) for t, d in m.buttons]
+            # Hasta 2 botones en una fila; más, uno por fila (así no se cortan los textos).
+            markup = InlineKeyboardMarkup([buttons] if len(buttons) <= 2 else [[b] for b in buttons])
         try:
-            await context.bot.send_message(chat_id=m.chat_id, text=m.text, parse_mode=ParseMode.HTML,
-                                           reply_markup=markup, disable_web_page_preview=True)
+            await bot.send_message(chat_id=m.chat_id, text=m.text, parse_mode=ParseMode.HTML,
+                                   reply_markup=markup, disable_web_page_preview=True)
         except Forbidden:
             log.warning("El chat %s bloqueó al bot o nunca lo inició; no se pudo avisar.", m.chat_id)
         except TelegramError as exc:
             log.error("No se pudo enviar a %s: %s", m.chat_id, exc)
+    return send
+
+
+async def _send(context: ContextTypes.DEFAULT_TYPE, messages: list[Outgoing]) -> None:
+    send = telegram_sender(context.bot)
+    for m in messages:
+        if m.channel == "telegram":
+            await send(m)
 
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -48,13 +59,20 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = _user(update)
     text = update.effective_message.text or ""
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
-    out = await asyncio.to_thread(service.handle_message, user, text)
+    loop = asyncio.get_running_loop()
+    send = telegram_sender(context.bot)
+
+    def on_wait(m: Outgoing) -> None:
+        # Se llama desde el hilo de trabajo: el envío corre en el bucle del bot.
+        asyncio.run_coroutine_threadsafe(send(m), loop).result(timeout=15)
+
+    out = await asyncio.to_thread(service.handle_message, user, text, on_wait)
     await _send(context, out)
 
 
 async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
-        "Por ahora solo entiendo mensajes de texto. Escribí tu pedido, por ejemplo: 2 yerba, 3 azúcar.")
+        "Por ahora solo entiendo mensajes de texto. Escribí tu pedido, por ejemplo: 2 coca, 3 agua sin gas.")
 
 
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -62,12 +80,11 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     out = await asyncio.to_thread(service.handle_callback, _user(update), query.data or "")
-    # Si se aprobó/rechazó, se quitan los botones del mensaje para no repetir la acción.
-    if out and out[0].text.startswith(("✅", "❌")):
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except TelegramError:
-            pass
+    # Se quitan los botones para que no se toquen dos veces.
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except TelegramError:
+        pass
     await _send(context, out)
 
 
@@ -81,14 +98,79 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
             pass
 
 
+BOT_COMMANDS = [
+    BotCommand("start", "Empezar"), BotCommand("catalogo", "Bebidas y precios"),
+    BotCommand("direccion", "Ver o cambiar mi dirección de envío"),
+    BotCommand("confirmar", "Confirmar el pedido del resumen"),
+    BotCommand("modificar", "Cambiar mi último pedido"),
+    BotCommand("cancelar", "Descartar el pedido sin confirmar"),
+    BotCommand("mispedidos", "Mis últimos pedidos"), BotCommand("ayuda", "Ayuda y comandos"),
+]
+
+
+def profile_texts(shop: str) -> dict:
+    """Nombre y textos del perfil del bot (los que se ven en Telegram)."""
+    return {
+        "name": shop or "Trazr",
+        # «¿Qué puede hacer este bot?» (chat vacío). Hasta 512 caracteres.
+        "description": (f"¡Hola! Soy el bot de pedidos de {shop or 'Trazr'}. Escribime tu pedido como se lo "
+                        "dirías a un vendedor —por ejemplo «2 cajas de branca y 24 norte»— y te armo el "
+                        "resumen con precios y stock al día. También podés pedirme el catálogo o repetir "
+                        "«lo de siempre». Envío incluido, sin costo."),
+        # Texto corto del perfil. Hasta 120 caracteres.
+        "short": "Pedidos de bebidas por chat: escribí lo que necesitás y te armo el pedido con stock y precio al día.",
+    }
+
+
+async def restore_profile(bot, shop: str) -> None:
+    """Deja el perfil del bot como corresponde: nombre, descripción, comandos y botón del menú.
+    Con el token, cualquiera puede cambiar eso (pasó en noviembre de 2026, con el token filtrado):
+    al arrancar se vuelve a poner lo nuestro. Solo escribe lo que difiere (Telegram limita
+    cuántas veces se puede cambiar el nombre)."""
+    texts = profile_texts(shop)
+    steps = [
+        ("nombre", lambda: bot.get_my_name(), "name", lambda: bot.set_my_name(texts["name"]), texts["name"]),
+        ("descripción", lambda: bot.get_my_description(), "description",
+         lambda: bot.set_my_description(texts["description"]), texts["description"]),
+        ("texto corto", lambda: bot.get_my_short_description(), "short_description",
+         lambda: bot.set_my_short_description(texts["short"]), texts["short"]),
+    ]
+    for label, get, field, set_, wanted in steps:
+        try:
+            if getattr(await get(), field, None) != wanted:
+                await set_()
+                log.info("Perfil del bot: restablecí el %s.", label)
+        except TelegramError as exc:
+            log.warning("No pude revisar el %s del bot: %s", label, exc)
+    try:
+        # Versiones en otros idiomas (las que ve, por ejemplo, un usuario en ruso o inglés): se borran.
+        for lang in ("ru", "en", "uk", "pt"):
+            await bot.set_my_name("", language_code=lang)
+            await bot.set_my_description("", language_code=lang)
+            await bot.set_my_short_description("", language_code=lang)
+            await bot.delete_my_commands(language_code=lang)
+        await bot.set_my_commands(BOT_COMMANDS)
+        await bot.set_chat_menu_button()                       # el botón del menú vuelve a «comandos»
+        await bot.set_my_default_administrator_rights()        # sin permisos de admin pedidos
+    except TelegramError as exc:
+        log.warning("No pude restablecer comandos o menú del bot: %s", exc)
+
+
 async def post_init(app: Application) -> None:
-    await app.bot.set_my_commands([
-        BotCommand("start", "Empezar"), BotCommand("catalogo", "Productos y precios"),
-        BotCommand("mispedidos", "Mis últimos pedidos"), BotCommand("ayuda", "Ayuda y comandos"),
-        BotCommand("miid", "Ver mi ID de Telegram"),
-    ])
+    await restore_profile(app.bot, app.bot_data["service"].s.business.name)
     me = await app.bot.get_me()
     log.info("Bot @%s en marcha. Escribile en https://t.me/%s", me.username, me.username)
+
+
+def build_telegram_app(token: str, service: BotService) -> Application:
+    """Arma el bot con sus handlers (lo usan `python -m app.bot` y el servidor web)."""
+    app = Application.builder().token(token).post_init(post_init).build()
+    app.bot_data["service"] = service
+    app.add_handler(MessageHandler(filters.TEXT, on_text))
+    app.add_handler(CallbackQueryHandler(on_button))
+    app.add_handler(MessageHandler(~filters.TEXT & ~filters.StatusUpdate.ALL, on_other))
+    app.add_error_handler(on_error)
+    return app
 
 
 def main() -> None:
@@ -99,24 +181,27 @@ def main() -> None:
     except ConfigError as exc:
         raise SystemExit(f"Error de configuración: {exc}")
 
-    repo = build_repository(settings)
-    # Verificación temprana: si las hojas no son accesibles, se avisa al arrancar.
+    try:
+        repo = build_repository(settings)
+    except StorageError as exc:
+        raise SystemExit(str(exc))
+    # Verificación temprana: si la base de datos no es accesible, se avisa al arrancar.
     try:
         n = len(repo.list_products())
         repo.list_orders()
-        log.info("Hojas OK (%s): %d productos en stock.", settings.storage_backend, n)
+        log.info("Base de datos OK (%s): %d productos en el catálogo.", settings.database_path, n)
+        if n == 0:
+            log.warning("El catálogo está vacío. Cargalo con: python -m scripts.init_db --ejemplo "
+                        "(o --csv tu_catalogo.csv).")
     except StorageError as exc:
-        raise SystemExit(f"No pude acceder a las hojas: {exc}")
-    if not settings.admin_chat_ids:
-        log.warning("ADMIN_CHAT_IDS vacío: nadie es administrador. Escribile /miid al bot y "
-                    "poné ese número en el .env.")
+        raise SystemExit(f"No pude acceder a la base de datos: {exc}")
+    if settings.ai.usable:
+        log.info("Intérprete: Gemini (%s) con respaldo por reglas.", settings.ai.model)
+    else:
+        log.warning("Gemini APAGADO (falta GEMINI_API_KEY, AI_PARSER_ENABLED=false o falta "
+                    "la librería google-genai): los pedidos se interpretan solo por reglas.")
 
-    app = Application.builder().token(settings.telegram_token).post_init(post_init).build()
-    app.bot_data["service"] = BotService(repo, settings)
-    app.add_handler(MessageHandler(filters.TEXT, on_text))
-    app.add_handler(CallbackQueryHandler(on_button))
-    app.add_handler(MessageHandler(~filters.TEXT & ~filters.StatusUpdate.ALL, on_other))
-    app.add_error_handler(on_error)
+    app = build_telegram_app(settings.telegram_token, BotService(repo, settings))
     asyncio.set_event_loop(asyncio.new_event_loop())
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

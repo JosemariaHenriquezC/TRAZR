@@ -1,0 +1,274 @@
+"""Web de administración: rutas, login, CSRF y acciones (sin navegador ni APIs reales)."""
+import re
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.notifier import Notifier
+from app.web.main import create_app
+
+from .conftest import CLIENT, pedir
+
+
+class FakeTelegram:
+    def __init__(self):
+        self.sent = []
+
+    async def __call__(self, m):
+        self.sent.append(m)
+
+
+@pytest.fixture
+def tg():
+    return FakeTelegram()
+
+
+@pytest.fixture
+def client(svc, settings, tg):
+    settings.secret_key = "clave-de-prueba"
+    notifier = Notifier()
+    notifier.register("telegram", tg)
+    assert svc.create_admin("lucia", "Lucía Fernández", "limones123").ok
+    return TestClient(create_app(svc, notifier, settings))
+
+
+def csrf(html: str) -> str:
+    return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+
+
+def login(client, user="lucia", password="limones123"):
+    token = csrf(client.get("/admin/ingresar").text)
+    return client.post("/admin/ingresar", data={"usuario": user, "clave": password, "csrf_token": token},
+                       follow_redirects=False)
+
+
+@pytest.fixture
+def admin(client):
+    assert login(client).status_code == 303
+    return client
+
+
+def text(resp) -> str:
+    return re.sub(r"\s+", " ", resp.text)
+
+
+# ---------------------------------------------------------------- acceso
+def test_todo_pide_ingresar(client):
+    for url in ["/admin", "/admin/pedidos", "/admin/productos", "/admin/clientes", "/admin/pedidos/P1"]:
+        r = client.get(url, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/admin/ingresar", url
+    assert client.get("/salud").text == "ok"
+
+
+def test_login_correcto_e_incorrecto(client):
+    r = login(client, password="mal")
+    assert r.status_code == 200 and "Usuario o contraseña incorrectos" in r.text
+    r = login(client)
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+    assert "Lucía" in client.get("/admin").text
+    page = client.get("/admin").text
+    client.post("/admin/salir", data={"csrf_token": csrf(page)})
+    assert client.get("/admin", follow_redirects=False).status_code == 303
+
+
+def test_sin_token_csrf_no_hace_nada(admin, svc, repo):
+    r = admin.post("/admin/productos/COC1/sumar", data={"cantidad": "10", "csrf_token": "falso"}, follow_redirects=False)
+    assert r.status_code == 303 and repo.get_product("COC1").stock == 50
+
+
+def test_la_cookie_es_httponly(client):
+    r = login(client)
+    cookie = r.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=lax" in cookie
+
+
+# ---------------------------------------------------------------- tablero
+def test_tablero(admin, svc, repo):
+    pedir(svc, CLIENT, "2 coca")
+    pedir(svc, CLIENT, "1 fernet")
+    t = text(admin.get("/admin"))
+    assert "1 pedido espera tu decisión" in t
+    assert "Vendido hoy" in t and "$ 6.400" in t              # remito del día
+    assert "El día en reparto" in t and "corte" in t              # pedidos por hora y corte de entrega
+    assert "supera el máximo automático" in t                     # cola de decisiones y avisos
+    assert "Se está por acabar" in t and "Vino Tinto Malbec 750ml" in t and "Sin stock" in t
+    assert 'class="count"' in t and 'class="menu-toggle"' in t     # contador y hamburguesa
+    assert 'data-version="' in t
+    page = admin.get("/admin").text
+    admin.post("/admin/avisos/leidos", data={"csrf_token": csrf(page)})
+    assert repo.list_notices(unread_only=True) == []
+
+
+# ---------------------------------------------------------------- pedidos
+def test_aprobar_avisa_al_cliente(admin, svc, repo, tg):
+    pedir(svc, CLIENT, "1 fernet")
+    oid = repo.list_orders()[-1].order_id
+    t = text(admin.get("/admin/pedidos"))
+    assert oid in t and "En revisión · 1" in t
+    page = admin.get(f"/admin/pedidos/{oid}").text
+    assert "Por qué está en revisión" in page and "supera el máximo automático" in page
+    assert "precio_" not in page and "vigente" not in page.lower()   # ya no hay vencimiento de precios
+    r = admin.post(f"/admin/pedidos/{oid}/aprobar", data={"csrf_token": csrf(page)})
+    assert "aprobado: se descontó el stock y se avisó al cliente" in r.text
+    o = repo.get_order(oid)
+    assert o.status == "CONFIRMADO" and o.reviewed_by == "Lucía Fernández" and o.total == 12000
+    assert len(tg.sent) == 1 and tg.sent[0].chat_id == CLIENT.id and "¡Tu pedido fue aprobado!" in tg.sent[0].text
+    assert "Aprobado por Lucía Fernández" in r.text and "Aprobar y avisar" not in r.text
+    # Queda por cobrar: se confirma el pago desde la web y el cliente recibe el aviso
+    assert "Por cobrar" in r.text and "Confirmar pago recibido" in r.text
+    r = admin.post(f"/admin/pedidos/{oid}/pago", data={"csrf_token": csrf(r.text)})
+    assert "Pago del pedido" in r.text and repo.get_order(oid).is_paid
+    assert repo.get_order(oid).paid_by == "Lucía Fernández"
+    assert "Gracias por tu compra" in tg.sent[1].text and "envío" not in tg.sent[1].text and tg.sent[1].chat_id == CLIENT.id
+    assert "ya figura como pagado" in admin.post(f"/admin/pedidos/{oid}/pago", data={"csrf_token": csrf(r.text)}).text
+
+
+def test_aprobar_bloqueado_por_stock(admin, svc, repo, tg):
+    pedir(svc, CLIENT, "1 fernet")
+    oid = repo.list_orders()[-1].order_id
+    svc.set_stock("FER1", 0)
+    page = admin.get(f"/admin/pedidos/{oid}").text
+    assert "Hay 0" in page
+    r = admin.post(f"/admin/pedidos/{oid}/aprobar", data={"csrf_token": csrf(page)})
+    assert "No se puede aprobar todavía" in r.text and repo.get_order(oid).status == "EN REVISION"
+    assert tg.sent == []
+
+
+def test_rechazar_con_motivo(admin, svc, repo, tg):
+    pedir(svc, CLIENT, "1 fernet")
+    oid = repo.list_orders()[-1].order_id
+    page = admin.get(f"/admin/pedidos/{oid}").text
+    r = admin.post(f"/admin/pedidos/{oid}/rechazar", data={"csrf_token": csrf(page), "motivo": " "})
+    assert "Escribí el motivo" in r.text
+    r = admin.post(f"/admin/pedidos/{oid}/rechazar", data={"csrf_token": csrf(page), "motivo": "Sin Fernet hasta el lunes"})
+    assert "rechazado" in r.text and repo.get_order(oid).status == "RECHAZADO"
+    assert "Sin Fernet hasta el lunes" in tg.sent[0].text
+    assert "Rechazados y cancelados · 1" in text(admin.get("/admin/pedidos?estado=rechazados"))
+
+
+def test_buscar_y_pedido_inexistente(admin, svc, repo):
+    pedir(svc, CLIENT, "1 fernet")
+    assert repo.list_orders()[-1].order_id in admin.get("/admin/pedidos?estado=todos&q=fernet").text
+    assert "No hay pedidos que coincidan" in admin.get("/admin/pedidos?estado=todos&q=whisky").text
+    assert "No encontré el pedido" in admin.get("/admin/pedidos/NOEXISTE").text
+
+
+def test_html_escapado(admin, svc, repo):
+    from app.service import User
+    pedir(svc, User(77, "<script>alert(1)</script>"), "/direccion Calle 123, Tucumán")
+    pedir(svc, User(77, "<script>alert(1)</script>"), "1 fernet")
+    page = admin.get("/admin/pedidos").text
+    assert "<script>alert(1)</script>" not in page and "&lt;script&gt;" in page
+
+
+# ---------------------------------------------------------------- productos
+def test_sumar_stock_y_filtros(admin, repo):
+    page = admin.get("/admin/productos").text
+    r = admin.post("/admin/productos/CER1/sumar", data={"csrf_token": csrf(page), "cantidad": "24"})
+    assert "Cerveza Rubia 1L: 29 unidades (+24)" in r.text and repo.get_product("CER1").stock == 29
+    r = admin.post("/admin/productos/CER1/sumar", data={"csrf_token": csrf(page), "cantidad": "2,5"})
+    assert "cantidad entera" in r.text
+    poco = admin.get("/admin/productos?filtro=poco").text
+    assert "Cerveza Rubia 1L" not in poco and "Vino Tinto Malbec 750ml" in poco   # la cerveza ya tiene 29
+    assert "Precio vencido" not in admin.get("/admin/productos").text
+
+
+def test_alta_y_edicion_de_producto(admin, svc, repo):
+    page = admin.get("/admin/productos?nuevo=1").text
+    data = {"csrf_token": csrf(page), "es_nuevo": "1", "sku": "pep1", "nombre": "Pepsi 2.25L",
+            "alias": "pepsi, pecsi", "categoria": "Gaseosas", "precio": "2.900,50",
+            "stock": "24", "activo": "1"}
+    r = admin.post("/admin/productos/guardar", data=data)
+    assert "Producto creado: Pepsi 2.25L" in r.text
+    p = repo.get_product("PEP1")
+    assert p.price == 2900.5 and p.aliases == ["pepsi", "pecsi"]
+    r = admin.post("/admin/productos/guardar", data=data)
+    assert "Ya existe" in r.text
+    page = admin.get("/admin/productos?editar=PEP1").text
+    assert "Editar Pepsi 2.25L" in page and 'value="2900,50"' in page
+    edit = dict(data, csrf_token=csrf(page), es_nuevo="0", sku="PEP1", precio="3100", activo="0")
+    assert "Cambios guardados" in admin.post("/admin/productos/guardar", data=edit).text
+    p = repo.get_product("PEP1")
+    assert p.price == 3100 and not p.active
+    # Lo que se cambia en la web lo ve el bot al instante: el producto oculto sale del catálogo
+    from app.service import User
+    assert "Pepsi" not in svc.handle_message(User(5, "X"), "/catalogo")[0].text
+    bad = dict(edit, precio="mucho")
+    assert "precio válido" in admin.post("/admin/productos/guardar", data=bad).text
+
+
+# ---------------------------------------------------------------- clientes
+def test_clientes(admin, svc, repo):
+    pedir(svc, CLIENT, "2 coca")
+    t = text(admin.get("/admin/clientes"))
+    assert CLIENT.name in t and "Av. Mate de Luna 1234" in t and "$ 6.400" in t
+    assert "Coca-Cola 2.25L" in t   # compra típica
+    assert "No hay clientes que coincidan" in admin.get("/admin/clientes?q=zzzz").text
+
+
+def test_cambios_para_refresco_automatico(admin, svc, repo):
+    v1 = admin.get("/admin/cambios").text
+    assert v1 == admin.get("/admin/cambios").text and len(v1) == 16          # sin cambios, misma firma
+    pedir(svc, CLIENT, "2 coca")                                        # entra un pedido por el chat
+    v2 = admin.get("/admin/cambios").text
+    assert v2 != v1
+    svc.add_stock("CER1", 3)                                             # o cambia el stock
+    assert admin.get("/admin/cambios").text != v2
+    assert admin.get("/admin/cambios", headers={}).headers["cache-control"] == "no-store"
+
+
+def test_cambios_pide_ingresar(client):
+    assert client.get("/admin/cambios", follow_redirects=False).status_code == 303
+
+
+def test_cobros_desde_el_tablero_y_cancelar_impago(admin, svc, repo, tg):
+    pedir(svc, CLIENT, "2 coca", pago="transferencia")
+    pedir(svc, CLIENT, "1 sprite")
+    t = text(admin.get("/admin"))
+    assert "Por cobrar" in t and "$ 9.400" in t and "Pago recibido" in t      # remito + lista
+    assert "Por cobrar · 2" in text(admin.get("/admin/pedidos?estado=por_cobrar"))
+    o1, o2 = repo.list_orders()
+    r = admin.post(f"/admin/pedidos/{o2.order_id}/pago", data={"csrf_token": csrf(admin.get("/admin").text), "volver": "/admin"},
+                   follow_redirects=False)
+    assert r.headers["location"] == "/admin" and repo.get_order(o2.order_id).is_paid
+    page = admin.get(f"/admin/pedidos/{o1.order_id}").text
+    assert "Transferencia" in page and "se cancela solo" in page
+    r = admin.post(f"/admin/pedidos/{o1.order_id}/cancelar", data={"csrf_token": csrf(page), "motivo": ""})
+    assert "cancelado: volvió el stock" in r.text
+    assert repo.get_order(o1.order_id).status == "CANCELADO" and repo.get_product("COC1").stock == 50
+    assert "No recibimos el pago" in tg.sent[-1].text
+
+
+def test_politica_de_privacidad_es_publica(settings, svc):
+    from fastapi.testclient import TestClient
+    from app.notifier import Notifier
+    from app.web.main import create_app
+    r = TestClient(create_app(svc, Notifier(), settings)).get("/privacidad", follow_redirects=False)
+    assert r.status_code == 200
+    assert "Política de privacidad" in r.text and 'id="borrar"' in r.text and "25.326" in r.text
+
+
+# ---------------------------------------------------------------- landing (/)
+def test_la_landing_esta_en_la_raiz_con_los_links_del_env(svc, settings):
+    from dataclasses import replace
+    s = replace(settings, landing_whatsapp="5493810000000", landing_telegram="TrazrBot")
+    page = TestClient(create_app(svc, Notifier(), s)).get("/")
+    assert page.status_code == 200 and '<div id="root">' in page.text
+    assert '"whatsapp": "https://wa.me/5493810000000?text=Hola"' in page.text
+    assert '"telegram": "https://t.me/TrazrBot"' in page.text and "__TRAZR_CONFIG__" not in page.text
+
+
+def test_la_landing_sin_links_no_rompe_y_sus_archivos_se_sirven(svc, settings):
+    import re
+    c = TestClient(create_app(svc, Notifier(), settings))
+    page = c.get("/").text
+    assert '<script id="trazr-config" type="application/json">{}</script>' in page
+    for asset in re.findall(r'(?:src|href)="(/landing/assets/[^"]+)"', page):
+        assert c.get(asset).status_code == 200, asset
+
+
+def test_los_links_viejos_del_panel_llevan_a_admin(svc, settings):
+    c = TestClient(create_app(svc, Notifier(), settings))
+    for old in ("/ingresar", "/pedidos", "/productos", "/clientes"):
+        r = c.get(old, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/admin" + old

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Clientes · {{ shop }}{% endblock %}
+{% block content %}
+<div class="head">
+  <div>
+    <h1>Clientes</h1>
+    <p>Quienes pidieron por el chat, con la dirección que tienen guardada para los envíos.</p>
+  </div>
+  <form class="search" method="get" action="/admin/clientes" role="search">
+    <label class="eyebrow" for="buscar-c">Buscar</label>
+    <input id="buscar-c" name="q" type="search" value="{{ q }}" placeholder="Nombre o dirección">
+  </form>
+</div>
+
+{% if rows %}
+<div class="grid-main">
+  <section class="tz-panel scroll">
+    <table class="tz-table cards">
+      <thead><tr><th>Cliente</th><th>Canal</th><th>Dirección guardada</th><th class="num">Pedidos</th><th class="num">Comprado</th><th>Último pedido</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr {% if selected and r.key == selected.key %}class="is-selected"{% endif %}>
+          <td class="lead" data-label="Cliente"><a href="/admin/clientes?c={{ r.key|urlq }}{{ '&q=' ~ q|urlq if q }}">{{ r.customer.name or 'Sin nombre' }}</a>{% if not r.verified %} <span class="tz-badge tz-badge--warn">Nuevo</span>{% endif %}</td>
+          <td data-label="Canal">{{ 'Telegram' if r.customer.channel == 'telegram' else r.customer.channel|capitalize }}</td>
+          <td data-label="Dirección">{% if r.customer.address %}{{ r.customer.address }}{% else %}<span class="muted">sin dirección todavía</span>{% endif %}</td>
+          <td class="num" data-label="Pedidos">{{ r.count }}</td>
+          <td class="num" data-label="Comprado">{{ r.spent|money }}</td>
+          <td data-label="Último pedido">{{ r.last|fecha if r.last else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% if selected %}
+  <section class="tz-panel">
+    <div class="panel-head"><h2 class="section">{{ selected.customer.name or 'Sin nombre' }}</h2>
+      {% if selected.verified %}<span class="tz-badge tz-badge--ok">Verificado</span>{% else %}<span class="tz-badge tz-badge--warn">Nuevo: primer pedido a revisión</span>{% endif %}</div>
+    <dl class="kv">
+      <dt>Canal</dt><dd>{{ 'Telegram' if selected.customer.channel == 'telegram' else selected.customer.channel|capitalize }}</dd>
+      <dt>Dirección</dt><dd>{{ selected.customer.address or '—' }}</dd>
+      <dt>Comprado</dt><dd>{{ selected.spent|money }} en pedidos confirmados</dd>
+      <dt>Chat</dt><dd>{% if (selected.customer.channel ~ ':' ~ selected.customer.external_id) in attention_keys %}<a href="/admin/atencion?c={{ (selected.customer.channel ~ ':' ~ selected.customer.external_id)|urlq }}">Lo atiende una persona: ver la charla</a>{% else %}
+        <form class="inline-form" method="post" action="/admin/atencion/tomar"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="c" value="{{ selected.customer.channel }}:{{ selected.customer.external_id }}"><button class="tz-btn tz-btn--secondary btn-sm" type="submit">Atender yo</button></form> <span class="muted">el bot deja de contestarle hasta que lo devuelvas</span>{% endif %}</dd>
+      {% if selected.top %}<dt>Compra típica</dt><dd>{{ selected.top|join(', ') }}</dd>{% endif %}
+    </dl>
+    {% if selected.orders %}
+    <table class="tz-table cards">
+      <thead><tr><th>Pedido</th><th>Fecha</th><th class="num">Total</th><th>Estado</th></tr></thead>
+      <tbody>
+      {% for o in selected.orders|reverse %}{% if loop.index <= 8 %}
+        <tr><td class="id lead" data-label="Pedido"><a href="/admin/pedidos/{{ o.order_id }}">{{ o.order_id }}</a></td><td data-label="Fecha">{{ o.created_at|fecha }}</td><td class="num" data-label="Total">{{ o.total|money }}</td><td data-label="Estado">{% include "_badge.html" %}</td></tr>
+      {% endif %}{% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Todavía no hizo pedidos.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% else %}
+<section class="tz-panel"><p class="empty">{% if q %}No hay clientes que coincidan con «{{ q }}».{% else %}Todavía no hay clientes: aparecen cuando alguien escribe al bot.{% endif %}</p></section>
+{% endif %}
+{% endblock %}

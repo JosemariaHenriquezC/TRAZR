@@ -2,21 +2,35 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 
-# Estados posibles de un pedido en la hoja de pedidos.
+# Estados posibles de un pedido.
 ESTADO_CONFIRMADO = "CONFIRMADO"
 ESTADO_REVISION = "EN REVISION"
 ESTADO_RECHAZADO = "RECHAZADO"
+ESTADO_CANCELADO = "CANCELADO"     # no se recibió el pago a tiempo: el stock se devolvió
+ESTADOS = (ESTADO_CONFIRMADO, ESTADO_REVISION, ESTADO_RECHAZADO, ESTADO_CANCELADO)
 
-# Columnas de la hoja de stock (en este orden; la primera fila es el encabezado).
-STOCK_COLUMNS = ["SKU", "Producto", "Alias", "Stock", "Precio", "Vigente_hasta", "Activo", "Actualizado"]
+# Pago: es una dimensión aparte del estado. Un pedido CONFIRMADO puede estar pendiente de pago o pagado.
+PAGO_PENDIENTE = "pendiente"
+PAGO_PAGADO = "pagado"
+MEDIOS_PAGO = {"efectivo": "Efectivo al recibir", "transferencia": "Transferencia"}
 
-# Columnas de la hoja de pedidos.
-ORDER_COLUMNS = [
-    "Pedido_ID", "Fecha", "Cliente_ID", "Cliente_nombre", "Mensaje_original",
-    "Detalle", "Items_JSON", "Total", "Estado", "Motivo", "Actualizado", "Revisado_por",
-]
+# El envío está siempre incluido en el precio: no se cobra aparte.
+COSTO_ENVIO = 0.0
+
+
+def plural(word: str, n: int) -> str:
+    """caja → cajas, pack → packs, cajón → cajones, fardo → fardos."""
+    word = word.strip() or "caja"
+    if n == 1:
+        return word
+    if word.endswith("ón"):
+        return word[:-2] + "ones"
+    if word[-1] in "aeiouáéíóú":
+        return word + "s"
+    if word.endswith(("k", "t", "p")):
+        return word + "s"
+    return word + "es"
 
 
 @dataclass
@@ -26,14 +40,76 @@ class Product:
     aliases: list[str]
     stock: float
     price: float
-    valid_until: date | None
-    active: bool
-    row: int = 0  # número de fila en la hoja (para actualizar)
+    active: bool = True
+    category: str = ""        # Gaseosas, Aguas, Cervezas, Vinos, ...
+    # Caja (o pack, fardo, cajón): cuántas unidades trae. 0 = no está cargado (si el cliente
+    # pide cajas, el bot pregunta cuántas unidades son). Stock y precio siguen en unidades.
+    pack_size: int = 0
+    pack_name: str = "caja"
 
-    def price_is_valid(self, today: date) -> bool:
-        if self.price is None or self.price <= 0:
-            return False
-        return self.valid_until is None or self.valid_until >= today
+    def packs(self, qty: int) -> tuple[int, int]:
+        """Cuántas cajas cerradas y cuántas sueltas son `qty` unidades (para armar el pedido)."""
+        if self.pack_size <= 0:
+            return 0, int(qty)
+        return divmod(int(qty), self.pack_size)
+
+    def pack_label(self, qty: int) -> str:
+        """«2 cajas + 1 suelta» (vacío si no hay caja cargada o no llega a una caja)."""
+        boxes, loose = self.packs(qty)
+        if not boxes:
+            return ""
+        parts = [f"{boxes} {plural(self.pack_name, boxes)}"]
+        if loose:
+            parts.append(f"{loose} suelta{'s' if loose != 1 else ''}")
+        return " + ".join(parts)
+
+    def has_price(self) -> bool:
+        """Los precios no vencen: solo hace falta que esté cargado (mayor a 0)."""
+        return self.price is not None and self.price > 0
+
+
+@dataclass
+class Customer:
+    """Cliente identificado por canal (telegram, whatsapp...) + su ID en ese canal."""
+    channel: str
+    external_id: str
+    name: str = ""
+    address: str = ""
+
+
+@dataclass
+class Notice:
+    """Aviso para el admin (se ve en la web, ya no llega por chat)."""
+    id: int
+    created_at: str
+    kind: str          # revision | modificado | fuera_de_termino | falla
+    title: str
+    detail: str = ""
+    order_id: str = ""
+    read: bool = False
+
+
+@dataclass
+class Handoff:
+    """Cliente atendido por una persona del equipo: el bot no le contesta hasta que lo devuelven.
+    Solo se guarda quién y por qué; los mensajes del chat NO se guardan en la base."""
+    id: int
+    channel: str
+    external_id: str
+    name: str
+    reason: str
+    since: str
+    until: str = ""          # vacío = abierta
+    closed_by: str = ""
+
+
+@dataclass
+class Admin:
+    """Usuario de la web de administración."""
+    username: str
+    name: str
+    password_hash: str
+    active: bool = True
 
 
 @dataclass
@@ -69,11 +145,34 @@ class Order:
     reason: str = ""
     updated_at: str = ""
     reviewed_by: str = ""
-    row: int = 0
+    address: str = ""                 # dirección de envío (obligatoria para registrar)
+    shipping_cost: float = COSTO_ENVIO
+    channel: str = "telegram"
+    payment_method: str = ""          # efectivo | transferencia
+    payment_status: str = ""          # pendiente | pagado
+    paid_at: str = ""
+    paid_by: str = ""                 # admin que confirmó el pago
+
+    @property
+    def is_paid(self) -> bool:
+        return self.payment_status == PAGO_PAGADO
+
+    @property
+    def awaiting_payment(self) -> bool:
+        """Confirmado (stock reservado) y todavía sin pagar."""
+        return self.status == ESTADO_CONFIRMADO and self.payment_status == PAGO_PENDIENTE
+
+    @property
+    def payment_label(self) -> str:
+        return MEDIOS_PAGO.get(self.payment_method, self.payment_method or "—")
+
+    @property
+    def items_total(self) -> float:
+        return round(sum(l.subtotal for l in self.lines), 2)
 
     @property
     def total(self) -> float:
-        return round(sum(l.subtotal for l in self.lines), 2)
+        return round(self.items_total + self.shipping_cost, 2)
 
 
 @dataclass
