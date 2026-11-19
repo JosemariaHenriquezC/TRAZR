@@ -127,9 +127,12 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   AI_DOWN_MSG): el usuario decidió esas reglas; el admin puede «Atender yo» desde Clientes. Panel
   `/admin/atencion` (contador en el menú; charla de las últimas 12 h en memoria, HISTORY_KEEP=40; responder;
   «Devolver al bot» → RELEASE_MSG). `admin.attention_*`; tests en tests/test_atencion.py.
-- QR de WhatsApp: `app/web/static/marca/trazr-qr-whatsapp(-afiche).png` → wa.me/5493815568463?text=Hola
-  (verificado con lector). Chip: +54 9 381 556-8463, era de otro negocio (SALEM): el usuario lo libera con
-  WhatsApp Business (su número personal usa WhatsApp común) y después lo agrega a la cuenta «Trazr».
+- NÚMERO DEL BOT (19/11): eSIM limpia +54 9 3865 65-6821 (wa.me/5493865656821). QR y afiche en
+  `app/web/static/marca/trazr-qr-whatsapp(-afiche).png` → wa.me/5493865656821?text=Hola (verificados con
+  lector). El chip anterior (+54 9 381 556-8463) estaba en la API de otro negocio (SALEM): soporte de
+  WhatsApp ofrece liberarlo con comprobante; quedó de repuesto. Falta: verificar en Meta (SMS/llamada),
+  PHONE_NUMBER_ID y WABA_ID nuevos en .env, registrar con PIN, subscribed_apps, token permanente,
+  LANDING_WHATSAPP=5493865656821.
 - Sitio público (dominio fijo de ngrok del usuario): https://residence-pod-pug.ngrok-free.dev
   (landing en `/`, panel en `/admin`, privacidad en `/privacidad`, webhook en `/whatsapp/webhook`).
   Cargado como sitio web del portfolio de Meta (19/11). Solo anda con la PC del usuario prendida.
