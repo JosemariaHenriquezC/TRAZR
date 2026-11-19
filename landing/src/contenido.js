@@ -75,6 +75,6 @@ export const POR_QUE = [
   { titulo: 'Frente a sumar administrativos', texto: 'El costo no crece con cada pedido, y nadie atiende fuera de hora.' },
 ]
 
-export const EQUIPO = ['Josemaria Henriquez Colacioppo', 'Nicolás Quinteros', 'Isa Pizzuto Dip']
+export const EQUIPO = ['Josemaria Henriquez Colaccioppo', 'Nicolás Quinteros', 'Isa Pizzuto Dip']
 
 export const TFI = 'Administración de Sistemas de Información · UTN Facultad Regional Tucumán · Comisión 4K1 · 2026'

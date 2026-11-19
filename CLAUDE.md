@@ -3,7 +3,7 @@
 Bot de Telegram en Python que recibe pedidos de bebidas en lenguaje natural,
 valida stock y precio contra la base SQLite, confirma o deriva a revisión del
 admin. TFI de Administración de Sistemas de Información, UTN-FRT, comisión 4K1.
-Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (solo nombres, sin roles).
+Equipo: Josemaria Henriquez Colaccioppo, Nicolás Quinteros, Isa Pizzuto Dip (solo nombres, sin roles).
 
 ## Arquitectura
 - `app/server.py` — `python -m app.server`: web + bot de Telegram en un proceso
