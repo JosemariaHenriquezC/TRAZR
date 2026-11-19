@@ -148,7 +148,8 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   US$ 30; el usuario no tiene plata). Se usa **Azure for Students** (sin tarjeta, US$ 100 por 12 meses, VM B1s
   gratis), activado con GitHub Student Pack / cuenta de la UTN. Subdominio de FreeDNS **trazr.bot.nu**
   (reservado apuntando a 127.0.0.1; después → IP pública de la VM)
-  + Caddy para HTTPS (reemplaza a ngrok). Al migrar: cambiar en Meta webhook, privacidad y sitio web, y el
+  + Caddy para HTTPS (reemplaza a ngrok). Instalación en la VM: `scripts/instalar_servidor.sh <dominio>` (Caddy, uv/Python 3.13,
+  servicio systemd `trazr`; se corre de nuevo para actualizar; el .env y data/ se suben a mano). Al migrar: cambiar en Meta webhook, privacidad y sitio web, y el
   anexo del TFI. Los QR no cambian (apuntan a wa.me / t.me).
 - Sitio público (dominio fijo de ngrok del usuario): https://residence-pod-pug.ngrok-free.dev
   (landing en `/`, panel en `/admin`, privacidad en `/privacidad`, webhook en `/whatsapp/webhook`).
