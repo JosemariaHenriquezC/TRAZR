@@ -144,16 +144,19 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   WHATSAPP_GRATIS_MES=1000).
 - TELEGRAM: bot @asistenteTRAZRbot (https://t.me/asistenteTRAZRbot). QR distinto al de WhatsApp (fondo limón,
   franja verde): `app/web/static/marca/trazr-qr-telegram(-afiche).png`, verificado con lector.
-- SERVIDOR PERMANENTE — EN CURSO (19/11): Google Cloud DESCARTADO (rechazó la tarjeta / pedía depósito de
-  US$ 30; el usuario no tiene plata). Se usa **Azure for Students** (sin tarjeta, US$ 100 por 12 meses, VM B1s
-  gratis), activado con GitHub Student Pack / cuenta de la UTN. Subdominio de FreeDNS **trazr.bot.nu**
-  (reservado apuntando a 127.0.0.1; después → IP pública de la VM)
-  + Caddy para HTTPS (reemplaza a ngrok). Instalación en la VM: `scripts/instalar_servidor.sh <dominio>` (Caddy, uv/Python 3.13,
-  servicio systemd `trazr`; se corre de nuevo para actualizar; el .env y data/ se suben a mano). Al migrar: cambiar en Meta webhook, privacidad y sitio web, y el
-  anexo del TFI. Los QR no cambian (apuntan a wa.me / t.me).
-- Sitio público (dominio fijo de ngrok del usuario): https://residence-pod-pug.ngrok-free.dev
-  (landing en `/`, panel en `/admin`, privacidad en `/privacidad`, webhook en `/whatsapp/webhook`).
-  Cargado como sitio web del portfolio de Meta (19/11). Solo anda con la PC del usuario prendida.
+- SERVIDOR PERMANENTE — EN MARCHA (19/11): **https://trazr.tech** (landing `/`, panel `/admin`, privacidad
+  `/privacidad`, webhook `/whatsapp/webhook`). Google Cloud DESCARTADO (pedía tarjeta/depósito). **Azure for
+  Students** (sin tarjeta, US$ 100 por 12 meses): VM Arm **Standard_B2pts_v2**, Ubuntu 24.04 Arm64, región
+  Canadá, IP pública estática 52.138.17.238 (`trazr-ip`, se paga con el crédito), puertos 22/80/443. Dominio
+  **trazr.tech** gratis 1 año (GitHub Student Pack, get.tech; registro A → la IP; hay que renovarlo o se pierde).
+  FreeDNS trazr.bot.nu quedó sin usar. Instalado con `scripts/instalar_servidor.sh trazr.tech` (Caddy con
+  HTTPS automático, uv/Python 3.13, servicio systemd `trazr` en /opt/trazr; correrlo de nuevo = actualizar
+  desde `development`). El .env (NGROK_DOMAIN vacío) y data/trazr.db se subieron con scp. Entrar:
+  `ssh trazr@52.138.17.238`; registro: `sudo journalctl -u trazr -f`; admins:
+  `cd /opt/trazr && sudo -u trazr .venv/bin/python -m scripts.crear_admin ...`. La PC del usuario ya NO corre
+  el servidor (dos instancias = Conflict de Telegram). Meta: webhook, privacidad y sitio web → trazr.tech.
+  Los QR no cambian (apuntan a wa.me / t.me). Falta: anexo del TFI con trazr.tech.
+- Sitio anterior (ngrok, solo con la PC prendida): https://residence-pod-pug.ngrok-free.dev — reemplazado.
 - Meta: la app usaba «Test Messaging Account» (solo admite el número de prueba). Para el chip se
   crea una cuenta de WhatsApp nueva «Trazr» en el portfolio; antes Meta exigió completar la
   información del negocio (dirección, teléfono, sitio, mail). Después: nuevo WHATSAPP_WABA_ID y
