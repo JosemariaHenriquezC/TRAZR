@@ -121,6 +121,13 @@ Equipo: Josemaria Henriquez Colacioppo, Nicolás Quinteros, Isa Pizzuto Dip (sol
   en `WhatsAppClient._held` (RAM) + aviso «Aviso pendiente» en el panel, y `flush()` lo manda cuando el
   cliente vuelve a escribir. Las respuestas del bot no se pueden evitar (posible cobro desde 10/2026).
 - Handoff: el admin atiende desde el PANEL (no desde la app), pendiente de programar.
+- Sitio público (dominio fijo de ngrok del usuario): https://residence-pod-pug.ngrok-free.dev
+  (landing en `/`, panel en `/admin`, privacidad en `/privacidad`, webhook en `/whatsapp/webhook`).
+  Cargado como sitio web del portfolio de Meta (19/11). Solo anda con la PC del usuario prendida.
+- Meta: la app usaba «Test Messaging Account» (solo admite el número de prueba). Para el chip se
+  crea una cuenta de WhatsApp nueva «Trazr» en el portfolio; antes Meta exigió completar la
+  información del negocio (dirección, teléfono, sitio, mail). Después: nuevo WHATSAPP_WABA_ID y
+  WHATSAPP_PHONE_NUMBER_ID en el .env, registrar el número (PIN) y suscribir la app (subscribed_apps).
 
 ### Para el final (decidido por el usuario)
 - Pasar `development` a `main` (PR) recién al terminar; hasta entonces el anexo del TFI apunta a
