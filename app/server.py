@@ -23,7 +23,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 
-from .bot import BOT_COMMANDS, build_telegram_app, telegram_sender
+from .bot import build_telegram_app, restore_profile, telegram_sender
 from .config import ConfigError, Settings, load_settings
 from .notifier import Notifier
 from .service import BotService
@@ -49,7 +49,7 @@ def build(settings: Settings):
         if settings.telegram_token:
             tg = build_telegram_app(settings.telegram_token, svc)
             await tg.initialize()
-            await tg.bot.set_my_commands(BOT_COMMANDS)
+            await restore_profile(tg.bot, settings.business.name)   # nombre, textos, comandos y menú
             await tg.start()
             await tg.updater.start_polling(allowed_updates=["message", "callback_query"])
             notifier.register("telegram", telegram_sender(tg.bot))

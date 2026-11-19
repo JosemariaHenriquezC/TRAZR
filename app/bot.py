@@ -108,8 +108,56 @@ BOT_COMMANDS = [
 ]
 
 
+def profile_texts(shop: str) -> dict:
+    """Nombre y textos del perfil del bot (los que se ven en Telegram)."""
+    return {
+        "name": shop or "Trazr",
+        # «¿Qué puede hacer este bot?» (chat vacío). Hasta 512 caracteres.
+        "description": (f"¡Hola! Soy el bot de pedidos de {shop or 'Trazr'}. Escribime tu pedido como se lo "
+                        "dirías a un vendedor —por ejemplo «2 cajas de branca y 24 norte»— y te armo el "
+                        "resumen con precios y stock al día. También podés pedirme el catálogo o repetir "
+                        "«lo de siempre». Envío incluido, sin costo."),
+        # Texto corto del perfil. Hasta 120 caracteres.
+        "short": "Pedidos de bebidas por chat: escribí lo que necesitás y te armo el pedido con stock y precio al día.",
+    }
+
+
+async def restore_profile(bot, shop: str) -> None:
+    """Deja el perfil del bot como corresponde: nombre, descripción, comandos y botón del menú.
+    Con el token, cualquiera puede cambiar eso (pasó en noviembre de 2026, con el token filtrado):
+    al arrancar se vuelve a poner lo nuestro. Solo escribe lo que difiere (Telegram limita
+    cuántas veces se puede cambiar el nombre)."""
+    texts = profile_texts(shop)
+    steps = [
+        ("nombre", lambda: bot.get_my_name(), "name", lambda: bot.set_my_name(texts["name"]), texts["name"]),
+        ("descripción", lambda: bot.get_my_description(), "description",
+         lambda: bot.set_my_description(texts["description"]), texts["description"]),
+        ("texto corto", lambda: bot.get_my_short_description(), "short_description",
+         lambda: bot.set_my_short_description(texts["short"]), texts["short"]),
+    ]
+    for label, get, field, set_, wanted in steps:
+        try:
+            if getattr(await get(), field, None) != wanted:
+                await set_()
+                log.info("Perfil del bot: restablecí el %s.", label)
+        except TelegramError as exc:
+            log.warning("No pude revisar el %s del bot: %s", label, exc)
+    try:
+        # Versiones en otros idiomas (las que ve, por ejemplo, un usuario en ruso o inglés): se borran.
+        for lang in ("ru", "en", "uk", "pt"):
+            await bot.set_my_name("", language_code=lang)
+            await bot.set_my_description("", language_code=lang)
+            await bot.set_my_short_description("", language_code=lang)
+            await bot.delete_my_commands(language_code=lang)
+        await bot.set_my_commands(BOT_COMMANDS)
+        await bot.set_chat_menu_button()                       # el botón del menú vuelve a «comandos»
+        await bot.set_my_default_administrator_rights()        # sin permisos de admin pedidos
+    except TelegramError as exc:
+        log.warning("No pude restablecer comandos o menú del bot: %s", exc)
+
+
 async def post_init(app: Application) -> None:
-    await app.bot.set_my_commands(BOT_COMMANDS)
+    await restore_profile(app.bot, app.bot_data["service"].s.business.name)
     me = await app.bot.get_me()
     log.info("Bot @%s en marcha. Escribile en https://t.me/%s", me.username, me.username)
 
