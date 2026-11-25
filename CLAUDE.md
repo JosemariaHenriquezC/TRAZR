@@ -89,6 +89,18 @@ Equipo: Josemaria Henriquez Colaccioppo, Nicolás Quinteros, Isa Pizzuto Dip (so
 
 ## Próxima sesión — empezar por acá
 
+### PROYECTO EN PAUSA (25/11) — leer primero
+- El usuario pausó el proyecto indefinidamente para no gastar crédito de Azure. Servicio `trazr` detenido y
+  deshabilitado (`systemctl disable --now trazr`); VM **detenida (desasignada)**; IP pública `trazr-ip`
+  (52.138.17.238) **ELIMINADA**. trazr.tech no abre, el bot no contesta (WhatsApp ni Telegram).
+- Copias en la PC del usuario: `trazr-respaldo.db` (base) y `env-servidor.txt` (el .env del servidor; secreto,
+  nunca al repo). El disco de la VM sigue (gratis en Azure for Students el 1.er año).
+- Para retomar: crear IP pública ESTÁTICA nueva y asociarla a la VM (Redes → interfaz → ipconfig1) → en el
+  panel de .TECH cambiar el registro A de trazr.tech a la IP nueva → iniciar la VM → por SSH
+  `sudo systemctl enable --now trazr` → actualizar `.../main/scripts/instalar_servidor.sh | sudo bash -s -- trazr.tech`.
+  Si Azure borró la VM (suscripción vencida): VM nueva + script + subir la base y el .env con scp.
+- Vencimientos: dominio trazr.tech gratis solo 1 año (renovar o se pierde); crédito Azure 12 meses.
+
 ### Landing page (TFI) — HECHA
 - Decidido: para DISTRIBUIDORAS (Trazr empresa de software), React (Vite) en `landing/`, compilada a
   estáticos que sirve FastAPI en `/`; la web del admin pasa a `/admin` (/privacidad y
